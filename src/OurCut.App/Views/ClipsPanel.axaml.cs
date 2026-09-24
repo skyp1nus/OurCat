@@ -33,7 +33,15 @@ public partial class ClipsPanel : UserControl
 
     private void OnPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(ClipList).Properties.IsLeftButtonPressed)
+        var props = e.GetCurrentPoint(ClipList).Properties;
+        if (props.IsRightButtonPressed)
+        {
+            // The context menu acts on the selected clip.
+            if (RowAt(e.Source as Visual) is { } row)
+                Editor?.Select(row);
+            return;
+        }
+        if (!props.IsLeftButtonPressed)
             return;
         if ((e.Source as Visual)?.FindAncestorOfType<CheckBox>(includeSelf: true) is not null)
             return;

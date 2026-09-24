@@ -25,20 +25,41 @@ public static class Shortcuts
             return false;
         }
 
+        bool shift = mods.HasFlag(KeyModifiers.Shift);
         if (ctrl && key == Key.O)
         {
-            editor.OpenFileCommand.Execute(null);
+            if (shift)
+                editor.OpenProjectCommand.Execute(null);
+            else
+                editor.OpenFileCommand.Execute(null);
             return true;
         }
         if (!editor.HasFile)
             return false;
-        if (ctrl && key == Key.E)
-        {
-            export.Open();
-            return true;
-        }
         if (ctrl)
-            return false;
+        {
+            switch (key)
+            {
+                case Key.E:
+                    export.Open();
+                    return true;
+                case Key.Z when shift:
+                case Key.Y:
+                    editor.Redo();
+                    return true;
+                case Key.Z:
+                    editor.Undo();
+                    return true;
+                case Key.S when shift:
+                    editor.SaveProjectAsCommand.Execute(null);
+                    return true;
+                case Key.S:
+                    editor.SaveProjectCommand.Execute(null);
+                    return true;
+                default:
+                    return false;
+            }
+        }
 
         switch (key)
         {
@@ -57,6 +78,9 @@ public static class Shortcuts
                 return true;
             case Key.O:
                 editor.MarkOut();
+                return true;
+            case Key.Delete when mods.HasFlag(KeyModifiers.Shift):
+                editor.DeleteClip();
                 return true;
             case Key.E or Key.Delete or Key.Back:
                 editor.ToggleExclude();

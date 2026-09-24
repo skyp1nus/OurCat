@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Media;
 using OurCut.App.Services;
 using OurCut.App.Theme;
+using OurCut.Core.Model;
 
 namespace OurCut.App.Demo;
 
@@ -72,8 +73,23 @@ public sealed class DesignSample : IMediaPreview
         _keyframes = [.. kf];
     }
 
-    public static IReadOnlyList<(string Key, string Label)> AudioStreams { get; } =
-        [("A1", "Mic"), ("A2", "System"), ("A3", "Music")];
+    /// <summary>The sample source file: a 14:32 keynote recording with three audio tracks.</summary>
+    public static SourceMedia Source { get; } = new("keynote_final_4k.mp4", SampleDuration, 29.97,
+        [new AudioTrack(1, "Mic"), new AudioTrack(2, "System"), new AudioTrack(3, "Music")]);
+
+    /// <summary>Header text for the sample file.</summary>
+    public const string SourceInfo = "keynote_final_4k.mp4 · 4K · 29.97 fps";
+
+    /// <summary>The design's six clips (Q&amp;A excluded), in output order.</summary>
+    public static Project Project { get; } = new("launch-keynote", Source,
+    [
+        new Clip(1, "Intro", 12.04, 45.32),
+        new Clip(2, "Setup", 118.6, 190.12),
+        new Clip(3, "Demo — import", 242.88, 404.0),
+        new Clip(4, "Demo — trim", 495.2, 602.56),
+        new Clip(6, "Q&A", 640.0, 728.4, IsIncluded: false),
+        new Clip(5, "Outro", 750.0, 828.72),
+    ]);
 
     public double Duration => SampleDuration;
     public double FrameRate => 29.97;

@@ -1,0 +1,14 @@
+namespace OurCut.App.Services;
+
+/// <summary>File pickers used by the editor. Implemented by the main window; faked in tests.</summary>
+public interface IFileDialogs
+{
+    /// <summary>Returns the chosen video file, or null if cancelled.</summary>
+    Task<string?> PickMediaToOpenAsync();
+
+    /// <summary>Returns the chosen <c>.ourcut.json</c> file, or null if cancelled.</summary>
+    Task<string?> PickProjectToOpenAsync();
+
+    /// <summary>Returns where to save the project, or null if cancelled.</summary>
+    Task<string?> PickProjectSavePathAsync(string suggestedFileName);
+}

@@ -125,6 +125,56 @@ public class EditorInteractionTests
     }
 
     [AvaloniaFact]
+    public void Ctrl_Z_and_Ctrl_Y_undo_and_redo()
+    {
+        var (window, editor) = Open();
+        var clip = editor.SelectedClip!;
+        Press(window, Key.E);
+        Assert.False(clip.IsIncluded);
+        Press(window, Key.Z, RawInputModifiers.Control);
+        Assert.True(clip.IsIncluded);
+        Press(window, Key.Y, RawInputModifiers.Control);
+        Assert.False(clip.IsIncluded);
+        Press(window, Key.Z, RawInputModifiers.Control);
+        Press(window, Key.Z, RawInputModifiers.Control | RawInputModifiers.Shift);
+        Assert.False(clip.IsIncluded);
+    }
+
+    [AvaloniaFact]
+    public void Shift_Delete_removes_the_selected_clip()
+    {
+        var (window, editor) = Open();
+        var clip = editor.SelectedClip!;
+        Press(window, Key.Delete, RawInputModifiers.Shift);
+        Assert.DoesNotContain(clip, editor.Clips);
+        Assert.Null(editor.Session.Project.Find(clip.Id));
+    }
+
+    [AvaloniaFact]
+    public void Dragging_a_trim_handle_is_one_undo_step()
+    {
+        var (window, editor) = Open();
+        editor.SnapToKeyframes = false;
+        var clip = editor.SelectedClip!;
+        double start = clip.Start;
+        var timeline = window.GetVisualDescendants().OfType<TimelineControl>().Single();
+        var origin = timeline.TranslatePoint(new Point(0, 0), window)!.Value;
+        double pps = timeline.Bounds.Width / editor.Duration;
+        var handle = new Point(origin.X + clip.Start * pps + 5, origin.Y + 97);
+
+        window.MouseDown(handle, MouseButton.Left, RawInputModifiers.None);
+        for (int dx = 5; dx <= 30; dx += 5)
+            window.MouseMove(handle + new Point(dx, 0), RawInputModifiers.LeftMouseButton);
+        window.MouseUp(handle + new Point(30, 0), MouseButton.Left, RawInputModifiers.None);
+        Pump();
+
+        Assert.Equal(start + 30 / pps, clip.Start, 3);
+        Assert.Single(editor.Session.History.Entries);
+        editor.Undo();
+        Assert.Equal(start, clip.Start);
+    }
+
+    [AvaloniaFact]
     public void Ctrl_E_opens_export_and_Escape_closes_it()
     {
         var (window, editor) = Open();

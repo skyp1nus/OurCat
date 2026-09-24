@@ -1,35 +1,53 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using OurCut.Core.Model;
 using OurCut.Core.Time;
 
 namespace OurCut.App.ViewModels;
 
-/// <summary>One kept range of the source file. Its list position is its position in the output.</summary>
+/// <summary>
+/// A clip as shown in the list and on the timeline. Its data mirrors a <see cref="Clip"/> of the
+/// Core project; changes go through <see cref="EditorViewModel"/> and come back via
+/// <see cref="Update"/>.
+/// </summary>
 public sealed partial class ClipViewModel : ViewModelBase
 {
-    public ClipViewModel(int id, string label, double start, double end, bool isIncluded = true)
+    private readonly Action<ClipViewModel, bool>? _setIncluded;
+
+    public ClipViewModel(Clip clip, Action<ClipViewModel, bool>? setIncluded = null)
     {
-        Id = id;
-        Label = label;
-        Start = start;
-        End = end;
-        IsIncluded = isIncluded;
+        Id = clip.Id;
+        _setIncluded = setIncluded;
+        Update(clip);
     }
 
     public int Id { get; }
 
     [ObservableProperty]
-    public partial string Label { get; set; }
+    public partial string Label { get; private set; } = "";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StartText), nameof(Duration), nameof(DurationText))]
-    public partial double Start { get; set; }
+    public partial double Start { get; private set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EndText), nameof(Duration), nameof(DurationText))]
-    public partial double End { get; set; }
+    public partial double End { get; private set; }
 
     [ObservableProperty]
-    public partial bool IsIncluded { get; set; }
+    [NotifyPropertyChangedFor(nameof(IncludeToggle))]
+    public partial bool IsIncluded { get; private set; }
+
+    /// <summary>Two-way target for the include checkbox; setting it issues an edit.</summary>
+    public bool IncludeToggle
+    {
+        get => IsIncluded;
+        set
+        {
+            if (value != IsIncluded)
+                _setIncluded?.Invoke(this, value);
+            OnPropertyChanged();
+        }
+    }
 
     /// <summary>1-based position in the output order.</summary>
     [ObservableProperty]
@@ -64,4 +82,13 @@ public sealed partial class ClipViewModel : ViewModelBase
     public string DurationText => TimeFormat.Duration(Duration);
 
     public bool Contains(double t) => t >= Start && t <= End;
+
+    /// <summary>Copies the Core clip's data.</summary>
+    public void Update(Clip clip)
+    {
+        Label = clip.Label;
+        Start = clip.Start;
+        End = clip.End;
+        IsIncluded = clip.IsIncluded;
+    }
 }

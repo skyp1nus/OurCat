@@ -34,6 +34,16 @@
       </StackPanel>
       <ScrollViewer Name="ListScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <ItemsControl Name="ClipList" ItemsSource="{Binding Clips}" Margin="6,4">
+          <ItemsControl.ContextMenu>
+            <ContextMenu>
+              <MenuItem Header="{Binding ExcludeLabel}" InputGesture="E" Command="{Binding ToggleExcludeCommand}"
+                        IsEnabled="{Binding HasSelection}" />
+              <MenuItem Header="Split at playhead" InputGesture="S" Command="{Binding SplitCommand}" />
+              <Separator />
+              <MenuItem Header="Delete clip" InputGesture="Shift+Delete" Command="{Binding DeleteClipCommand}"
+                        IsEnabled="{Binding HasSelection}" />
+            </ContextMenu>
+          </ItemsControl.ContextMenu>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ClipViewModel">
               <Border Classes="row" Height="44" Padding="4,0,6,0" CornerRadius="4" BorderThickness="1"
@@ -70,7 +80,7 @@
                   <TextBlock Grid.Column="3" Classes="mono dur" Text="{Binding DurationText}" FontSize="11.5" FontWeight="Medium"
                              VerticalAlignment="Center" Margin="8,0,0,0" />
                   <CheckBox Grid.Column="4" Margin="12,0,0,0" VerticalAlignment="Center" ToolTip.Tip="Include in export"
-                            IsChecked="{Binding IsIncluded}" />
+                            IsChecked="{Binding IncludeToggle}" />
                 </Grid>
               </Border>
             </DataTemplate>

@@ -4,7 +4,7 @@
         xmlns:v="using:OurCut.App.Views"
         x:Class="OurCut.App.Views.MainWindow"
         x:DataType="vm:EditorViewModel"
-        Title="OurCut"
+        Title="{Binding WindowTitle, FallbackValue=OurCut}"
         Icon="/Assets/ourcut.ico"
         Width="1440" Height="900" MinWidth="1100" MinHeight="700"
         WindowStartupLocation="CenterScreen"

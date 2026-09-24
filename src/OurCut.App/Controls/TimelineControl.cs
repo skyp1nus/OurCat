@@ -143,7 +143,7 @@ public sealed class TimelineControl : Control
             UpdateExtent();
             ScrollOffset = Math.Clamp(X(_editor!.Time) - anchor, 0, MaxScroll);
         }
-        else if (e.PropertyName is nameof(EditorViewModel.Media) or nameof(EditorViewModel.IsMediaLoaded)
+        else if (e.PropertyName is nameof(EditorViewModel.Media) or nameof(EditorViewModel.HasFile)
                  or nameof(EditorViewModel.PlaceholderDuration))
         {
             UpdateExtent();
@@ -408,7 +408,7 @@ public sealed class TimelineControl : Control
 
     private void DrawGaps(DrawingContext ctx, EditorViewModel editor, Rect visible)
     {
-        foreach (var (from, to) in editor.ExcludedGaps())
+        foreach (var (from, to) in editor.ExcludedGaps().Select(g => (g.Start, g.End)))
         {
             double x = X(from), w = X(to) - x;
             if (x > visible.Right || x + w < visible.Left)
@@ -653,12 +653,12 @@ public sealed class TimelineControl : Control
                 break;
             case HitKind.TrimIn or HitKind.TrimOut:
                 _drag = new Drag(hit.Kind == HitKind.TrimIn ? DragKind.TrimIn : DragKind.TrimOut, hit.Clip,
-                    p.X, hit.Kind == HitKind.TrimIn ? hit.Clip!.Start : hit.Clip!.End);
+                    p.X, hit.Kind == HitKind.TrimIn ? hit.Clip!.Start : hit.Clip!.End, Guid.NewGuid().ToString("N"));
                 editor.Select(hit.Clip);
                 e.Pointer.Capture(this);
                 break;
             default:
-                _drag = new Drag(DragKind.Scrub, null, p.X, 0);
+                _drag = new Drag(DragKind.Scrub, null, p.X, 0, null);
                 editor.ScrubTo(T(p.X + ScrollOffset), select: true);
                 e.Pointer.Capture(this);
                 break;
@@ -681,8 +681,7 @@ public sealed class TimelineControl : Control
                 return;
             case DragKind.TrimIn or DragKind.TrimOut:
                 double v = _drag.Origin + (p.X - _drag.StartX) / Pps;
-                v = editor.SnapToKeyframe(v, 8 / Pps);
-                editor.Trim(_drag.Clip!, _drag.Kind == DragKind.TrimIn, v);
+                editor.Trim(_drag.Clip!, _drag.Kind == DragKind.TrimIn, v, 8 / Pps, _drag.MergeKey);
                 return;
         }
 
@@ -752,7 +751,8 @@ public sealed class TimelineControl : Control
         TrimOut,
     }
 
-    private readonly record struct Drag(DragKind Kind, ClipViewModel? Clip, double StartX, double Origin);
+    /// <param name="MergeKey">Groups all trim steps of one drag into a single undo step.</param>
+    private readonly record struct Drag(DragKind Kind, ClipViewModel? Clip, double StartX, double Origin, string? MergeKey);
 
     private enum HitKind
     {

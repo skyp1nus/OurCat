@@ -8,8 +8,8 @@ It is inspired by [LosslessCut](https://github.com/mifi/lossless-cut). Every edi
 core, so an AI assistant (Claude via MCP) can later edit the same timeline through the same operations.
 
 > **Status:** early development, Phase 1. Windows only for now; the code is kept cross-platform so macOS and
-> Linux can follow. The editor UI is in place with sample data; opening real files, playback (libmpv) and
-> export (FFmpeg) are being connected milestone by milestone.
+> Linux can follow. The editor UI and the editing core (undo/redo, project files) are in place. Until media
+> probing, playback (libmpv) and export (FFmpeg) are connected, Open loads a sample project.
 
 ## Phase 1 scope
 
@@ -33,8 +33,11 @@ Not in Phase 1: the MCP server, transcription and smart cut. The UI already has 
 | ← / → | Previous / next frame (Shift: 1 second) |
 | S | Split clip at playhead |
 | E or Del | Exclude / keep the selected clip |
-| Ctrl+Z / Ctrl+Y | Undo / redo |
-| Ctrl+O | Open file |
+| Shift+Del | Delete the selected clip |
+| Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) | Undo / redo |
+| Ctrl+O | Open video |
+| Ctrl+Shift+O | Open project |
+| Ctrl+S / Ctrl+Shift+S | Save project / save as |
 | Ctrl+E | Export |
 
 ## Building
@@ -74,6 +77,9 @@ tests/              xUnit tests for Core, Media and headless UI tests for App
 scripts/            fetch-deps.ps1 and the pinned dependency manifest
 design/             The Claude Design export the UI is built from
 ```
+
+See [docs/architecture.md](docs/architecture.md) for how the layers fit together, the list of edit commands
+and the `.ourcut.json` format.
 
 ## License
 

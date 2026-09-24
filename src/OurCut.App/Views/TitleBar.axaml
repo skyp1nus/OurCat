@@ -30,9 +30,9 @@
             <Button.Flyout>
               <MenuFlyout Placement="BottomEdgeAlignedLeft">
                 <MenuItem Header="Open video…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
-                <MenuItem Header="Open project…" IsEnabled="False" />
-                <MenuItem Header="Save project" InputGesture="Ctrl+S" IsEnabled="False" />
-                <MenuItem Header="Save project as…" InputGesture="Ctrl+Shift+S" IsEnabled="False" />
+                <MenuItem Header="Open project…" InputGesture="Ctrl+Shift+O" Command="{Binding OpenProjectCommand}" />
+                <MenuItem Header="Save project" InputGesture="Ctrl+S" Command="{Binding SaveProjectCommand}" IsEnabled="{Binding HasFile}" />
+                <MenuItem Header="Save project as…" InputGesture="Ctrl+Shift+S" Command="{Binding SaveProjectAsCommand}" IsEnabled="{Binding HasFile}" />
                 <Separator />
                 <MenuItem Header="Export…" InputGesture="Ctrl+E" Command="{Binding Export.OpenCommand}" IsEnabled="{Binding HasFile}" />
                 <Separator />
@@ -43,13 +43,14 @@
           <Button Classes="menu" Content="Edit">
             <Button.Flyout>
               <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                <MenuItem Header="Undo" InputGesture="Ctrl+Z" IsEnabled="False" />
-                <MenuItem Header="Redo" InputGesture="Ctrl+Y" IsEnabled="False" />
+                <MenuItem Header="Undo" InputGesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+                <MenuItem Header="Redo" InputGesture="Ctrl+Y" Command="{Binding RedoCommand}" />
                 <Separator />
                 <MenuItem Header="Set in-point" InputGesture="I" Command="{Binding MarkInCommand}" />
                 <MenuItem Header="Set out-point" InputGesture="O" Command="{Binding MarkOutCommand}" />
                 <MenuItem Header="Split at playhead" InputGesture="S" Command="{Binding SplitCommand}" />
                 <MenuItem Header="Exclude / keep clip" InputGesture="E" Command="{Binding ToggleExcludeCommand}" />
+                <MenuItem Header="Delete clip" InputGesture="Shift+Delete" Command="{Binding DeleteClipCommand}" IsEnabled="{Binding HasSelection}" />
               </MenuFlyout>
             </Button.Flyout>
           </Button>
