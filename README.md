@@ -8,7 +8,8 @@ It is inspired by [LosslessCut](https://github.com/mifi/lossless-cut). Every edi
 core, so an AI assistant (Claude via MCP) can later edit the same timeline through the same operations.
 
 > **Status:** early development, Phase 1. Windows only for now; the code is kept cross-platform so macOS and
-> Linux can follow.
+> Linux can follow. The editor UI is in place with sample data; opening real files, playback (libmpv) and
+> export (FFmpeg) are being connected milestone by milestone.
 
 ## Phase 1 scope
 
@@ -53,6 +54,9 @@ repository. The build copies them next to `OurCut.exe`. Versions, URLs and SHA-2
 [`scripts/deps.json`](scripts/deps.json), and the script refuses anything that does not match.
 Useful options: `-Check` (verify only, no downloads), `-Force` (reinstall), `-Component ffmpeg`,
 `-Proxy http://proxy:8080`. Downloads are cached in `deps/.cache`.
+
+To see the UI with the sample project from the design, start it in demo mode:
+`dotnet run --project src/OurCut.App -- --demo editing` (other screens: `empty`, `ai`, `export`, `exporting`).
 
 Run the tests with `dotnet test OurCut.slnx`. The UI tests render the app headlessly and write screenshots to
 `artifacts/screenshots/`.

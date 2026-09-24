@@ -1,0 +1,157 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OurCut.App.ViewModels"
+             xmlns:c="using:OurCut.App.Controls"
+             x:Class="OurCut.App.Views.ClipsPanel"
+             x:DataType="vm:EditorViewModel">
+  <Grid RowDefinitions="39,*,45">
+    <!-- Header -->
+    <Border BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,0,0,1" Padding="14,0,10,0">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+        <TextBlock Text="Clips" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
+        <Border Grid.Column="1" Margin="8,0,0,0" Padding="6,1" CornerRadius="4" Background="{StaticResource ControlBrush}"
+                VerticalAlignment="Center">
+          <TextBlock Classes="mono" Text="{Binding ClipCountText}" FontSize="10.5" FontWeight="Medium"
+                     Foreground="{StaticResource MutedBrush}" />
+        </Border>
+        <TextBlock Grid.Column="3" Text="Drag to reorder output" FontSize="11" Foreground="{StaticResource Muted3Brush}"
+                   VerticalAlignment="Center" Margin="8,0" />
+        <Button Grid.Column="4" Classes="ghost bright plus" Width="24" Height="24" Foreground="{StaticResource Text4Brush}"
+                ToolTip.Tip="New clip at playhead (I)" Command="{Binding MarkInCommand}">
+          <c:SvgIcon Data="{StaticResource IconPlus}" StrokeWidth="2" Width="14" Height="14" />
+        </Button>
+      </Grid>
+    </Border>
+
+    <!-- Clip list -->
+    <Panel Grid.Row="1">
+      <StackPanel IsVisible="{Binding HasNoClips}" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="6" Margin="20">
+        <TextBlock Text="No clips yet" FontSize="12.5" FontWeight="Medium" Foreground="{StaticResource Text3Brush}"
+                   HorizontalAlignment="Center" />
+        <TextBlock Text="Mark a segment with I and O, or ask Claude to find the parts worth keeping." FontSize="11.5"
+                   LineHeight="17.25" Foreground="{StaticResource Muted2Brush}" TextWrapping="Wrap" TextAlignment="Center"
+                   MaxWidth="220" />
+      </StackPanel>
+      <ScrollViewer Name="ListScroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ItemsControl Name="ClipList" ItemsSource="{Binding Clips}" Margin="6,4">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ClipViewModel">
+              <Border Classes="row" Height="44" Padding="4,0,6,0" CornerRadius="4" BorderThickness="1"
+                      Classes.sel="{Binding IsSelected}" Classes.ai="{Binding IsAi}" Classes.off="{Binding !IsIncluded}"
+                      Classes.over="{Binding IsDropTarget}" Classes.dragging="{Binding IsDragSource}">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                  <!-- Grip -->
+                  <Grid Classes="grip" ColumnDefinitions="2,2,2" RowDefinitions="2,2,2,2,2" Margin="3,4" VerticalAlignment="Center"
+                        Background="Transparent" Cursor="SizeAll">
+                    <Border Grid.Column="0" Grid.Row="0" />
+                    <Border Grid.Column="2" Grid.Row="0" />
+                    <Border Grid.Column="0" Grid.Row="2" />
+                    <Border Grid.Column="2" Grid.Row="2" />
+                    <Border Grid.Column="0" Grid.Row="4" />
+                    <Border Grid.Column="2" Grid.Row="4" />
+                  </Grid>
+                  <Border Grid.Column="1" Classes="num" Width="20" Height="20" CornerRadius="4" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Classes="mono" Text="{Binding Number}" FontSize="10.5" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Border>
+                  <StackPanel Grid.Column="2" Margin="8,0,0,0" Spacing="2" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <TextBlock Classes="label" Text="{Binding Label}" FontSize="12" FontWeight="Medium" LineHeight="16.8"
+                                 TextTrimming="CharacterEllipsis" />
+                      <Border IsVisible="{Binding IsAi}" Padding="5,0" CornerRadius="3" Background="#2EAA9CF7" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding AiTag}" FontSize="9.5" FontWeight="Medium" LineHeight="15"
+                                   Foreground="{StaticResource VioletTextBrush}" />
+                      </Border>
+                    </StackPanel>
+                    <TextBlock Classes="mono" FontSize="10.5" LineHeight="14.7" Foreground="#8E8E8E">
+                      <Run Text="{Binding StartText}" /><Run Text=" – " /><Run Text="{Binding EndText}" />
+                    </TextBlock>
+                  </StackPanel>
+                  <TextBlock Grid.Column="3" Classes="mono dur" Text="{Binding DurationText}" FontSize="11.5" FontWeight="Medium"
+                             VerticalAlignment="Center" Margin="8,0,0,0" />
+                  <CheckBox Grid.Column="4" Margin="12,0,0,0" VerticalAlignment="Center" ToolTip.Tip="Include in export"
+                            IsChecked="{Binding IsIncluded}" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Panel>
+
+    <!-- Output total -->
+    <Border Grid.Row="2" BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,1,0,0" Padding="14,0">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+        <TextBlock Text="Output" FontSize="11.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Text="{Binding ClipSummary}" FontSize="11.5" Foreground="{StaticResource Muted3Brush}"
+                   VerticalAlignment="Center" Margin="8,0,0,0" />
+        <TextBlock Grid.Column="3" Classes="mono" Text="{Binding ClaudeDeltaText}" IsVisible="{Binding HasClaudeDelta}"
+                   FontSize="11" FontWeight="Medium" Foreground="#C9C1FF" VerticalAlignment="Center" Margin="8,0,0,0" />
+        <TextBlock Grid.Column="4" Classes="mono" Text="{Binding TotalText}" FontSize="15" FontWeight="Medium"
+                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+      </Grid>
+    </Border>
+  </Grid>
+
+  <UserControl.Styles>
+    <Style Selector="Button.plus:pointerover">
+      <Setter Property="Background" Value="{StaticResource DividerBrush}" />
+    </Style>
+    <Style Selector="Border.row">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.row.over">
+      <Setter Property="Background" Value="#2A2A2A" />
+      <Setter Property="BorderBrush" Value="#4C4C4C" />
+    </Style>
+    <Style Selector="Border.row.sel">
+      <Setter Property="Background" Value="#1760CDFF" />
+      <Setter Property="BorderBrush" Value="#8060CDFF" />
+    </Style>
+    <Style Selector="Border.row.ai">
+      <Setter Property="Background" Value="#14AA9CF7" />
+      <Setter Property="BorderBrush" Value="#66AA9CF7" />
+    </Style>
+    <Style Selector="Border.row.ai.sel">
+      <Setter Property="BorderBrush" Value="#CCAA9CF7" />
+    </Style>
+    <Style Selector="Border.row.dragging">
+      <Setter Property="Opacity" Value="0.4" />
+    </Style>
+    <Style Selector="Grid.grip > Border">
+      <Setter Property="Background" Value="#5C5C5C" />
+    </Style>
+    <Style Selector="Border.num">
+      <Setter Property="Background" Value="{StaticResource DividerBrush}" />
+    </Style>
+    <Style Selector="Border.num > TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource Text4Brush}" />
+    </Style>
+    <Style Selector="Border.row.sel Border.num">
+      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    </Style>
+    <Style Selector="Border.row.sel Border.num > TextBlock">
+      <Setter Property="Foreground" Value="#000000" />
+    </Style>
+    <Style Selector="Border.row.ai Border.num">
+      <Setter Property="Background" Value="{StaticResource VioletBrush}" />
+    </Style>
+    <Style Selector="Border.row.ai Border.num > TextBlock">
+      <Setter Property="Foreground" Value="#140F22" />
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
+    <Style Selector="Border.row.off TextBlock.label">
+      <Setter Property="Foreground" Value="{StaticResource Muted2Brush}" />
+    </Style>
+    <Style Selector="TextBlock.dur">
+      <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
+    </Style>
+    <Style Selector="Border.row.off TextBlock.dur">
+      <Setter Property="Foreground" Value="{StaticResource Muted4Brush}" />
+      <Setter Property="TextDecorations" Value="Strikethrough" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

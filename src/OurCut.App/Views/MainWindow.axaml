@@ -1,10 +1,37 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:OurCut.App.ViewModels"
+        xmlns:v="using:OurCut.App.Views"
         x:Class="OurCut.App.Views.MainWindow"
+        x:DataType="vm:EditorViewModel"
         Title="OurCut"
         Icon="/Assets/ourcut.ico"
-        Width="1440" Height="900"
-        Background="#1c1c1c">
-  <TextBlock Text="OurCut" HorizontalAlignment="Center" VerticalAlignment="Center"
-             FontSize="13" FontWeight="SemiBold" Foreground="#ffffff" />
+        Width="1440" Height="900" MinWidth="1100" MinHeight="700"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource WindowBrush}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="44"
+        WindowDecorations="BorderOnly"
+        FontFamily="{StaticResource SansFont}"
+        DragDrop.AllowDrop="True">
+  <Panel>
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+      <v:TitleBar />
+
+      <Grid Grid.Row="1" ColumnDefinitions="*,361">
+        <v:PlayerPanel Name="Player" />
+        <Border Grid.Column="1" Background="{StaticResource ChromeBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+          <Grid RowDefinitions="*,Auto">
+            <v:ClipsPanel />
+            <v:ClaudePanel Grid.Row="1" DataContext="{Binding Claude}" />
+          </Grid>
+        </Border>
+      </Grid>
+
+      <v:TimelinePanel Grid.Row="2" />
+      <v:StatusBar Grid.Row="3" />
+    </Grid>
+
+    <v:ExportDialog DataContext="{Binding Export}" IsVisible="{Binding IsDialogOpen}" />
+  </Panel>
 </Window>

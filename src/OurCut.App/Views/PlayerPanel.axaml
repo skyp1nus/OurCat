@@ -1,0 +1,192 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OurCut.App.ViewModels"
+             xmlns:c="using:OurCut.App.Controls"
+             x:Class="OurCut.App.Views.PlayerPanel"
+             x:DataType="vm:EditorViewModel">
+  <Grid RowDefinitions="*,53" Background="{StaticResource VideoAreaBrush}">
+
+    <Panel Margin="20,16,20,12">
+      <!-- Empty state: drop zone with recent files. -->
+      <Panel Name="DropZone" IsVisible="{Binding IsEmpty}" MaxWidth="900" Background="Transparent"
+             DragDrop.AllowDrop="True">
+        <Rectangle Name="DropBorder" RadiusX="12" RadiusY="12" StrokeThickness="1.5" Stroke="#484848"
+                   StrokeDashArray="3,2" Fill="Transparent" />
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+          <Border Width="44" Height="44" CornerRadius="12" Background="{StaticResource ControlBrush}"
+                  BorderBrush="#3C3C3C" BorderThickness="1" HorizontalAlignment="Center">
+            <c:SvgIcon Data="{StaticResource IconDrop}" StrokeWidth="1.8" Width="20" Height="20" Foreground="{StaticResource Text3Brush}" />
+          </Border>
+          <TextBlock Text="Drop a video here" FontSize="18" FontWeight="SemiBold" LetterSpacing="-0.18" LineHeight="25.2"
+                     Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center" Margin="0,14,0,0" />
+          <TextBlock Text="MP4, MOV, MKV, WebM and most other containers. Cuts are lossless by default, so nothing is re-encoded unless you ask."
+                     FontSize="12.5" LineHeight="18.75" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                     TextAlignment="Center" MaxWidth="380" HorizontalAlignment="Center" Margin="0,14,0,0" />
+          <Button Classes="white" Height="32" Padding="12,0,10,0" FontSize="12.5" HorizontalAlignment="Center" Margin="0,18,0,0"
+                  Command="{Binding OpenFileCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Open file…" VerticalAlignment="Center" />
+              <Border Classes="kbd" Background="#14000000" BorderThickness="0">
+                <TextBlock Text="Ctrl+O" Foreground="#44444A" />
+              </Border>
+            </StackPanel>
+          </Button>
+          <StackPanel Width="420" Margin="0,36,0,0" Spacing="2" IsVisible="{Binding HasRecentFiles}">
+            <TextBlock Text="Recent" FontSize="11" LineHeight="15.4" Foreground="{StaticResource Muted2Brush}" Margin="10,0,10,6" />
+            <ItemsControl ItemsSource="{Binding RecentFiles}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="2" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RecentFileViewModel">
+                  <Button Classes="recent" Height="32" Padding="10,0" CornerRadius="4" HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Stretch"
+                          Command="{Binding $parent[UserControl].((vm:EditorViewModel)DataContext).OpenFileCommand}">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                      <TextBlock Classes="mono" Text="{Binding Name}" FontSize="12" FontWeight="Normal"
+                                 Foreground="{StaticResource Text2Brush}" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Classes="mono" Text="{Binding DurationText}" FontSize="11" FontWeight="Normal"
+                                 Foreground="{StaticResource Muted2Brush}" VerticalAlignment="Center" Margin="10,0,0,0" />
+                      <TextBlock Grid.Column="2" Text="{Binding WhenText}" FontSize="11" FontWeight="Normal" Width="70"
+                                 TextAlignment="Right" Foreground="{StaticResource Muted2Brush}" VerticalAlignment="Center"
+                                 Margin="10,0,0,0" />
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </StackPanel>
+      </Panel>
+
+      <!-- Player picture with overlays. -->
+      <c:AspectPanel IsVisible="{Binding HasFile}">
+        <Border CornerRadius="2" ClipToBounds="True" BoxShadow="0 0 0 1 #2A2A2A">
+          <Panel>
+            <c:VideoSurface Media="{Binding Media}" Time="{Binding Time}" Caption="{Binding FrameText}" />
+            <Border IsVisible="{Binding IsInClip}" Classes="overlay" HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Margin="12" Padding="9,0">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <Border Width="7" Height="7" CornerRadius="2" VerticalAlignment="Center"
+                        Classes.ai="{Binding IsCurrentClipAi}" Name="ClipDot" />
+                <TextBlock Classes="mono" Text="{Binding CurrentClipNumber}" FontSize="11.5" FontWeight="Medium"
+                           Foreground="{StaticResource Text4Brush}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding CurrentClipLabel}" FontSize="11.5" FontWeight="Medium"
+                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+            <Border IsVisible="{Binding IsInExcluded}" Classes="overlay" HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Margin="12" Padding="9,0">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <Border Width="9" Height="9" CornerRadius="2" BorderBrush="{StaticResource Muted2Brush}" BorderThickness="1"
+                        VerticalAlignment="Center" ClipToBounds="True">
+                  <c:HatchFill Period="3" Stroke="{StaticResource Muted2Brush}" />
+                </Border>
+                <TextBlock Text="Excluded · not in export" FontSize="11.5" FontWeight="Medium"
+                           Foreground="{StaticResource Text4Brush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+            <Border Classes="overlay" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Padding="8,0">
+              <TextBlock Classes="mono" Text="{Binding SpeedText}" FontSize="10.5" FontWeight="Medium"
+                         Foreground="{StaticResource Text4Brush}" VerticalAlignment="Center" />
+            </Border>
+          </Panel>
+        </Border>
+      </c:AspectPanel>
+    </Panel>
+
+    <!-- Transport: timecode | controls | speed and volume. -->
+    <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="#2A2A2A" BorderThickness="0,1,0,0"
+            Padding="16,0" Classes.disabled="{Binding IsEmpty}" Name="Transport">
+      <Grid ColumnDefinitions="*,Auto,*">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <TextBlock Classes="mono" Text="{Binding TimeText}" FontSize="15" FontWeight="Medium"
+                     Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
+          <TextBlock Classes="mono" Text="{Binding DurationText, StringFormat='/ {0}'}" FontSize="12"
+                     Foreground="{StaticResource Muted3Brush}" VerticalAlignment="Center" Margin="0,2,0,0" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+          <Button Classes="outline" Height="28" Padding="6,0,9,0" Margin="0,0,8,0" FontSize="11.5"
+                  ToolTip.Tip="Set in-point (I)" Command="{Binding MarkInCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Border Classes="kbd"><TextBlock Text="I" Foreground="{StaticResource Text4Brush}" /></Border>
+              <TextBlock Text="Set in" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="ghost" Width="30" Height="30" Foreground="{StaticResource Text3Brush}" ToolTip.Tip="Go to in-point"
+                  Command="{Binding JumpInCommand}">
+            <c:SvgIcon Data="{StaticResource IconJumpIn}" IsFilled="True" Width="15" Height="15" />
+          </Button>
+          <Button Classes="ghost" Width="30" Height="30" Foreground="{StaticResource Text3Brush}" ToolTip.Tip="Previous frame (←)"
+                  Command="{Binding StepBackCommand}">
+            <c:SvgIcon Data="{StaticResource IconStepBack}" IsFilled="True" Width="15" Height="15" />
+          </Button>
+          <Button Classes="white" Width="38" Height="38" CornerRadius="19" Margin="4,0" ToolTip.Tip="Play / pause (Space)"
+                  Command="{Binding TogglePlayCommand}">
+            <Panel>
+              <c:SvgIcon Data="{StaticResource IconPlay}" IsFilled="True" Width="16" Height="16" IsVisible="{Binding !IsPlaying}" />
+              <c:SvgIcon Data="{StaticResource IconPause}" IsFilled="True" Width="16" Height="16" IsVisible="{Binding IsPlaying}" />
+            </Panel>
+          </Button>
+          <Button Classes="ghost" Width="30" Height="30" Foreground="{StaticResource Text3Brush}" ToolTip.Tip="Next frame (→)"
+                  Command="{Binding StepForwardCommand}">
+            <c:SvgIcon Data="{StaticResource IconStepForward}" IsFilled="True" Width="15" Height="15" />
+          </Button>
+          <Button Classes="ghost" Width="30" Height="30" Foreground="{StaticResource Text3Brush}" ToolTip.Tip="Go to out-point"
+                  Command="{Binding JumpOutCommand}">
+            <c:SvgIcon Data="{StaticResource IconJumpOut}" IsFilled="True" Width="15" Height="15" />
+          </Button>
+          <Button Classes="outline" Height="28" Padding="9,0,6,0" Margin="8,0,0,0" FontSize="11.5"
+                  ToolTip.Tip="Set out-point (O)" Command="{Binding MarkOutCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <TextBlock Text="Set out" VerticalAlignment="Center" />
+              <Border Classes="kbd"><TextBlock Text="O" Foreground="{StaticResource Text4Brush}" /></Border>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="14" HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Button Classes="outline" Height="24" Padding="8,0" ToolTip.Tip="Playback speed" Command="{Binding CycleSpeedCommand}">
+            <TextBlock Classes="mono" Text="{Binding SpeedText}" FontSize="11.5" FontWeight="Medium" />
+          </Button>
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Panel Width="16" Height="16" VerticalAlignment="Center">
+              <c:SvgIcon Data="{StaticResource IconSpeaker}" IsFilled="True" StrokeWidth="1.8" Foreground="{StaticResource Text4Brush}" />
+              <c:SvgIcon Data="{StaticResource IconSpeakerWaves}" StrokeWidth="1.8" Foreground="{StaticResource Text4Brush}" />
+            </Panel>
+            <Slider Theme="{StaticResource VolumeSlider}" Width="72" Minimum="0" Maximum="1" Value="{Binding Volume}"
+                    VerticalAlignment="Center" />
+          </StackPanel>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+
+  <UserControl.Styles>
+    <Style Selector="Border.overlay">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Background" Value="#B80A0A0B" />
+    </Style>
+    <Style Selector="Border#ClipDot">
+      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+    </Style>
+    <Style Selector="Border#ClipDot.ai">
+      <Setter Property="Background" Value="{StaticResource VioletBrush}" />
+    </Style>
+    <Style Selector="Border#Transport.disabled">
+      <Setter Property="Opacity" Value="0.35" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+    <Style Selector="Button.recent:pointerover">
+      <Setter Property="Background" Value="#262626" />
+    </Style>
+    <Style Selector="Panel#DropZone.over Rectangle#DropBorder">
+      <Setter Property="Stroke" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Fill" Value="#0D60CDFF" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

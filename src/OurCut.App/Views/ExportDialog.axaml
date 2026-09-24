@@ -1,0 +1,349 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OurCut.App.ViewModels"
+             xmlns:c="using:OurCut.App.Controls"
+             x:Class="OurCut.App.Views.ExportDialog"
+             x:DataType="vm:ExportViewModel">
+  <Panel Background="#9E060607">
+    <Border Width="582" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{StaticResource DialogBrush}"
+            BorderBrush="{StaticResource OutlineStrongBrush}" BorderThickness="1" CornerRadius="8" ClipToBounds="True"
+            BoxShadow="0 24 70 0 #8C000000">
+      <Panel>
+        <!-- Settings -->
+        <StackPanel IsVisible="{Binding IsConfiguring}">
+          <Grid ColumnDefinitions="*,Auto" Margin="18,16,16,14">
+            <StackPanel>
+              <TextBlock Text="Export" FontSize="15" FontWeight="SemiBold" LineHeight="21" Foreground="{StaticResource TextBrush}" />
+              <TextBlock Text="{Binding Summary}" FontSize="12" LineHeight="16.8" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="dialog-close" Width="26" Height="26" VerticalAlignment="Top" Foreground="{StaticResource MutedBrush}"
+                    ToolTip.Tip="Close (Esc)" Command="{Binding CloseCommand}">
+              <c:SvgIcon Data="{StaticResource IconClose}" StrokeWidth="2" Width="14" Height="14" />
+            </Button>
+          </Grid>
+
+          <StackPanel Margin="18,0,18,18" Spacing="16">
+            <StackPanel Spacing="7">
+              <TextBlock Classes="field" Text="Cut mode" />
+              <ItemsControl ItemsSource="{Binding Modes}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Spacing="7" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ExportModeOption">
+                    <Button Classes="mode" Classes.sel="{Binding IsSelected}" IsEnabled="{Binding IsAvailable}"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Command="{Binding PickCommand}">
+                      <Grid ColumnDefinitions="Auto,*">
+                        <Border Classes="radio" Width="14" Height="14" CornerRadius="7" VerticalAlignment="Top" Margin="0,1,0,0" />
+                        <StackPanel Grid.Column="1" Margin="11,0,0,0">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding Title}" FontSize="12.5" FontWeight="SemiBold" LineHeight="17.5"
+                                       Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
+                            <Border Padding="6,0" CornerRadius="3" Background="{StaticResource DividerBrush}" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding Tag}" FontSize="10" FontWeight="Medium" LineHeight="16"
+                                         Foreground="{StaticResource Text4Brush}" />
+                            </Border>
+                          </StackPanel>
+                          <TextBlock Text="{Binding Description}" FontSize="11.5" FontWeight="Normal" LineHeight="16.7" Foreground="#B0B0B0"
+                                     TextWrapping="Wrap" Margin="0,2,0,0" />
+                        </StackPanel>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <Grid ColumnDefinitions="Auto,16,*">
+              <StackPanel Spacing="7">
+                <TextBlock Classes="field" Text="Container" />
+                <Border Classes="segments">
+                  <ItemsControl ItemsSource="{Binding Containers}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="2" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOption">
+                        <Button Classes="segment mono" Classes.sel="{Binding IsSelected}" Padding="12,0" Command="{Binding PickCommand}">
+                          <TextBlock Classes="mono" Text="{Binding Label}" />
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="7">
+                <TextBlock Classes="field" Text="Output" />
+                <Border Classes="segments">
+                  <ItemsControl ItemsSource="{Binding Outputs}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <UniformGrid Rows="1" ColumnSpacing="2" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOption">
+                        <Button Classes="segment" Classes.sel="{Binding IsSelected}" Padding="10,0" HorizontalAlignment="Stretch"
+                                Content="{Binding Label}" Command="{Binding PickCommand}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </StackPanel>
+            </Grid>
+
+            <Grid IsVisible="{Binding IsEncode}" ColumnDefinitions="*,16,*">
+              <StackPanel Spacing="7">
+                <TextBlock Classes="field" Text="Video" />
+                <Border Classes="select">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="mono" Text="H.264 · CRF 18 · medium" />
+                    <c:SvgIcon Grid.Column="1" Data="{StaticResource IconChevronDown}" StrokeWidth="2.4" Width="11" Height="11"
+                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="7">
+                <TextBlock Classes="field" Text="Audio" />
+                <Border Classes="select">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="mono" Text="Copy (AAC 48 kHz)" />
+                    <c:SvgIcon Grid.Column="1" Data="{StaticResource IconChevronDown}" StrokeWidth="2.4" Width="11" Height="11"
+                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Spacing="8">
+              <CheckBox Classes="small" Content="Add chapter markers from clip labels" IsChecked="{Binding AddChapters}"
+                        IsEnabled="{Binding CanAddChapters}" />
+              <CheckBox Classes="small" Content="Keep all audio and subtitle tracks" IsChecked="{Binding KeepAllTracks}" />
+            </StackPanel>
+
+            <StackPanel Spacing="7">
+              <TextBlock Classes="field" Text="Save to" />
+              <Grid ColumnDefinitions="*,8,Auto">
+                <Border Classes="select">
+                  <TextBlock Classes="mono" Text="{Binding OutputPath}" TextTrimming="CharacterEllipsis" />
+                </Border>
+                <Button Grid.Column="2" Classes="control" Height="30" Padding="12,0" VerticalAlignment="Top" Content="Browse…" />
+              </Grid>
+            </StackPanel>
+          </StackPanel>
+
+          <Border Classes="footer">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+              <TextBlock Classes="mono" Text="{Binding Estimate}" FontSize="11.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Classes="outline strong" Height="30" Padding="12,0,10,0" Command="{Binding CloseCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Cancel" VerticalAlignment="Center" />
+                  <TextBlock Classes="mono" Text="Esc" FontSize="10" FontWeight="Medium" Foreground="{StaticResource Muted2Brush}"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Grid.Column="2" Classes="primary" Height="30" Padding="14,0,10,0" Margin="8,0,0,0" Command="{Binding StartCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock Text="Export" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding FileCountText}" VerticalAlignment="Center" />
+                  <TextBlock Classes="mono" Text="Enter" FontSize="10" FontWeight="Medium" Opacity="0.55" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </Grid>
+          </Border>
+        </StackPanel>
+
+        <!-- Progress -->
+        <StackPanel IsVisible="{Binding IsExporting}">
+          <StackPanel Margin="18,16,18,6">
+            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" LineHeight="21" Foreground="{StaticResource TextBrush}" />
+            <TextBlock Classes="mono" Text="{Binding OutputPath}" FontSize="11.5" LineHeight="16.1" Foreground="{StaticResource MutedBrush}"
+                       TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+          </StackPanel>
+          <Grid ColumnDefinitions="*,Auto" Margin="18,0,18,4">
+            <TextBlock Classes="mono" Text="{Binding Stats}" FontSize="11.5" LineHeight="16.1" Foreground="{StaticResource MutedBrush}"
+                       VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Classes="mono" Text="{Binding PercentText}" FontSize="13" FontWeight="Medium"
+                       Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding Rows}" Margin="14,8,14,14">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="4" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ExportRowViewModel">
+                <Border Classes="xrow" Classes.current="{Binding IsCurrent}" Classes.past="{Binding IsPast}"
+                        Classes.queued="{Binding IsQueued}" CornerRadius="8" BorderThickness="1">
+                  <StackPanel VerticalAlignment="Center">
+                    <Grid ColumnDefinitions="14,*,Auto">
+                      <c:SvgIcon Data="{StaticResource IconCheck}" StrokeWidth="2.6" Width="14" Height="14" Foreground="{StaticResource Text4Brush}"
+                                 IsVisible="{Binding IsDone}" />
+                      <c:PulseDot Width="7" Height="7" Fill="{StaticResource AccentBrush}" IsVisible="{Binding IsActive}" />
+                      <Ellipse Width="8" Height="8" Stroke="#5C5C5C" StrokeThickness="1.5" IsVisible="{Binding IsQueued}" />
+                      <TextBlock Grid.Column="1" Classes="xname" Text="{Binding Name}" Margin="11,0,0,0" TextTrimming="CharacterEllipsis"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2" Classes="mono xstatus" Text="{Binding StatusText}" FontSize="12" FontWeight="Medium"
+                                 VerticalAlignment="Center" />
+                    </Grid>
+                    <ProgressBar Classes="xbar" Minimum="0" Maximum="1" Value="{Binding Progress}" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Border Classes="footer">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="mono" Text="{Binding Footer}" FontSize="11.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Classes="outline strong" Height="30" Padding="12,0" Content="Cancel export"
+                      IsVisible="{Binding IsNotDone}" Command="{Binding CloseCommand}" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsDone}">
+                <Button Classes="outline strong" Height="30" Padding="12,0" Content="Show in Explorer" />
+                <Button Classes="primary" Height="30" Padding="14,0" Content="Done" Command="{Binding CloseCommand}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+        </StackPanel>
+      </Panel>
+    </Border>
+  </Panel>
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.field">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="LineHeight" Value="15.4" />
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+    </Style>
+    <Style Selector="Button.dialog-close:pointerover">
+      <Setter Property="Background" Value="{StaticResource DividerBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
+
+    <Style Selector="Button.mode">
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="#3C3C3C" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.mode.sel">
+      <Setter Property="BorderBrush" Value="#9960CDFF" />
+      <Setter Property="Background" Value="#0F60CDFF" />
+    </Style>
+    <Style Selector="Button.mode:disabled">
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Button.mode Border.radio">
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="BorderBrush" Value="#5C5C5C" />
+    </Style>
+    <Style Selector="Button.mode.sel Border.radio">
+      <Setter Property="BorderThickness" Value="4" />
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+    </Style>
+
+    <Style Selector="Border.segments">
+      <Setter Property="Padding" Value="2" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.segment">
+      <Setter Property="Height" Value="26" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+    </Style>
+    <Style Selector="Button.segment.sel">
+      <Setter Property="Background" Value="{StaticResource KbdBorderBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
+
+    <Style Selector="Border.select">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.select TextBlock">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Border.footer">
+      <Setter Property="Padding" Value="18,12,16,12" />
+      <Setter Property="Background" Value="#262626" />
+      <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
+    </Style>
+
+    <!-- Export steps: the current one is a large card, the others compact rows. -->
+    <Style Selector="Border.xrow">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Height" Duration="0:0:0.48" Easing="0.2,0.8,0.2,1" />
+          <ThicknessTransition Property="Padding" Duration="0:0:0.48" Easing="0.2,0.8,0.2,1" />
+          <BrushTransition Property="Background" Duration="0:0:0.48" />
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.48" />
+          <DoubleTransition Property="Opacity" Duration="0:0:0.48" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.xrow.current">
+      <Setter Property="Height" Value="66" />
+      <Setter Property="Padding" Value="16,0" />
+      <Setter Property="Background" Value="#333333" />
+      <Setter Property="BorderBrush" Value="#454545" />
+    </Style>
+    <Style Selector="Border.xrow.past">
+      <Setter Property="Opacity" Value="0.6" />
+    </Style>
+    <Style Selector="TextBlock.xname">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="#E4E4E4" />
+    </Style>
+    <Style Selector="Border.xrow.queued TextBlock.xname">
+      <Setter Property="Foreground" Value="{StaticResource Muted2Brush}" />
+    </Style>
+    <Style Selector="Border.xrow.current TextBlock.xname">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="TextBlock.xstatus">
+      <Setter Property="Foreground" Value="{StaticResource Muted2Brush}" />
+    </Style>
+    <Style Selector="Border.xrow.current TextBlock.xstatus">
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    </Style>
+    <Style Selector="ProgressBar.xbar">
+      <Setter Property="Height" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="Background" Value="#262626" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    </Style>
+    <Style Selector="Border.xrow.current ProgressBar.xbar">
+      <Setter Property="Height" Value="4" />
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="Margin" Value="0,10,0,0" />
+    </Style>
+    <Style Selector="ProgressBar.xbar /template/ Border#ProgressBarRoot">
+      <Setter Property="CornerRadius" Value="2" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

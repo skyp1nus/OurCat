@@ -1,0 +1,228 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OurCut.App.ViewModels"
+             xmlns:c="using:OurCut.App.Controls"
+             x:Class="OurCut.App.Views.ClaudePanel"
+             x:DataType="vm:ClaudePanelViewModel">
+  <!-- 250 px when open (+1 px top border), header only when collapsed. -->
+  <Border Name="Root" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
+          Classes.open="{Binding IsOpen}">
+    <Grid RowDefinitions="38,*">
+      <!-- Header -->
+      <Border Background="Transparent" Padding="12,0,10,0" Cursor="Hand" PointerPressed="OnHeaderPressed">
+        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+          <Border Width="14" Height="14" VerticalAlignment="Center">
+            <c:SvgIcon Name="Chevron" Data="{StaticResource IconChevronDown}" StrokeWidth="2.4" Width="12" Height="12"
+                       Foreground="{StaticResource MutedBrush}" />
+          </Border>
+          <Ellipse Grid.Column="1" Width="8" Height="8" Fill="{StaticResource VioletBrush}" Margin="8,0,0,0" VerticalAlignment="Center" />
+          <TextBlock Grid.Column="2" Text="Claude" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                     Margin="8,0,0,0" VerticalAlignment="Center" />
+          <Border Grid.Column="3" Margin="8,0,0,0" Padding="5,1" CornerRadius="3" BorderBrush="{StaticResource OutlineStrongBrush}"
+                  BorderThickness="1" VerticalAlignment="Center">
+            <TextBlock Classes="mono" Text="MCP" FontSize="9.5" FontWeight="Medium" Foreground="{StaticResource MutedBrush}" />
+          </Border>
+          <Button Grid.Column="5" Height="22" Padding="8,0" CornerRadius="11" Background="#262626" BorderThickness="1"
+                  BorderBrush="{StaticResource OutlineBrush}" FontSize="11" ToolTip.Tip="MCP connection"
+                  Classes.connected="{Binding IsConnected}" Name="StatusPill" Command="{Binding ToggleConnectionCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Name="StatusDot" Width="6" Height="6" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </Grid>
+      </Border>
+
+      <!-- Body -->
+      <Border Grid.Row="1" IsVisible="{Binding IsOpen}" BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,1,0,0">
+        <Grid RowDefinitions="Auto,*,Auto,Auto">
+          <!-- Claude is editing right now -->
+          <Border IsVisible="{Binding IsBusy}" Margin="10,8,10,0" Padding="10,6,6,6" CornerRadius="4" Background="#1AAA9CF7"
+                  BorderBrush="#59AA9CF7" BorderThickness="1">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+              <c:PulseDot Width="7" Height="7" Fill="{StaticResource VioletBrush}" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Margin="8,0" FontSize="11.5" FontWeight="Medium" Foreground="#D6D2FD" VerticalAlignment="Center"
+                         Text="{Binding ChangeCount, StringFormat='Editing · {0} changes so far'}" />
+              <Button Grid.Column="2" Classes="subtle" Height="22" Padding="8,0" FontSize="11" Foreground="{StaticResource Text3Brush}"
+                      Content="Undo all" Command="{Binding UndoAllCommand}" />
+              <Button Grid.Column="3" Classes="subtle" Height="22" Padding="8,0" FontSize="11" Margin="8,0,0,0" BorderThickness="1"
+                      BorderBrush="#66AA9CF7" Content="Stop" Command="{Binding StopCommand}" />
+            </Grid>
+          </Border>
+
+          <!-- Activity log -->
+          <ScrollViewer Name="LogScroller" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <Panel Margin="12,10">
+              <StackPanel IsVisible="{Binding ShowIntro}" VerticalAlignment="Center" Spacing="10" Margin="2,4">
+                <TextBlock Text="Open a file and Claude can mark, trim, and reorder clips on the timeline with you. Every change is logged here and can be undone."
+                           FontSize="12" LineHeight="18" Foreground="{StaticResource Text4Brush}" TextWrapping="Wrap" />
+                <WrapPanel ItemSpacing="6" LineSpacing="6" IsVisible="{Binding IsConnected}">
+                  <Border Classes="chip"><TextBlock Text="Remove silences" /></Border>
+                  <Border Classes="chip"><TextBlock Text="Split at scene changes" /></Border>
+                  <Border Classes="chip"><TextBlock Text="Keep highlights under 60 s" /></Border>
+                </WrapPanel>
+              </StackPanel>
+              <ItemsControl ItemsSource="{Binding Log}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Spacing="8" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ClaudeLogItemViewModel">
+                    <Panel>
+                      <!-- User message -->
+                      <Border IsVisible="{Binding IsUser}" HorizontalAlignment="Right" MaxWidth="282" Background="{StaticResource DividerBrush}"
+                              CornerRadius="8,8,2,8" Padding="10,7">
+                        <TextBlock Text="{Binding Text}" FontSize="12" LineHeight="17.4" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" />
+                      </Border>
+                      <!-- Claude message -->
+                      <TextBlock IsVisible="{Binding IsClaude}" Text="{Binding Text}" FontSize="12" LineHeight="18" Foreground="#CFCFCF"
+                                 TextWrapping="Wrap" />
+                      <!-- Action -->
+                      <Border IsVisible="{Binding IsAction}" Classes="act" Classes.hot="{Binding IsHighlighted}" Classes.undone="{Binding IsUndone}"
+                              Padding="10,6,6,6" CornerRadius="4" BorderThickness="1">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                          <Ellipse Classes="dot" Width="6" Height="6" VerticalAlignment="Center" />
+                          <StackPanel Grid.Column="1" Margin="9,0" VerticalAlignment="Center">
+                            <TextBlock Classes="acttext" Text="{Binding Text}" FontSize="12" LineHeight="16.8" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Classes="mono" Text="{Binding Meta}" FontSize="10.5" LineHeight="14.7" Foreground="{StaticResource Muted2Brush}"
+                                       TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
+                          </StackPanel>
+                          <Button Grid.Column="2" Classes="undo" IsVisible="{Binding CanUndo}" Height="24" Padding="8,0" FontSize="11"
+                                  BorderThickness="1" BorderBrush="{StaticResource OutlineStrongBrush}" Foreground="{StaticResource Text4Brush}"
+                                  ToolTip.Tip="Undo this action" Command="{Binding ToggleUndoCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                              <c:SvgIcon Data="{StaticResource IconUndo}" StrokeWidth="2.2" Width="11" Height="11" VerticalAlignment="Center" />
+                              <TextBlock Text="{Binding UndoLabel}" VerticalAlignment="Center" />
+                            </StackPanel>
+                          </Button>
+                        </Grid>
+                      </Border>
+                      <!-- Work in progress -->
+                      <Panel IsVisible="{Binding IsLive}">
+                        <Rectangle RadiusX="4" RadiusY="4" Fill="#0FAA9CF7" Stroke="#73AA9CF7" StrokeThickness="1" StrokeDashArray="3,2" />
+                        <StackPanel Margin="10,7,10,8">
+                          <StackPanel Orientation="Horizontal" Spacing="9">
+                            <c:PulseDot Width="7" Height="7" Fill="{StaticResource VioletBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Text, StringFormat='{}{0}…'}" FontSize="12" LineHeight="16.8"
+                                       Foreground="{StaticResource TextBrush}" />
+                          </StackPanel>
+                          <TextBlock Classes="mono" Text="{Binding Meta}" FontSize="10.5" LineHeight="14.7"
+                                     Foreground="{StaticResource Muted2Brush}" Margin="16,2,0,0" />
+                          <c:ScanBar Height="2" Margin="16,7,0,0" Background="#3A3A3A" Foreground="{StaticResource VioletBrush}" />
+                        </StackPanel>
+                      </Panel>
+                    </Panel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Panel>
+          </ScrollViewer>
+
+          <!-- MCP server not reachable -->
+          <Border Grid.Row="2" IsVisible="{Binding !IsConnected}" Margin="10,0,10,8" Padding="10,8,8,8" CornerRadius="4"
+                  Background="{StaticResource DialogBrush}" BorderBrush="#3C3C3C" BorderThickness="1">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock FontSize="11.5" LineHeight="16.7" Foreground="{StaticResource Text4Brush}" TextWrapping="Wrap" VerticalAlignment="Center">
+                <Run Text="MCP server not reachable. Start it with " /><Run Text="ourcut mcp" FontFamily="{StaticResource MonoFont}"
+                     Foreground="{StaticResource Text2Brush}" /><Run Text=" or check Settings." />
+              </TextBlock>
+              <Button Grid.Column="1" Classes="control" Height="24" Padding="9,0" FontSize="11" Margin="10,0,0,0"
+                      BorderBrush="{StaticResource KbdBorderBrush}" Content="Reconnect" Command="{Binding ToggleConnectionCommand}" />
+            </Grid>
+          </Border>
+
+          <!-- Composer -->
+          <Border Grid.Row="3" Margin="10,0,10,10" Height="38" Padding="11,0,4,0" CornerRadius="8" Background="{StaticResource DialogBrush}"
+                  BorderBrush="#3C3C3C" BorderThickness="1" Classes.off="{Binding !IsComposerEnabled}" Name="Composer">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+              <TextBox Classes="bare" Text="{Binding Draft}" PlaceholderText="Ask Claude to edit the timeline…"
+                       IsEnabled="{Binding IsComposerEnabled}" KeyDown="OnComposerKeyDown" VerticalAlignment="Center" />
+              <Border Grid.Column="1" Classes="kbd plain" Margin="8,0">
+                <TextBlock Text="Ctrl+K" Foreground="{StaticResource Muted2Brush}" />
+              </Border>
+              <Button Grid.Column="2" Width="28" Height="28" Classes="send" Classes.ready="{Binding CanSend}" Foreground="{StaticResource PanelBrush}"
+                      ToolTip.Tip="Send (Enter)" Command="{Binding SendCommand}">
+                <c:SvgIcon Data="{StaticResource IconSend}" StrokeWidth="2.4" Width="13" Height="13" />
+              </Button>
+            </Grid>
+          </Border>
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+
+  <UserControl.Styles>
+    <Style Selector="Border#Root.open">
+      <Setter Property="Height" Value="251" />
+    </Style>
+    <Style Selector="Border#Root:not(.open) c|SvgIcon#Chevron">
+      <Setter Property="RenderTransform" Value="rotate(-90deg)" />
+    </Style>
+    <Style Selector="Button#StatusPill">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
+    <Style Selector="Button#StatusPill.connected">
+      <Setter Property="Foreground" Value="{StaticResource Text3Brush}" />
+    </Style>
+    <Style Selector="Button#StatusPill Ellipse#StatusDot">
+      <Setter Property="Fill" Value="{StaticResource StatusOffBrush}" />
+    </Style>
+    <Style Selector="Button#StatusPill.connected Ellipse#StatusDot">
+      <Setter Property="Fill" Value="{StaticResource StatusOnBrush}" />
+    </Style>
+    <Style Selector="Button.subtle:pointerover">
+      <Setter Property="Background" Value="{StaticResource SubtleHoverBrush}" />
+    </Style>
+    <Style Selector="Border.chip">
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Padding" Value="9,0" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.chip > TextBlock">
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="{StaticResource Muted2Brush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.act">
+      <Setter Property="Background" Value="#262626" />
+      <Setter Property="BorderBrush" Value="#303030" />
+    </Style>
+    <Style Selector="Border.act.hot">
+      <Setter Property="Background" Value="#17AA9CF7" />
+      <Setter Property="BorderBrush" Value="#59AA9CF7" />
+    </Style>
+    <Style Selector="Border.act Ellipse.dot">
+      <Setter Property="Fill" Value="{StaticResource Muted3Brush}" />
+    </Style>
+    <Style Selector="Border.act.hot Ellipse.dot">
+      <Setter Property="Fill" Value="{StaticResource VioletBrush}" />
+    </Style>
+    <Style Selector="Border.act.undone Ellipse.dot">
+      <Setter Property="Fill" Value="#4C4C4C" />
+    </Style>
+    <Style Selector="Border.act TextBlock.acttext">
+      <Setter Property="Foreground" Value="#E4E4E4" />
+    </Style>
+    <Style Selector="Border.act.undone TextBlock.acttext">
+      <Setter Property="Foreground" Value="{StaticResource Muted2Brush}" />
+      <Setter Property="TextDecorations" Value="Strikethrough" />
+    </Style>
+    <Style Selector="Button.undo:pointerover">
+      <Setter Property="Background" Value="{StaticResource DividerBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
+    <Style Selector="Border#Composer.off">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="Button.send">
+      <Setter Property="Background" Value="#4C4C4C" />
+    </Style>
+    <Style Selector="Button.send.ready">
+      <Setter Property="Background" Value="#FFFFFF" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>
