@@ -9,15 +9,19 @@ namespace OurCut.App.Controls;
 /// </summary>
 public static class Hatch
 {
-    public static void Draw(DrawingContext context, Rect rect, Rect visible, IBrush brush, double period)
+    public static void Draw(DrawingContext context, Rect rect, Rect visible, IBrush brush, double period) =>
+        Draw(context, rect, visible, brush, period, 1);
+
+    /// <summary>Lines <paramref name="width"/> px wide every <paramref name="period"/> px (measured across the lines).</summary>
+    public static void Draw(DrawingContext context, Rect rect, Rect visible, IBrush brush, double period, double width)
     {
         var area = rect.Intersect(visible);
         if (area.Width <= 0 || area.Height <= 0)
             return;
         // Stripe k covers points where (x + y) / √2 is in [k·period, k·period + 1).
         double step = period * Math.Sqrt(2);
-        double half = Math.Sqrt(2) / 2;
-        var pen = new Pen(brush, 1);
+        double half = width / 2 * Math.Sqrt(2);
+        var pen = new Pen(brush, width);
         double x0 = area.X - rect.X, y0 = area.Y - rect.Y;
         double sMin = x0 + y0, sMax = x0 + area.Width + y0 + area.Height;
         var geo = new StreamGeometry();

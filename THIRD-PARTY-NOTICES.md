@@ -32,4 +32,5 @@ code (GPLv3 section 6).
 
 | Font | License |
 | --- | --- |
-| Geist, Geist Mono (Vercel) | SIL Open Font License 1.1, see `src/OurCut.App/Assets/Fonts/OFL.txt` |
+| Inter (The Inter Project Authors) | SIL Open Font License 1.1, see `src/OurCut.App/Assets/Fonts/OFL-Inter.txt` |
+| JetBrains Mono (The JetBrains Mono Project Authors) | SIL Open Font License 1.1, see `src/OurCut.App/Assets/Fonts/OFL-JetBrainsMono.txt` |

@@ -22,6 +22,12 @@ public partial class App : Application
             var demo = ParseDemoScreen(args);
             var editor = CreateEditor(demo, new FfmpegMediaOpener(new MediaCache()),
                 demo is null ? new RecentFilesStore(RecentFilesStore.DefaultFile) : null);
+            if (demo is null)
+            {
+                var settings = new AppSettingsStore(AppSettingsStore.DefaultFile);
+                editor.Settings.Load(settings.Load());
+                editor.Settings.Store = settings;
+            }
             var window = new MainWindow { DataContext = editor };
             editor.Dialogs = new StorageFileDialogs(window);
             desktop.MainWindow = window;
@@ -60,7 +66,7 @@ public partial class App : Application
             : $"ffmpeg {version} · ready";
     }
 
-    /// <summary>Reads <c>--demo &lt;empty|editing|ai|export|exporting&gt;</c> from the command line.</summary>
+    /// <summary>Reads <c>--demo &lt;empty|editing|ai|export|exporting|settings&gt;</c> from the command line.</summary>
     public static DesignScreen? ParseDemoScreen(IReadOnlyList<string> args)
     {
         for (int i = 0; i < args.Count; i++)

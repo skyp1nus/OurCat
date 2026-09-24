@@ -11,7 +11,7 @@ namespace OurCut.App.Tests;
 
 /// <summary>
 /// Renders each screen of the design with its sample data at the design size (1440×900) and
-/// saves a screenshot to artifacts/screenshots/ for comparison with design/project/.
+/// saves a screenshot to artifacts/screenshots/ for comparison with design/project/OurCut.dc.html.
 /// </summary>
 public class DesignScreensTests
 {
@@ -21,6 +21,7 @@ public class DesignScreensTests
     [InlineData(DesignScreen.Ai)]
     [InlineData(DesignScreen.Export)]
     [InlineData(DesignScreen.Exporting)]
+    [InlineData(DesignScreen.Settings)]
     public void Design_screen_renders_at_design_size(DesignScreen screen)
     {
         var editor = App.CreateEditor(screen);

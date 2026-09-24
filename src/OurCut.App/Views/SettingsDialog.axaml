@@ -1,0 +1,230 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OurCut.App.ViewModels"
+             xmlns:c="using:OurCut.App.Controls"
+             x:Class="OurCut.App.Views.SettingsDialog"
+             x:DataType="vm:SettingsViewModel">
+  <!-- 780 × 580: section list on the left, Settings → Transcription on the right. -->
+  <Border Background="{StaticResource ScrimBrush}">
+    <Border Width="780" Height="580" CornerRadius="12" Background="{StaticResource DialogBrush}" ClipToBounds="True"
+            HorizontalAlignment="Center" VerticalAlignment="Center"
+            BoxShadow="inset 0 1 0 0 #17FFFFFF, 0 0 0 1 #1AFFFFFF, 0 16 36 0 #66000000">
+      <Grid ColumnDefinitions="188,*">
+        <Border Background="{StaticResource PanelDeepBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0"
+                Padding="10,16">
+          <StackPanel Spacing="2">
+            <TextBlock Text="Settings" FontSize="14" FontWeight="Medium" LetterSpacing="-0.3" Foreground="{StaticResource TextBrush}"
+                       Margin="8,0,8,12" />
+            <ItemsControl ItemsSource="{x:Static vm:SettingsViewModel.Sections}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="2" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Border Classes="nav" Classes.on="{Binding Converter={x:Static c:Converters.IsTranscription}}">
+                    <TextBlock Text="{Binding}" VerticalAlignment="Center" />
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <Grid Grid.Column="1" RowDefinitions="Auto,*,52">
+          <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1" Padding="24,18,16,14">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Transcription" FontSize="14" FontWeight="Medium" LetterSpacing="-0.3" Foreground="{StaticResource TextBrush}" />
+                <TextBlock Text="Runs locally. Claude uses the transcript to find silences, quotes and filler words."
+                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button Grid.Column="1" Classes="ghost bright" Width="26" Height="26" CornerRadius="6" VerticalAlignment="Top"
+                      Foreground="{StaticResource Text4Brush}" ToolTip.Tip="Close (Esc)" Command="{Binding CloseCommand}">
+                <c:SvgIcon Data="{StaticResource IconClose10}" ViewBox="10" StrokeWidth="1.2" LineCap="Flat" Width="10" Height="10" />
+              </Button>
+            </Grid>
+          </Border>
+
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="24,8,24,20">
+              <Border Classes="row"><Grid ColumnDefinitions="120,16,*">
+                <TextBlock Classes="label" Text="Engine" />
+                <Border Grid.Column="2" Classes="segs" VerticalAlignment="Center">
+                  <ItemsControl ItemsSource="{Binding EngineOptions}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="2" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOption">
+                        <Button Classes="seg" Classes.on="{Binding IsSelected}" Height="26" Padding="12,0" Content="{Binding Label}"
+                                Command="{Binding PickCommand}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Grid></Border>
+
+              <Border Classes="row"><Grid ColumnDefinitions="120,16,*">
+                <TextBlock Classes="label" Text="Model" />
+                <ComboBox Grid.Column="2" Classes="field" Width="320" HorizontalAlignment="Left" VerticalAlignment="Center"
+                          ItemsSource="{Binding ModelOptions}" SelectedItem="{Binding Model}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ModelOption">
+                      <TextBlock Text="{Binding Label}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid></Border>
+
+              <Border Classes="row"><Grid ColumnDefinitions="120,16,*">
+                <TextBlock Classes="label" Text="Device" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                  <Border Classes="segs">
+                    <ItemsControl ItemsSource="{Binding DeviceOptions}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" Spacing="2" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ChoiceOption">
+                          <Button Classes="seg" Classes.on="{Binding IsSelected}" Height="26" Padding="12,0" Content="{Binding Label}"
+                                  Command="{Binding PickCommand}" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Border>
+                  <TextBlock Text="{Binding DeviceNote}" FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Grid></Border>
+
+              <Border Classes="row"><Grid ColumnDefinitions="120,16,*">
+                <TextBlock Classes="label" Text="Language" />
+                <ComboBox Grid.Column="2" Classes="field" Width="200" HorizontalAlignment="Left" VerticalAlignment="Center"
+                          ItemsSource="{x:Static vm:SettingsViewModel.Languages}" SelectedItem="{Binding Language}" />
+              </Grid></Border>
+
+              <Border Classes="row last" MinHeight="52"><Grid ColumnDefinitions="120,16,*">
+                <TextBlock Classes="label" Text="Models folder" />
+                <Grid Grid.Column="2" ColumnDefinitions="*,8,Auto,8,Auto" VerticalAlignment="Center">
+                  <Border Classes="field" ToolTip.Tip="{Binding ModelsFolder}">
+                    <TextBlock Text="{Binding ModelsFolder}" />
+                  </Border>
+                  <Button Grid.Column="2" Classes="soft" Height="30" Padding="12,0" Content="Change" Command="{Binding ChangeFolderCommand}" />
+                  <Button Grid.Column="4" Classes="link" Content="Open" Command="{Binding OpenFolderCommand}" VerticalAlignment="Center" />
+                </Grid>
+              </Grid></Border>
+
+              <!-- Models table. -->
+              <Border Margin="0,4,0,0" CornerRadius="8.77" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" ClipToBounds="True">
+                <StackPanel>
+                  <Border Height="26" Padding="12,0" Background="{StaticResource PanelDeepBrush}" BorderBrush="{StaticResource DividerSoftBrush}"
+                          BorderThickness="0,0,0,1">
+                    <Grid ColumnDefinitions="*,12,60,12,56,12,128">
+                      <TextBlock Classes="colhead" Text="Model" />
+                      <TextBlock Grid.Column="2" Classes="colhead" Text="Engine" />
+                      <TextBlock Grid.Column="4" Classes="colhead" Text="Size" HorizontalAlignment="Right" />
+                      <TextBlock Grid.Column="6" Classes="colhead" Text="{Binding DiskFreeText}" HorizontalAlignment="Right" />
+                    </Grid>
+                  </Border>
+                  <ItemsControl ItemsSource="{Binding Models}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:TranscriptionModelViewModel">
+                        <Border Height="40" Padding="12,0" BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,0,0,1">
+                          <Grid ColumnDefinitions="*,12,60,12,56,12,128">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                              <TextBlock Classes="mono" Text="{Binding Id}" FontSize="11.5" Foreground="{StaticResource TextBrush}"
+                                         TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                              <Border IsVisible="{Binding IsInstalled}" Height="16" Padding="5,0" CornerRadius="4" BorderThickness="1"
+                                      BorderBrush="#804ADE80" VerticalAlignment="Center">
+                                <TextBlock Text="Installed" FontSize="9.5" FontWeight="Medium" Foreground="{StaticResource StatusOnBrush}"
+                                           VerticalAlignment="Center" />
+                              </Border>
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="{Binding Engine}" FontSize="11.5" Foreground="{StaticResource Text4Brush}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="4" Classes="mono" Text="{Binding Size}" FontSize="11" Foreground="{StaticResource Text2Brush}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
+                              <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsDownloading}">
+                                <ProgressBar Width="64" Height="3" MinHeight="3" CornerRadius="2" Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                             Background="{StaticResource FieldBrush}" Foreground="{StaticResource Text2Brush}" VerticalAlignment="Center" />
+                                <TextBlock Classes="mono" Text="{Binding PercentText}" FontSize="10.5" Width="28" TextAlignment="Right"
+                                           Foreground="{StaticResource Text4Brush}" VerticalAlignment="Center" />
+                                <Button Classes="ghost bright" Width="20" Height="20" CornerRadius="5" Foreground="{StaticResource MutedBrush}"
+                                        ToolTip.Tip="Cancel download" Command="{Binding CancelDownloadCommand}">
+                                  <c:SvgIcon Data="{StaticResource IconClose10}" ViewBox="10" StrokeWidth="1.2" LineCap="Flat" Width="9" Height="9" />
+                                </Button>
+                              </StackPanel>
+                              <Button Classes="danger" IsVisible="{Binding IsInstalled}" IsEnabled="{Binding CanManage}" Height="24" Padding="10,0"
+                                      CornerRadius="6" FontSize="11.5" FontWeight="Normal" Content="Delete" Command="{Binding DeleteCommand}"
+                                      ToolTip.Tip="Delete the model files" />
+                              <Button Classes="soft" IsVisible="{Binding IsNotInstalled}" IsEnabled="{Binding CanManage}" Height="24" Padding="10,0"
+                                      CornerRadius="6" FontSize="11.5" Content="Download" Command="{Binding DownloadCommand}"
+                                      ToolTip.Tip="Model downloads come with transcription" ToolTip.ShowOnDisabled="True" />
+                            </StackPanel>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+
+          <Border Grid.Row="2" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="24,0,16,0">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Changes save automatically" FontSize="11.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Classes="soft" Height="30" Padding="14,0" CornerRadius="10" FontSize="12.5" Content="Done"
+                      VerticalAlignment="Center" Command="{Binding CloseCommand}" />
+            </Grid>
+          </Border>
+        </Grid>
+      </Grid>
+    </Border>
+  </Border>
+
+  <UserControl.Styles>
+    <Style Selector="Border.nav">
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.nav > TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+    </Style>
+    <Style Selector="Border.nav.on">
+      <Setter Property="Background" Value="{StaticResource SelectedBrush}" />
+      <Setter Property="BorderBrush" Value="#D93B82F6" />
+    </Style>
+    <Style Selector="Border.nav.on > TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
+    <Style Selector="Border.row">
+      <Setter Property="MinHeight" Value="48" />
+      <Setter Property="BorderBrush" Value="{StaticResource DividerSoftBrush}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+    </Style>
+    <Style Selector="Border.row.last">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Border.row TextBlock.label">
+      <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.colhead">
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="LetterSpacing" Value="0.2" />
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

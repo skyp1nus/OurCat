@@ -10,17 +10,19 @@
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource WindowBrush}"
         ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="44"
+        ExtendClientAreaTitleBarHeightHint="48"
         WindowDecorations="BorderOnly"
         FontFamily="{StaticResource SansFont}"
+        FontSize="12"
         DragDrop.AllowDrop="True">
+  <!-- design/project/OurCut.dc.html: title bar 48, preview + 380 px sidebar, timeline 212, status bar 24. -->
   <Panel>
     <Grid RowDefinitions="Auto,*,Auto,Auto">
       <v:TitleBar />
 
-      <Grid Grid.Row="1" ColumnDefinitions="*,361">
+      <Grid Grid.Row="1" ColumnDefinitions="*,380">
         <v:PlayerPanel Name="Player" />
-        <Border Grid.Column="1" Background="{StaticResource ChromeBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+        <Border Grid.Column="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
           <Grid RowDefinitions="*,Auto">
             <v:ClipsPanel />
             <v:ClaudePanel Grid.Row="1" DataContext="{Binding Claude}" />
@@ -33,5 +35,6 @@
     </Grid>
 
     <v:ExportDialog DataContext="{Binding Export}" IsVisible="{Binding IsDialogOpen}" />
+    <v:SettingsDialog DataContext="{Binding Settings}" IsVisible="{Binding IsOpen}" />
   </Panel>
 </Window>

@@ -55,7 +55,7 @@
           <ControlTemplate>
             <StackPanel Orientation="Horizontal" Spacing="9" Background="Transparent">
               <Border Name="box" Width="16" Height="16" CornerRadius="4" BorderThickness="1.5"
-                      BorderBrush="#5C5C5C" Background="Transparent" VerticalAlignment="Center">
+                      BorderBrush="#5C5D5E" Background="Transparent" VerticalAlignment="Center">
                 <c:SvgIcon Name="tick" Data="{StaticResource IconCheck}" StrokeWidth="3.5"
                            Width="10" Height="10" Foreground="#000000" IsVisible="False" />
               </Border>
@@ -65,8 +65,8 @@
           </ControlTemplate>
         </Setter>
         <Style Selector="^:checked /template/ Border#box">
-          <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-          <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+          <Setter Property="Background" Value="#CECECF" />
+          <Setter Property="BorderBrush" Value="#CECECF" />
         </Style>
         <Style Selector="^:checked /template/ c|SvgIcon#tick">
           <Setter Property="IsVisible" Value="True" />
@@ -81,7 +81,7 @@
         </Style>
       </ControlTheme>
 
-      <!-- Chrome-style range input from the timeline toolbar (accent-color #60CDFF). -->
+      <!-- Chrome-style range input (accent-color #cececf): zoom and volume. -->
       <ControlTheme x:Key="ZoomSlider" TargetType="Slider">
         <Setter Property="Height" Value="16" />
         <Setter Property="Cursor" Value="Hand" />
@@ -89,8 +89,7 @@
         <Setter Property="Template">
           <ControlTemplate>
             <Grid>
-              <Border Height="8" CornerRadius="4" Background="#3B3B3B" BorderBrush="#858585" BorderThickness="1"
-                      VerticalAlignment="Center" Margin="0" />
+              <Border Height="4" CornerRadius="2" Background="#3A3B3D" VerticalAlignment="Center" Margin="0" />
               <Track Name="PART_Track" Orientation="Horizontal"
                      Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
                      Value="{TemplateBinding Value, Mode=TwoWay}">
@@ -98,7 +97,7 @@
                   <RepeatButton Name="PART_DecreaseButton" Focusable="False">
                     <RepeatButton.Template>
                       <ControlTemplate>
-                        <Border Height="8" Margin="0,0,-8,0" CornerRadius="4,0,0,4" Background="{StaticResource AccentBrush}"
+                        <Border Height="4" Margin="0,0,-7,0" CornerRadius="2,0,0,2" Background="#CECECF"
                                 VerticalAlignment="Center" />
                       </ControlTemplate>
                     </RepeatButton.Template>
@@ -113,10 +112,10 @@
                     </RepeatButton.Template>
                   </RepeatButton>
                 </Track.IncreaseButton>
-                <Thumb Name="thumb" Width="16" Height="16">
+                <Thumb Name="thumb" Width="14" Height="14">
                   <Thumb.Template>
                     <ControlTemplate>
-                      <Ellipse Width="16" Height="16" Fill="{StaticResource AccentBrush}" />
+                      <Ellipse Width="14" Height="14" Fill="#CECECF" />
                     </ControlTemplate>
                   </Thumb.Template>
                 </Thumb>
@@ -169,6 +168,45 @@
           </ControlTemplate>
         </Setter>
       </ControlTheme>
+      <!--
+        Pill switch (include in output, snap to keyframes): a CheckBox with this theme.
+        Off: charcoal track, steel knob. On: 30 % white track, white knob. Knob = height − 4.
+      -->
+      <ControlTheme x:Key="Switch" TargetType="CheckBox">
+        <Setter Property="Width" Value="24" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="track" Background="{TemplateBinding Background}" CornerRadius="7">
+              <Ellipse Name="knob" Width="10" Height="10" Fill="#71717A" HorizontalAlignment="Left" Margin="2,0,0,0"
+                       VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:checked /template/ Border#track">
+          <Setter Property="Background" Value="#4DFFFFFF" />
+        </Style>
+        <Style Selector="^:checked /template/ Ellipse#knob">
+          <Setter Property="Fill" Value="#FFFFFF" />
+          <Setter Property="HorizontalAlignment" Value="Right" />
+          <Setter Property="Margin" Value="0,0,2,0" />
+        </Style>
+        <Style Selector="^.small">
+          <Setter Property="Width" Value="22" />
+          <Setter Property="Height" Value="12" />
+        </Style>
+        <Style Selector="^.small /template/ Border#track">
+          <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="^.small /template/ Ellipse#knob">
+          <Setter Property="Width" Value="8" />
+          <Setter Property="Height" Value="8" />
+          <Setter Property="Fill" Value="#FFFFFF" />
+        </Style>
+      </ControlTheme>
     </ResourceDictionary>
   </Styles.Resources>
 
@@ -180,14 +218,14 @@
     <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
   </Style>
 
-  <!-- Keyboard hint chip, e.g. "Ctrl+O". -->
+  <!-- Keyboard hint chip, e.g. "Ctrl O": hairline outline, mono 10 px. -->
   <Style Selector="Border.kbd">
     <Setter Property="CornerRadius" Value="4" />
     <Setter Property="BorderBrush" Value="{StaticResource KbdBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Background" Value="#262626" />
+    <Setter Property="Background" Value="Transparent" />
     <Setter Property="Padding" Value="5,0" />
-    <Setter Property="Height" Value="18" />
+    <Setter Property="Height" Value="16" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <Style Selector="Border.kbd.plain">
@@ -200,91 +238,165 @@
   </Style>
   <Style Selector="Border.kbd.status">
     <Setter Property="CornerRadius" Value="3" />
-    <Setter Property="Padding" Value="5,0" />
-    <Setter Property="Height" Value="16" />
-    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Padding" Value="4,0" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="BorderBrush" Value="#1FFFFFFF" />
   </Style>
   <Style Selector="Border.kbd > TextBlock">
     <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
     <Setter Property="FontSize" Value="10" />
     <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="LetterSpacing" Value="0" />
     <Setter Property="VerticalAlignment" Value="Center" />
-    <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Text4Brush}" />
+  </Style>
+  <Style Selector="Border.kbd.status > TextBlock">
+    <Setter Property="FontSize" Value="9.5" />
   </Style>
 
-  <!-- Title bar menu items (File, Edit, …). -->
+  <!-- Soft ghost button: 5 % white, 9 % on hover (Open file, Set in, Browse, Cancel…). -->
+  <Style Selector="Button.soft">
+    <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Button.soft:pointerover">
+    <Setter Property="Background" Value="{StaticResource ControlHoverBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+  <Style Selector="Button.soft.risky:pointerover">
+    <Setter Property="Background" Value="{StaticResource DangerHoverBgBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+  </Style>
+  <Style Selector="Button.soft:disabled">
+    <Setter Property="Opacity" Value="0.35" />
+  </Style>
+
+  <!-- Destructive text button (Delete model). -->
+  <Style Selector="Button.danger">
+    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+  </Style>
+  <Style Selector="Button.danger:pointerover">
+    <Setter Property="Background" Value="{StaticResource DangerHoverBgBrush}" />
+  </Style>
+
+  <!-- Link-styled button. -->
+  <Style Selector="Button.link">
+    <Setter Property="Foreground" Value="{StaticResource LinkBrush}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Button.link:pointerover">
+    <Setter Property="Foreground" Value="{StaticResource LinkHoverBrush}" />
+  </Style>
+
+  <!-- Segmented option / tool: selected gets 8 % white and a blue hairline ring. -->
+  <Style Selector="Button.seg">
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{StaticResource Text4Brush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.seg:pointerover">
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+  <Style Selector="Button.seg.on">
+    <Setter Property="Background" Value="{StaticResource SelectedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    <Setter Property="BorderBrush" Value="#D93B82F6" />
+  </Style>
+  <!-- Track of a segmented control. -->
+  <Style Selector="Border.segs">
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="{StaticResource WindowBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
+
+  <!-- Title bar menu items (kept for menus that still use them). -->
   <Style Selector="Button.menu">
     <Setter Property="Height" Value="28" />
     <Setter Property="Padding" Value="9,0" />
     <Setter Property="FontWeight" Value="Normal" />
-    <Setter Property="Foreground" Value="#D0D0D0" />
+    <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
     <Setter Property="Cursor" Value="Arrow" />
   </Style>
   <Style Selector="Button.menu:pointerover">
     <Setter Property="Background" Value="{StaticResource SubtleHoverBrush}" />
   </Style>
 
-  <!-- Filled grey button with border (Open, Browse…). -->
+  <!-- Older names, restyled as soft ghost buttons. -->
   <Style Selector="Button.control">
     <Setter Property="Height" Value="28" />
     <Setter Property="Background" Value="{StaticResource ControlBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource OutlineStrongBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="FontWeight" Value="Normal" />
   </Style>
   <Style Selector="Button.control:pointerover">
     <Setter Property="Background" Value="{StaticResource ControlHoverBrush}" />
   </Style>
-
-  <!-- Transparent button with a thin outline (Set in, Split, 1×…). -->
   <Style Selector="Button.outline">
-    <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="FontWeight" Value="Normal" />
     <Setter Property="Foreground" Value="{StaticResource Text3Brush}" />
   </Style>
   <Style Selector="Button.outline.strong">
-    <Setter Property="BorderBrush" Value="{StaticResource OutlineStrongBrush}" />
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
   </Style>
   <Style Selector="Button.outline:pointerover">
-    <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+    <Setter Property="Background" Value="{StaticResource ControlHoverBrush}" />
   </Style>
 
-  <!-- Icon-only ghost button. -->
+  <!-- Icon-only ghost button: transparent, 6 % white on hover. -->
+  <Style Selector="Button.ghost">
+    <Setter Property="CornerRadius" Value="8" />
+  </Style>
   <Style Selector="Button.ghost:pointerover">
-    <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+    <Setter Property="Background" Value="{StaticResource SubtleHoverBrush}" />
   </Style>
   <Style Selector="Button.ghost.bright:pointerover">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
   </Style>
-
-  <!-- Accent button (Export). -->
-  <Style Selector="Button.primary">
-    <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-    <Setter Property="Foreground" Value="#000000" />
-    <Setter Property="FontWeight" Value="SemiBold" />
+  <Style Selector="Button.ghost.risky">
+    <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
   </Style>
-  <Style Selector="Button.primary:pointerover">
-    <Setter Property="Background" Value="{StaticResource AccentHoverBrush}" />
-  </Style>
-  <Style Selector="Button.primary:disabled">
-    <Setter Property="Background" Value="{StaticResource ControlBrush}" />
-    <Setter Property="Foreground" Value="#646464" />
-    <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
+  <Style Selector="Button.ghost.risky:pointerover">
+    <Setter Property="Background" Value="{StaticResource DangerHoverBgBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
   </Style>
 
-  <!-- White button (Open file…, play). -->
-  <Style Selector="Button.white">
+  <!-- Bone pill: Export is the only one. "primary" is the old name. -->
+  <Style Selector="Button.bone, Button.primary">
+    <Setter Property="Background" Value="{StaticResource BoneBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Button.bone:pointerover, Button.primary:pointerover">
     <Setter Property="Background" Value="#FFFFFF" />
-    <Setter Property="Foreground" Value="#1C1C1C" />
-    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.bone:disabled, Button.primary:disabled">
+    <Setter Property="Opacity" Value="0.35" />
+  </Style>
+
+  <!-- Round play button. -->
+  <Style Selector="Button.white">
+    <Setter Property="Background" Value="#12FFFFFF" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+  <Style Selector="Button.white:pointerover">
+    <Setter Property="Background" Value="#1FFFFFFF" />
   </Style>
 
   <!-- Window caption buttons. -->
   <Style Selector="Button.caption">
     <Setter Property="Width" Value="46" />
     <Setter Property="CornerRadius" Value="0" />
-    <Setter Property="Foreground" Value="#D0D0D0" />
+    <Setter Property="Foreground" Value="{StaticResource Text4Brush}" />
     <Setter Property="VerticalAlignment" Value="Stretch" />
     <Setter Property="Cursor" Value="Arrow" />
   </Style>
@@ -294,6 +406,48 @@
   <Style Selector="Button.caption.close:pointerover">
     <Setter Property="Background" Value="#C42B1C" />
     <Setter Property="Foreground" Value="#FFFFFF" />
+  </Style>
+
+  <!-- Dropdowns and text fields: charcoal fill, hairline border, blue focus ring. -->
+  <Style Selector="ComboBox.field">
+    <Setter Property="Height" Value="30" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="10,0,0,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontFamily" Value="{StaticResource SansFont}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ComboBox.field.small">
+    <Setter Property="Height" Value="28" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="8,0,0,0" />
+  </Style>
+  <Style Selector="ComboBox.field:pointerover /template/ Border#Background">
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource OutlineStrongBrush}" />
+  </Style>
+  <Style Selector="ComboBox.field:focus-visible /template/ Border#Background">
+    <Setter Property="BorderBrush" Value="{StaticResource FocusRingBrush}" />
+  </Style>
+  <Style Selector="Border.field">
+    <Setter Property="Height" Value="30" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Border.field > TextBlock">
+    <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
   </Style>
 
   <!-- Thin scrollbars (#484848 thumb). -->

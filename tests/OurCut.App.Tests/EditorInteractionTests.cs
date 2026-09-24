@@ -66,6 +66,14 @@ public class EditorInteractionTests
         Assert.Equal(t0 + 1 / 29.97 - 1, editor.Time, 6);
     }
 
+    private static Point Center(Window window, Control control) =>
+        control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+
+    /// <summary>The clip list row of <paramref name="clip"/>.</summary>
+    private static Border Row(Window window, ClipViewModel clip) =>
+        window.GetVisualDescendants().OfType<ClipsPanel>().Single().GetVisualDescendants().OfType<Border>()
+            .First(b => b.Classes.Contains("row") && ReferenceEquals(b.DataContext, clip));
+
     [AvaloniaFact]
     public void E_excludes_and_keeps_the_selected_clip_without_deleting_it()
     {
@@ -76,9 +84,28 @@ public class EditorInteractionTests
         Press(window, Key.E);
         Assert.False(clip.IsIncluded);
         Assert.Equal("Keep", editor.ExcludeLabel);
-        Press(window, Key.Delete);
+        Press(window, Key.E);
         Assert.True(clip.IsIncluded);
         Assert.Equal(count, editor.Clips.Count);
+    }
+
+    [AvaloniaFact]
+    public void Del_removes_the_selected_clip()
+    {
+        var (window, editor) = Open();
+        var clip = editor.SelectedClip!;
+        Press(window, Key.Delete);
+        Assert.DoesNotContain(clip, editor.Clips);
+        Assert.NotNull(editor.SelectedClip);
+    }
+
+    [AvaloniaFact]
+    public void V_picks_the_select_tool()
+    {
+        var (window, editor) = Open();
+        editor.Tool = TimelineTool.Split;
+        Press(window, Key.V);
+        Assert.True(editor.IsSelectTool);
     }
 
     [AvaloniaFact]
@@ -90,10 +117,10 @@ public class EditorInteractionTests
 
         Press(window, Key.S);
 
-        Assert.Equal(7, editor.Clips.Count);
+        Assert.Equal(6, editor.Clips.Count);
         Assert.Equal(t, clip.End);
         var second = editor.SelectedClip!;
-        Assert.Equal("Demo — import (b)", second.Label);
+        Assert.Equal("Setup walkthrough (b)", second.Label);
         Assert.Equal(t, second.Start);
         Assert.Equal(end, second.End);
         Assert.Equal(editor.Clips.IndexOf(clip) + 1, editor.Clips.IndexOf(second));
@@ -104,12 +131,12 @@ public class EditorInteractionTests
     {
         var (window, editor) = Open();
         var clip = editor.SelectedClip!;
-        editor.SetTime(250);
+        editor.SetTime(100);
         Press(window, Key.I);
-        Assert.Equal(250, clip.Start);
-        editor.SetTime(380);
+        Assert.Equal(100, clip.Start);
+        editor.SetTime(200);
         Press(window, Key.O);
-        Assert.Equal(380, clip.End);
+        Assert.Equal(200, clip.End);
     }
 
     [AvaloniaFact]
@@ -119,7 +146,7 @@ public class EditorInteractionTests
         editor.Select(null);
         editor.SetTime(100);
         Press(window, Key.I);
-        Assert.Equal(7, editor.Clips.Count);
+        Assert.Equal(6, editor.Clips.Count);
         Assert.Equal(100, editor.SelectedClip!.Start);
         Assert.Equal(110, editor.SelectedClip.End);
     }
@@ -160,7 +187,8 @@ public class EditorInteractionTests
         var timeline = window.GetVisualDescendants().OfType<TimelineControl>().Single();
         var origin = timeline.TranslatePoint(new Point(0, 0), window)!.Value;
         double pps = timeline.Bounds.Width / editor.Duration;
-        var handle = new Point(origin.X + clip.Start * pps + 5, origin.Y + 97);
+        // The in-handle straddles the clip's left edge, halfway down the tracks.
+        var handle = new Point(origin.X + clip.Start * pps + 1, origin.Y + 90);
 
         window.MouseDown(handle, MouseButton.Left, RawInputModifiers.None);
         for (int dx = 5; dx <= 30; dx += 5)
@@ -198,21 +226,32 @@ public class EditorInteractionTests
     public void Clicking_a_clip_row_selects_it_and_moves_the_playhead_into_it()
     {
         var (window, editor) = Open();
-        // Row 1 ("Intro") of the clip list: panel starts at x = 1080, rows from y = 45 + 39 + 4.
-        Click(window, new Point(1200, 110));
         var intro = editor.Clips[0];
+        Click(window, Center(window, Row(window, intro)));
         Assert.Same(intro, editor.SelectedClip);
         Assert.Equal(intro.Start, editor.Time);
     }
 
     [AvaloniaFact]
-    public void Clicking_the_checkbox_toggles_inclusion()
+    public void Clicking_the_switch_toggles_inclusion()
     {
         var (window, editor) = Open();
         var intro = editor.Clips[0];
-        Click(window, new Point(1418, 110));
+        var toggle = Row(window, intro).GetVisualDescendants().OfType<CheckBox>().Single();
+        Click(window, Center(window, toggle));
         Assert.False(intro.IsIncluded);
         Assert.NotSame(intro, editor.SelectedClip);
+    }
+
+    [AvaloniaFact]
+    public void Clicking_the_cross_removes_the_clip()
+    {
+        var (window, editor) = Open();
+        var intro = editor.Clips[0];
+        var remove = Row(window, intro).GetVisualDescendants().OfType<Button>().Single(b => b is not CheckBox);
+        Click(window, Center(window, remove));
+        Assert.DoesNotContain(intro, editor.Clips);
+        Assert.Equal(4, editor.Clips.Count);
     }
 
     [AvaloniaFact]
@@ -220,12 +259,14 @@ public class EditorInteractionTests
     {
         var (window, editor) = Open();
         var intro = editor.Clips[0];
-        window.MouseDown(new Point(1200, 110), MouseButton.Left, RawInputModifiers.None);
-        window.MouseMove(new Point(1200, 130), RawInputModifiers.LeftMouseButton);
-        window.MouseMove(new Point(1200, 200), RawInputModifiers.LeftMouseButton);
+        var from = Center(window, Row(window, intro));
+        var to = Center(window, Row(window, editor.Clips[2]));
+        window.MouseDown(from, MouseButton.Left, RawInputModifiers.None);
+        window.MouseMove(from + new Point(0, 20), RawInputModifiers.LeftMouseButton);
+        window.MouseMove(to, RawInputModifiers.LeftMouseButton);
         Pump();
         Assert.True(intro.IsDragSource);
-        window.MouseUp(new Point(1200, 200), MouseButton.Left, RawInputModifiers.None);
+        window.MouseUp(to, MouseButton.Left, RawInputModifiers.None);
         Pump();
 
         Assert.Equal(2, editor.Clips.IndexOf(intro));
@@ -245,22 +286,36 @@ public class EditorInteractionTests
         Click(window, new Point(x, origin.Y + 60));
 
         Assert.Equal(t, editor.Time, 0);
-        Assert.Equal("Setup", editor.SelectedClip!.Label);
+        Assert.Equal("Setup walkthrough", editor.SelectedClip!.Label);
     }
 
     [AvaloniaFact]
-    public void Plus_keep_on_an_excluded_clip_returns_it_to_the_export()
+    public void With_the_split_tool_clicking_a_clip_splits_it_there()
     {
         var (window, editor) = Open();
-        var qa = editor.Clips.Single(c => c.Label == "Q&A");
+        var demo = editor.Clips.Single(c => c.Label == "Export demo");
         var timeline = window.GetVisualDescendants().OfType<TimelineControl>().Single();
         var origin = timeline.TranslatePoint(new Point(0, 0), window)!.Value;
-        double right = origin.X + qa.End / editor.Duration * timeline.Bounds.Width;
+        double x = origin.X + 300 / editor.Duration * timeline.Bounds.Width;
+        editor.SplitToolCommand.Execute(null);
+        Pump();
 
-        // "+ Keep" sits in the top-right corner of the dashed box.
-        Click(window, new Point(right - 30, origin.Y + 30 + 12));
+        Click(window, new Point(x, origin.Y + 60));
 
-        Assert.True(qa.IsIncluded);
+        Assert.Equal(6, editor.Clips.Count);
+        Assert.Equal(300, demo.End, 0);
+        Assert.Equal(editor.Clips.IndexOf(demo) + 1, editor.Clips.IndexOf(editor.SelectedClip!));
+    }
+
+    [AvaloniaFact]
+    public void Escape_closes_the_settings()
+    {
+        var (window, editor) = Open(DesignScreen.Settings);
+        Assert.True(editor.Settings.IsOpen);
+        Press(window, Key.Space);
+        Assert.False(editor.IsPlaying);
+        Press(window, Key.Escape);
+        Assert.False(editor.Settings.IsOpen);
     }
 
     [AvaloniaFact]
@@ -268,10 +323,14 @@ public class EditorInteractionTests
     {
         var (window, editor) = Open();
         var panel = window.GetVisualDescendants().OfType<ClaudePanel>().Single();
-        double open = panel.Bounds.Height;
+        var list = window.GetVisualDescendants().OfType<ClipsPanel>().Single();
+        Assert.False(editor.Claude.IsOpen);
+        Assert.Equal(39, panel.Bounds.Height);
+        double listClosed = list.Bounds.Height;
+
         editor.Claude.ToggleOpenCommand.Execute(null);
         Pump();
-        Assert.Equal(251, open);
-        Assert.Equal(39, panel.Bounds.Height);
+        Assert.InRange(panel.Bounds.Height, 100, 300);
+        Assert.Equal(listClosed - (panel.Bounds.Height - 39), list.Bounds.Height, 1);
     }
 }

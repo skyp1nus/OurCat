@@ -4,29 +4,38 @@
              xmlns:c="using:OurCut.App.Controls"
              x:Class="OurCut.App.Views.TitleBar"
              x:DataType="vm:EditorViewModel">
-  <!-- 44 px bar + 1 px bottom border. Empty areas drag the window. -->
-  <Border Name="Bar" Height="45" Background="{StaticResource ChromeBrush}"
+  <!-- 48 px including the hairline at the bottom. Empty areas drag the window. -->
+  <Border Name="Bar" Height="48" Background="{StaticResource ChromeBrush}"
           BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,0,1"
           WindowDecorationProperties.ElementRole="TitleBar">
     <Grid ColumnDefinitions="Auto,*,Auto">
-      <StackPanel Orientation="Horizontal" Spacing="12" Margin="12,0,0,0">
-        <!-- Logo -->
+      <StackPanel Orientation="Horizontal" Spacing="12" Margin="14,0,0,0">
+        <!-- Logo: a square with a cut through it. -->
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Border Width="18" Height="18" CornerRadius="4" Background="{StaticResource AccentBrush}">
-            <Border Width="2" Height="12" CornerRadius="1" Background="#202020">
-              <Border.RenderTransform>
-                <RotateTransform Angle="18" />
-              </Border.RenderTransform>
-            </Border>
-          </Border>
-          <TextBlock Text="OurCut" FontSize="13" FontWeight="SemiBold" LetterSpacing="-0.13"
+          <Panel Width="12" Height="12" VerticalAlignment="Center">
+            <Border CornerRadius="3" BorderThickness="1.5" BorderBrush="{StaticResource BoneBrush}" />
+            <Border Width="1.5" Height="18" Margin="3,-3,0,-3" HorizontalAlignment="Left" Background="{StaticResource ChromeBrush}" />
+          </Panel>
+          <TextBlock Text="OurCut" FontSize="13" FontWeight="Medium" LetterSpacing="-0.3"
                      Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
         </StackPanel>
 
-        <!-- Menus -->
-        <StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Center"
-                    WindowDecorationProperties.ElementRole="User">
-          <Button Classes="menu" Content="File">
+        <Border Width="1" Height="20" Background="#1FFFFFFF" VerticalAlignment="Center" />
+
+        <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" WindowDecorationProperties.ElementRole="User">
+          <Button Name="OpenButton" Classes="soft" Height="28" Padding="10,0,8,0" ToolTip.Tip="Open a video (Ctrl+O)"
+                  Command="{Binding OpenFileCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <c:SvgIcon Data="{StaticResource IconOpen16}" ViewBox="16" StrokeWidth="1.2" LineJoin="Miter" Width="14" Height="14"
+                         VerticalAlignment="Center" />
+              <TextBlock Text="Open file" VerticalAlignment="Center" />
+              <Border Classes="kbd"><TextBlock Text="Ctrl O" /></Border>
+            </StackPanel>
+          </Button>
+          <!-- Projects, save and export: the menus the design leaves out. -->
+          <Button Name="FileMenuButton" Classes="ghost bright" Width="20" Height="28" Foreground="{StaticResource MutedBrush}"
+                  ToolTip.Tip="Project">
+            <c:SvgIcon Data="{StaticResource IconChevron12}" ViewBox="12" StrokeWidth="1.2" Width="12" Height="12" />
             <Button.Flyout>
               <MenuFlyout Placement="BottomEdgeAlignedLeft">
                 <MenuItem Header="Open video…" InputGesture="Ctrl+O" Command="{Binding OpenFileCommand}" />
@@ -34,110 +43,89 @@
                 <MenuItem Header="Save project" InputGesture="Ctrl+S" Command="{Binding SaveProjectCommand}" IsEnabled="{Binding HasFile}" />
                 <MenuItem Header="Save project as…" InputGesture="Ctrl+Shift+S" Command="{Binding SaveProjectAsCommand}" IsEnabled="{Binding HasFile}" />
                 <Separator />
+                <MenuItem Header="Undo" InputGesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+                <MenuItem Header="Redo" InputGesture="Ctrl+Y" Command="{Binding RedoCommand}" />
+                <Separator />
                 <MenuItem Header="Export…" InputGesture="Ctrl+E" Command="{Binding Export.OpenCommand}" IsEnabled="{Binding HasFile}" />
+                <MenuItem Header="Settings…" Command="{Binding Settings.OpenCommand}" />
                 <Separator />
                 <MenuItem Header="Exit" Click="OnExit" />
               </MenuFlyout>
             </Button.Flyout>
           </Button>
-          <Button Classes="menu" Content="Edit">
-            <Button.Flyout>
-              <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                <MenuItem Header="Undo" InputGesture="Ctrl+Z" Command="{Binding UndoCommand}" />
-                <MenuItem Header="Redo" InputGesture="Ctrl+Y" Command="{Binding RedoCommand}" />
-                <Separator />
-                <MenuItem Header="Set in-point" InputGesture="I" Command="{Binding MarkInCommand}" />
-                <MenuItem Header="Set out-point" InputGesture="O" Command="{Binding MarkOutCommand}" />
-                <MenuItem Header="Split at playhead" InputGesture="S" Command="{Binding SplitCommand}" />
-                <MenuItem Header="Exclude / keep clip" InputGesture="E" Command="{Binding ToggleExcludeCommand}" />
-                <MenuItem Header="Delete clip" InputGesture="Shift+Delete" Command="{Binding DeleteClipCommand}" IsEnabled="{Binding HasSelection}" />
-              </MenuFlyout>
-            </Button.Flyout>
-          </Button>
-          <Button Classes="menu" Content="View">
-            <Button.Flyout>
-              <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                <MenuItem Header="Zoom in" Command="{Binding ZoomInCommand}" />
-                <MenuItem Header="Zoom out" Command="{Binding ZoomOutCommand}" />
-                <Separator />
-                <MenuItem Header="Claude panel" Command="{Binding Claude.ToggleOpenCommand}" />
-              </MenuFlyout>
-            </Button.Flyout>
-          </Button>
-          <Button Classes="menu" Content="Help">
-            <Button.Flyout>
-              <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                <MenuItem Header="Keyboard shortcuts" IsEnabled="False" />
-                <MenuItem Header="About OurCut" IsEnabled="False" />
-              </MenuFlyout>
-            </Button.Flyout>
-          </Button>
         </StackPanel>
 
-        <Border Width="1" Height="18" Background="#3C3C3C" VerticalAlignment="Center" />
-
-        <Button Classes="control" Padding="9,0,8,0" VerticalAlignment="Center" ToolTip.Tip="Open file (Ctrl+O)"
-                Command="{Binding OpenFileCommand}" WindowDecorationProperties.ElementRole="User">
-          <StackPanel Orientation="Horizontal" Spacing="7">
-            <c:SvgIcon Data="{StaticResource IconFolder}" StrokeWidth="1.8" Width="14" Height="14" VerticalAlignment="Center" />
-            <TextBlock Text="Open" VerticalAlignment="Center" />
-            <Border Classes="kbd"><TextBlock Text="Ctrl+O" /></Border>
-          </StackPanel>
-        </Button>
-
-        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" IsVisible="{Binding HasFile}">
-          <TextBlock Text="{Binding ProjectName}" FontSize="12.5" FontWeight="Medium" Foreground="{StaticResource TextBrush}"
-                     VerticalAlignment="Center" />
-          <TextBlock Classes="mono" Text="{Binding MediaInfo}" FontSize="11" Foreground="{StaticResource Muted2Brush}"
-                     VerticalAlignment="Center" Margin="0,1,0,0" />
-        </StackPanel>
-        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" IsVisible="{Binding IsEmpty}">
-          <TextBlock Text="Untitled project" FontSize="12.5" FontWeight="Medium" Foreground="{StaticResource Text4Brush}"
-                     VerticalAlignment="Center" />
-          <TextBlock Classes="mono" Text="no media" FontSize="11" Foreground="{StaticResource Muted4Brush}"
-                     VerticalAlignment="Center" Margin="0,1,0,0" />
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <TextBlock Text="Project" Foreground="{StaticResource MutedBrush}" />
+          <TextBlock Text="/" Foreground="{StaticResource MutedBrush}" />
+          <TextBlock Text="{Binding ProjectTitle}" Foreground="{StaticResource Text2Brush}" TextTrimming="CharacterEllipsis" MaxWidth="360" />
         </StackPanel>
       </StackPanel>
 
       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
-        <!-- Claude is editing -->
-        <Border IsVisible="{Binding IsClaudeBusy}" Height="24" Padding="10,0" CornerRadius="12" Background="#24AA9CF7"
-                VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="7">
-            <c:PulseDot Width="7" Height="7" Fill="{StaticResource VioletBrush}" VerticalAlignment="Center" />
-            <TextBlock Text="Claude is editing" FontSize="11.5" FontWeight="Medium" Foreground="{StaticResource VioletTextBrush}"
+        <!-- MCP status: green while Claude is connected. -->
+        <Border Name="McpBadge" Height="22" Padding="8,0" CornerRadius="5.26" BorderThickness="1" VerticalAlignment="Center"
+                Classes.on="{Binding Claude.IsConnected}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Ellipse Name="McpDot" Width="5" Height="5" VerticalAlignment="Center" />
+            <TextBlock Name="McpLabel" Text="{Binding McpText}" FontSize="10.5" FontWeight="Medium" LetterSpacing="0"
                        VerticalAlignment="Center" />
           </StackPanel>
         </Border>
 
-        <Button Classes="ghost bright" Width="28" Height="28" VerticalAlignment="Center" Foreground="{StaticResource Text4Brush}"
-                ToolTip.Tip="Settings" WindowDecorationProperties.ElementRole="User">
-          <c:SvgIcon Data="{StaticResource IconSettings}" StrokeWidth="1.8" Width="15" Height="15" />
+        <Button Classes="ghost bright" Width="30" Height="28" VerticalAlignment="Center" Foreground="{StaticResource Text4Brush}"
+                ToolTip.Tip="Settings" Command="{Binding Settings.OpenCommand}" WindowDecorationProperties.ElementRole="User">
+          <Panel Width="16" Height="16">
+            <c:SvgIcon Data="{StaticResource IconGearHub16}" ViewBox="16" StrokeWidth="1.2" />
+            <c:SvgIcon Data="{StaticResource IconGearTeeth16}" ViewBox="16" StrokeWidth="2" LineCap="Flat" />
+          </Panel>
         </Button>
 
-        <Button Classes="primary" Height="28" Padding="11,0" VerticalAlignment="Center" ToolTip.Tip="Export (Ctrl+E)"
-                IsEnabled="{Binding HasFile}" Command="{Binding Export.OpenCommand}" WindowDecorationProperties.ElementRole="User">
-          <StackPanel Orientation="Horizontal" Spacing="7">
-            <c:SvgIcon Data="{StaticResource IconExport}" StrokeWidth="2" Width="14" Height="14" VerticalAlignment="Center" />
+        <Button Classes="bone" Height="28" Padding="16,0" VerticalAlignment="Center" ToolTip.Tip="Export (Ctrl+E)"
+                IsEnabled="{Binding CanExport}" Command="{Binding Export.OpenCommand}" WindowDecorationProperties.ElementRole="User">
+          <StackPanel Orientation="Horizontal" Spacing="6">
             <TextBlock Text="{Binding ExportButtonText}" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding Export.PercentText}" VerticalAlignment="Center" IsVisible="{Binding Export.IsExporting}" />
-            <TextBlock Classes="mono" Text="Ctrl+E" FontSize="10" FontWeight="Medium" Opacity="0.55" VerticalAlignment="Center"
-                       IsVisible="{Binding HasFile}" />
+            <TextBlock Classes="mono" Text="{Binding Export.PercentText}" FontSize="11" VerticalAlignment="Center"
+                       IsVisible="{Binding Export.IsExporting}" />
           </StackPanel>
         </Button>
 
         <StackPanel Orientation="Horizontal" Margin="4,0,0,0">
           <Button Classes="caption" Click="OnMinimize" WindowDecorationProperties.ElementRole="MinimizeButton">
-            <c:SvgIcon Data="{StaticResource IconMinimize}" ViewBox="10" StrokeWidth="1" LineCap="Flat" Width="10" Height="10" />
+            <c:SvgIcon Data="{StaticResource IconMinimize10}" ViewBox="10" StrokeWidth="1" LineCap="Flat" Width="10" Height="10" />
           </Button>
           <Button Classes="caption" Click="OnMaximize" WindowDecorationProperties.ElementRole="MaximizeButton">
-            <c:SvgIcon Data="{StaticResource IconMaximize}" ViewBox="10" StrokeWidth="1" LineCap="Flat" Width="10" Height="10" />
+            <c:SvgIcon Data="{StaticResource IconMaximize10}" ViewBox="10" StrokeWidth="1" LineCap="Flat" Width="10" Height="10" />
           </Button>
           <Button Classes="caption close" Click="OnClose" WindowDecorationProperties.ElementRole="CloseButton">
-            <c:SvgIcon Data="{StaticResource IconCloseWindow}" ViewBox="10" StrokeWidth="1" LineCap="Flat" Width="10" Height="10" />
+            <c:SvgIcon Data="{StaticResource IconCloseWindow10}" ViewBox="10" StrokeWidth="1" LineCap="Flat" Width="10" Height="10" />
           </Button>
         </StackPanel>
       </StackPanel>
     </Grid>
   </Border>
+
+  <UserControl.Styles>
+    <Style Selector="Border#McpBadge">
+      <Setter Property="BorderBrush" Value="{StaticResource KbdBorderBrush}" />
+      <Setter Property="Background" Value="{StaticResource SubtleBrush}" />
+    </Style>
+    <Style Selector="Border#McpBadge Ellipse#McpDot">
+      <Setter Property="Fill" Value="{StaticResource StatusOffBrush}" />
+    </Style>
+    <Style Selector="Border#McpBadge TextBlock#McpLabel">
+      <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+    </Style>
+    <Style Selector="Border#McpBadge.on">
+      <Setter Property="BorderBrush" Value="#8C4ADE80" />
+      <Setter Property="Background" Value="#0F4ADE80" />
+    </Style>
+    <Style Selector="Border#McpBadge.on Ellipse#McpDot">
+      <Setter Property="Fill" Value="{StaticResource StatusOnBrush}" />
+      <Setter Property="Effect" Value="drop-shadow(0 0 4 #8C22C55E)" />
+    </Style>
+    <Style Selector="Border#McpBadge.on TextBlock#McpLabel">
+      <Setter Property="Foreground" Value="{StaticResource StatusOnBrush}" />
+    </Style>
+  </UserControl.Styles>
 </UserControl>

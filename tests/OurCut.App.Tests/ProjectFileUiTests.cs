@@ -38,7 +38,7 @@ public class ProjectFileUiTests
             await other.OpenProjectFileAsync(path);
             Assert.Equal(editor.Clips.Select(c => (c.Id, c.Label, c.Start, c.End, c.IsIncluded)),
                 other.Clips.Select(c => (c.Id, c.Label, c.Start, c.End, c.IsIncluded)));
-            Assert.Equal("launch-keynote — OurCut", other.WindowTitle);
+            Assert.Equal("interview_final_v3 — OurCut", other.WindowTitle);
             Assert.False(other.CanUndo);
         }
         finally

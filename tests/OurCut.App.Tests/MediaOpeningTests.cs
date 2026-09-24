@@ -34,7 +34,7 @@ public sealed class MediaOpeningTests : IDisposable
         Assert.Equal("interview take 2", editor.ProjectName);
         Assert.Empty(editor.Clips);
         Assert.Null(editor.ProjectPath);
-        Assert.Equal(["Mic", "System", "Music"], editor.AudioLanes.Select(l => l.Label));
+        Assert.Equal(["Stereo"], editor.AudioLanes.Select(l => l.Label));
         var entry = Assert.Single(editor.RecentFiles);
         Assert.Equal(("interview take 2.mp4", video, "14:32", "Today"), (entry.Name, entry.Path, entry.DurationText, entry.WhenText));
     }
@@ -53,12 +53,23 @@ public sealed class MediaOpeningTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task The_designs_recent_entries_open_the_sample()
+    public async Task Open_file_on_the_empty_demo_screen_loads_the_sample()
     {
         var editor = App.CreateEditor(DesignScreen.Empty, new SampleOpener());
-        await editor.OpenRecentCommand.ExecuteAsync(editor.RecentFiles[0]);
-        Assert.Equal("launch-keynote", editor.ProjectName);
-        Assert.Equal(6, editor.Clips.Count);
+        Assert.Empty(editor.RecentFiles);
+        await editor.OpenFileCommand.ExecuteAsync(null);
+        Assert.True(editor.IsDemo);
+        Assert.Equal("interview_final_v3", editor.ProjectName);
+        Assert.Equal(5, editor.Clips.Count);
+    }
+
+    [AvaloniaFact]
+    public async Task The_sample_entry_of_the_recent_list_opens_the_sample()
+    {
+        var editor = App.CreateEditor(DesignScreen.Empty, new SampleOpener());
+        await editor.OpenRecentCommand.ExecuteAsync(new RecentFileViewModel("interview_final_v3.mp4", "", "14:32", "Today"));
+        Assert.False(editor.IsDemo);
+        Assert.Equal(5, editor.Clips.Count);
     }
 
     [AvaloniaFact]
@@ -95,7 +106,7 @@ public sealed class MediaOpeningTests : IDisposable
         await editor.OpenPath(projectPath);
 
         Assert.Equal(projectPath, editor.ProjectPath);
-        Assert.Equal(6, editor.Clips.Count);
+        Assert.Equal(5, editor.Clips.Count);
         Assert.Equal([video], opener.Opened);
     }
 

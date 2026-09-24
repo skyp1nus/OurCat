@@ -32,6 +32,18 @@ public static class TimeFormat
             $"{ms / 60_000}:{ms / 1000 % 60:00}.{ms % 1000:000}");
     }
 
+    /// <summary>
+    /// Compact duration for clip lists: <c>M:SS.mmm</c> from one minute up, otherwise <c>S.mmm s</c>
+    /// (e.g. "1:43.440", "33.200 s").
+    /// </summary>
+    public static string ShortDuration(double seconds)
+    {
+        long ms = ToMilliseconds(seconds);
+        return ms >= 60_000
+            ? string.Create(CultureInfo.InvariantCulture, $"{ms / 60_000}:{ms / 1000 % 60:00}.{ms % 1000:000}")
+            : string.Create(CultureInfo.InvariantCulture, $"{ms / 1000}.{ms % 1000:000} s");
+    }
+
     /// <summary>Whole seconds, <c>M:SS</c>, truncated (source length, legend totals).</summary>
     public static string WholeSeconds(double seconds)
     {

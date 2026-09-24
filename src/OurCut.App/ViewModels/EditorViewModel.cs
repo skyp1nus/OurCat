@@ -37,7 +37,13 @@ public sealed partial class EditorViewModel : ViewModelBase
     {
         Claude = new ClaudePanelViewModel();
         Export = new ExportViewModel(this);
+        Settings = new SettingsViewModel(this);
         Session.Changed += OnSessionChanged;
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(StatusRight) or nameof(MediaInfoText))
+                OnPropertyChanged(nameof(StatusLeft));
+        };
         Clips.CollectionChanged += OnClipsChanged;
         RecentFiles.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentFiles));
         Claude.Changed += (_, _) => ApplyClaudeHighlights();
@@ -45,6 +51,8 @@ public sealed partial class EditorViewModel : ViewModelBase
         {
             if (e.PropertyName == nameof(ClaudePanelViewModel.IsBusy))
                 OnPropertyChanged(nameof(IsClaudeBusy));
+            if (e.PropertyName is nameof(ClaudePanelViewModel.IsBusy) or nameof(ClaudePanelViewModel.IsConnected))
+                OnPropertyChanged(nameof(McpText));
         };
         Export.PropertyChanged += (_, e) =>
         {
@@ -61,6 +69,9 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     public ClaudePanelViewModel Claude { get; }
     public ExportViewModel Export { get; }
+
+    /// <summary>The settings dialog (Settings → Transcription).</summary>
+    public SettingsViewModel Settings { get; }
     public ObservableCollection<ClipViewModel> Clips { get; } = [];
     public ObservableCollection<AudioLaneViewModel> AudioLanes { get; } = [];
     public ObservableCollection<RecentFileViewModel> RecentFiles { get; } = [];
@@ -99,7 +110,7 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasFile), nameof(IsEmpty), nameof(Duration), nameof(DurationText),
-        nameof(SourceLengthText), nameof(StatusRight), nameof(FrameText))]
+        nameof(SourceLengthText), nameof(StatusRight), nameof(FrameText), nameof(HasSilenceData), nameof(HasSceneData))]
     public partial IMediaPreview? Media { get; set; }
 
     partial void OnMediaChanged(IMediaPreview? oldValue, IMediaPreview? newValue)
@@ -141,6 +152,7 @@ public sealed partial class EditorViewModel : ViewModelBase
     public partial string MediaFileName { get; set; } = "";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MediaInfoText))]
     public partial string MediaInfo { get; set; } = "";
 
     /// <summary>Where the project is saved; null until it is saved once.</summary>
@@ -166,6 +178,12 @@ public sealed partial class EditorViewModel : ViewModelBase
     public string SourceLengthText => HasFile ? TimeFormat.WholeSeconds(Duration) : "no media";
     public string WindowTitle => HasFile ? $"{ProjectName} — OurCut" : "OurCut";
 
+    /// <summary>Project name in the title bar ("Project / interview_final_v3").</summary>
+    public string ProjectTitle => HasFile ? ProjectName : "Untitled";
+
+    /// <summary>Media details in the status bar, or "No file open".</summary>
+    public string MediaInfoText => HasFile && MediaInfo.Length > 0 ? MediaInfo : HasFile ? MediaFileName : "No file open";
+
     // ---- Playback ------------------------------------------------------------------------
 
     [ObservableProperty]
@@ -190,7 +208,7 @@ public sealed partial class EditorViewModel : ViewModelBase
     // ---- Selection -----------------------------------------------------------------------
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ExcludeLabel), nameof(HasSelection))]
+    [NotifyPropertyChangedFor(nameof(ExcludeLabel), nameof(HasSelection), nameof(SelectionInfo))]
     public partial ClipViewModel? SelectedClip { get; set; }
 
     public bool HasSelection => SelectedClip is not null;
@@ -208,10 +226,63 @@ public sealed partial class EditorViewModel : ViewModelBase
     [ObservableProperty]
     public partial double ZoomLevel { get; set; }
 
-    /// <summary>Keyframe snapping while trimming (on by default; the design has no toggle).</summary>
+    /// <summary>Keyframe snapping while trimming ("Snap to keyframes" in the timeline toolbar). Alt turns it off during a drag.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusRight))]
     public partial bool SnapToKeyframes { get; set; } = true;
+
+    /// <summary>Timeline tool: Select (V) selects and trims; Split cuts the clip where you click.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSelectTool), nameof(IsSplitTool))]
+    public partial TimelineTool Tool { get; set; }
+
+    public bool IsSelectTool => Tool == TimelineTool.Select;
+    public bool IsSplitTool => Tool == TimelineTool.Split;
+
+    /// <summary>Marker layers on the timeline (toolbar chips).</summary>
+    [ObservableProperty]
+    public partial bool ShowKeyframes { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool ShowSilences { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool ShowScenes { get; set; } = true;
+
+    /// <summary>Silence and scene detection do not exist yet; only the demo sample has these markers.</summary>
+    public bool HasSilenceData => Media?.Silences.Count > 0;
+    public bool HasSceneData => Media?.SceneChanges.Count > 0;
+
+    /// <summary>The selected clip in the timeline toolbar: "Clip 3  00:04:22.080 → 00:06:05.520  ·  1:43.440".</summary>
+    public string SelectionInfo => SelectedClip is { } c
+        ? $"Clip {c.Number}  {TimeFormat.Timecode(c.Start)} → {TimeFormat.Timecode(c.End)}  ·  {c.ShortDurationText}"
+        : "";
+
+    [RelayCommand]
+    private void SelectTool() => Tool = TimelineTool.Select;
+
+    [RelayCommand]
+    private void SplitTool() => Tool = TimelineTool.Split;
+
+    [RelayCommand]
+    private void ToggleKeyframes() => ShowKeyframes = !ShowKeyframes;
+
+    [RelayCommand]
+    private void ToggleSilences() => ShowSilences = !ShowSilences;
+
+    [RelayCommand]
+    private void ToggleScenes() => ShowScenes = !ShowScenes;
+
+    [RelayCommand]
+    private void ToggleSnap() => SnapToKeyframes = !SnapToKeyframes;
+
+    /// <summary>Fit: the whole file in view.</summary>
+    [RelayCommand]
+    private void ZoomFit() => ZoomLevel = 0;
+
+    partial void OnShowKeyframesChanged(bool value) => RaiseTimelineChanged();
+    partial void OnShowSilencesChanged(bool value) => RaiseTimelineChanged();
+    partial void OnShowScenesChanged(bool value) => RaiseTimelineChanged();
 
     // ---- Totals and status ---------------------------------------------------------------
 
@@ -220,6 +291,12 @@ public sealed partial class EditorViewModel : ViewModelBase
     public string ClipCountText => Clips.Count.ToString(CultureInfo.InvariantCulture);
     public bool HasNoClips => Clips.Count == 0;
     public string ClipSummary => $"{Clips.Count(c => c.IsIncluded)} of {Clips.Count} clips";
+
+    /// <summary>Footer of the clip list: "4 of 5 clips", or "Nothing marked".</summary>
+    public string OutputSummary => Clips.Count == 0 ? "Nothing marked" : ClipSummary;
+
+    /// <summary>Output length as a full timecode (clip list footer).</summary>
+    public string OutputTimecode => TimeFormat.Timecode(OutputDuration);
     public string KeptText => TimeFormat.WholeSeconds(OutputDuration);
     public string ExcludedText => HasFile ? TimeFormat.WholeSeconds(Session.Project.ExcludedDuration) : "0:00";
 
@@ -230,6 +307,12 @@ public sealed partial class EditorViewModel : ViewModelBase
         (ClaudeDelta < 0 ? "−" : "+") + Math.Abs(ClaudeDelta).ToString("0.00", CultureInfo.InvariantCulture) + " s by Claude";
 
     public bool IsClaudeBusy => Claude.IsBusy;
+
+    /// <summary>The MCP badge: "MCP · Claude connected", "MCP · Claude editing" or "MCP · not running".</summary>
+    public string McpText => Claude.McpText;
+
+    /// <summary>Export needs an open file and at least one included clip.</summary>
+    public bool CanExport => HasFile && Session.Project.IncludedClips.Any();
 
     public string ExportButtonText => Export.IsExporting ? "Exporting" : "Export";
 
@@ -261,6 +344,27 @@ public sealed partial class EditorViewModel : ViewModelBase
                 ? (Media?.Activity is { } activity ? activity + " · " : "")
                   + $"{Export.ModeTitle.ToLowerInvariant()} · snap {(SnapToKeyframes ? "on" : "off")} · {SaveStateText}"
                 : ToolStatus);
+
+    /// <summary>
+    /// Left side of the status bar: a message if there is one, otherwise the media details
+    /// (with analysis progress and save state), or "No file open".
+    /// </summary>
+    public string StatusLeft
+    {
+        get
+        {
+            if (StatusMessage is { } message)
+                return message;
+            if (OpeningFile is not null)
+                return $"Opening {OpeningFile}…";
+            if (!HasFile)
+                return ToolStatus.Contains("not found", StringComparison.Ordinal) ? "No file open  ·  " + ToolStatus : "No file open";
+            string text = MediaInfoText;
+            if (Media?.Activity is { } activity)
+                text += "  ·  " + activity;
+            return IsDemo ? text : text + "  ·  " + SaveStateText;
+        }
+    }
 
     /// <summary>Source ranges not covered by any clip, in source order.</summary>
     public IReadOnlyList<TimeRange> ExcludedGaps() => HasFile ? Session.Project.UncoveredRanges() : [];
@@ -298,7 +402,8 @@ public sealed partial class EditorViewModel : ViewModelBase
     /// <summary>Everything derived from the project or its source changes when a project is (un)loaded.</summary>
     private void RaiseProjectReplaced()
     {
-        foreach (string name in (string[])[nameof(ProjectName), nameof(WindowTitle), nameof(HasFile), nameof(IsEmpty),
+        foreach (string name in (string[])[nameof(ProjectName), nameof(WindowTitle), nameof(ProjectTitle), nameof(MediaInfoText),
+                     nameof(HasSilenceData), nameof(HasSceneData), nameof(HasFile), nameof(IsEmpty),
                      nameof(Duration), nameof(DurationText), nameof(SourceLengthText), nameof(FrameRate), nameof(FrameText),
                      nameof(StatusRight)])
             OnPropertyChanged(name);
@@ -329,6 +434,12 @@ public sealed partial class EditorViewModel : ViewModelBase
     [RelayCommand]
     private async Task OpenFile()
     {
+        // As in the prototype, the empty demo screen "opens" the sample.
+        if (IsDemo && IsEmpty)
+        {
+            DemoScenario.Apply(this, DesignScreen.Editing);
+            return;
+        }
         if (Dialogs is null)
             return;
         string? path = await Dialogs.PickMediaToOpenAsync().ConfigureAwait(true);
@@ -645,7 +756,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         TryEdit(() => Select(Find(Session.Split(c.Id, Time).Id)));
     }
 
-    /// <summary>E / Del: exclude the selected clip from the export, or keep it again.</summary>
+    /// <summary>E: exclude the selected clip from the export, or keep it again.</summary>
     [RelayCommand]
     public void ToggleExclude()
     {
@@ -653,7 +764,26 @@ public sealed partial class EditorViewModel : ViewModelBase
             TryEdit(() => Session.SetIncluded(c.Id, !c.IsIncluded));
     }
 
-    /// <summary>Shift+Del: remove the selected clip from the project.</summary>
+    /// <summary>The × on a clip row: remove that clip from the project.</summary>
+    [RelayCommand]
+    public void RemoveClip(ClipViewModel? clip)
+    {
+        if (clip is null)
+            return;
+        if (ReferenceEquals(clip, SelectedClip))
+            DeleteClip();
+        else
+            TryEdit(() => Session.Remove(clip.Id));
+    }
+
+    /// <summary>Split tool: cut the clip under <paramref name="t"/> there.</summary>
+    public void SplitAt(ClipViewModel clip, double t)
+    {
+        SetTime(t);
+        TryEdit(() => Select(Find(Session.Split(clip.Id, t).Id)));
+    }
+
+    /// <summary>Del / Shift+Del: remove the selected clip from the project.</summary>
     [RelayCommand]
     public void DeleteClip()
     {
@@ -762,6 +892,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         {
             OnPropertyChanged(nameof(ProjectName));
             OnPropertyChanged(nameof(WindowTitle));
+            OnPropertyChanged(nameof(ProjectTitle));
         }
         if (Time > Duration)
             SetTime(Duration);
@@ -821,19 +952,28 @@ public sealed partial class EditorViewModel : ViewModelBase
             {
                 item = new ClaudeLogItemViewModel(ClaudeLogKind.Action, entry.Description, HistoryMeta(entry), entry.ChangedClipIds,
                     entry.OutputDelta, changed: entry.Origin == EditOrigin.Assistant,
-                    setUndone: undone =>
-                    {
-                        if (undone)
-                            Session.UndoThrough(entry);
-                        else
-                            Session.RedoThrough(entry);
-                    });
+                    setUndone: undone => SetHistoryEntryUndone(entry, undone), at: entry.Time);
                 _historyItems[entry] = item;
                 Claude.Log.Insert(Math.Min(i, Claude.Log.Count), item);
             }
-            item.IsUndone = i >= Session.History.Position;
+            item.IsUndone = i >= Session.History.Position || Session.IsReverted(entry);
         }
         Claude.Recount();
+    }
+
+    /// <summary>
+    /// Undo on a card reverts just that edit (a new, undoable edit); Redo brings it back, either by
+    /// reverting the revert or by redoing it if it was undone with Ctrl+Z.
+    /// </summary>
+    private void SetHistoryEntryUndone(HistoryEntry entry, bool undone)
+    {
+        bool ok = undone
+            ? TryEdit(() => Session.Revert(entry))
+            : Session.RevertOf(entry) is { } revert
+                ? TryEdit(() => Session.Revert(revert))
+                : TryEdit(() => Session.RedoThrough(entry));
+        if (!ok)
+            SyncHistoryLog();
     }
 
     private static string HistoryMeta(HistoryEntry entry)
@@ -891,9 +1031,13 @@ public sealed partial class EditorViewModel : ViewModelBase
         OnPropertyChanged(nameof(ClipCountText));
         OnPropertyChanged(nameof(HasNoClips));
         OnPropertyChanged(nameof(ClipSummary));
+        OnPropertyChanged(nameof(OutputSummary));
+        OnPropertyChanged(nameof(OutputTimecode));
         OnPropertyChanged(nameof(KeptText));
         OnPropertyChanged(nameof(ExcludedText));
         OnPropertyChanged(nameof(ExcludeLabel));
+        OnPropertyChanged(nameof(SelectionInfo));
+        OnPropertyChanged(nameof(CanExport));
         OnTimeChanged(Time);
     }
 
@@ -902,10 +1046,14 @@ public sealed partial class EditorViewModel : ViewModelBase
     {
         var changed = Claude.Log.Where(a => a.IsHighlighted).SelectMany(a => a.ClipIds).ToHashSet();
         var working = Claude.Log.Where(a => a.IsLive).SelectMany(a => a.ClipIds).ToHashSet();
+        var recent = Claude.Log.LastOrDefault(a => a.IsAction && a.IsChange) is { IsUndone: false } last
+            ? last.ClipIds.ToHashSet()
+            : [];
         foreach (var c in Clips)
         {
             c.IsAiChanged = changed.Contains(c.Id);
             c.IsAiWorking = working.Contains(c.Id);
+            c.IsAiRecent = recent.Contains(c.Id);
         }
         OnPropertyChanged(nameof(ClaudeDelta));
         OnPropertyChanged(nameof(HasClaudeDelta));
@@ -915,4 +1063,11 @@ public sealed partial class EditorViewModel : ViewModelBase
     }
 
     public void RaiseTimelineChanged() => TimelineChanged?.Invoke(this, EventArgs.Empty);
+}
+
+/// <summary>What a click on a clip in the timeline does.</summary>
+public enum TimelineTool
+{
+    Select,
+    Split,
 }

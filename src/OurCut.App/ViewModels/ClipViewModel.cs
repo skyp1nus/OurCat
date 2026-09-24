@@ -26,11 +26,11 @@ public sealed partial class ClipViewModel : ViewModelBase
     public partial string Label { get; private set; } = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StartText), nameof(Duration), nameof(DurationText))]
+    [NotifyPropertyChangedFor(nameof(StartText), nameof(Duration), nameof(DurationText), nameof(RangeText), nameof(ShortDurationText))]
     public partial double Start { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(EndText), nameof(Duration), nameof(DurationText))]
+    [NotifyPropertyChangedFor(nameof(EndText), nameof(Duration), nameof(DurationText), nameof(RangeText), nameof(ShortDurationText))]
     public partial double End { get; private set; }
 
     [ObservableProperty]
@@ -56,7 +56,7 @@ public sealed partial class ClipViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
-    /// <summary>Changed by Claude (shown in violet).</summary>
+    /// <summary>Changed by Claude and not undone.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAi), nameof(AiTag))]
     public partial bool IsAiChanged { get; set; }
@@ -80,6 +80,16 @@ public sealed partial class ClipViewModel : ViewModelBase
     public string StartText => TimeFormat.MinutesSeconds(Start);
     public string EndText => TimeFormat.MinutesSeconds(End);
     public string DurationText => TimeFormat.Duration(Duration);
+
+    /// <summary>In – out as full timecodes, e.g. "00:00:12.000 – 00:00:45.200".</summary>
+    public string RangeText => TimeFormat.Timecode(Start) + " – " + TimeFormat.Timecode(End);
+
+    /// <summary>Duration as in the clip list: "33.200 s" or "1:43.440".</summary>
+    public string ShortDurationText => TimeFormat.ShortDuration(Duration);
+
+    /// <summary>Changed by Claude's most recent action: gets a thin pulsing blue ring on the timeline.</summary>
+    [ObservableProperty]
+    public partial bool IsAiRecent { get; set; }
 
     public bool Contains(double t) => t >= Start && t <= End;
 

@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
@@ -8,6 +9,7 @@ namespace OurCut.App.Views;
 public partial class ClaudePanel : UserControl
 {
     private ClaudePanelViewModel? _vm;
+    private DispatcherTimer? _clock;
 
     public ClaudePanel()
     {
@@ -22,36 +24,40 @@ public partial class ClaudePanel : UserControl
         _vm = vm;
         if (_vm is not null)
             _vm.Log.CollectionChanged += OnLogChanged;
-        ScrollToEnd();
+        ScrollToTop();
     }
 
-    private void OnLogChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => ScrollToEnd();
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        // "18 min ago" moves on by itself.
+        _clock = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => _vm?.RefreshTimes(DateTimeOffset.Now));
+        _clock.Start();
+        _vm?.RefreshTimes(DateTimeOffset.Now);
+    }
 
-    /// <summary>Keeps the newest log entry in view.</summary>
-    private void ScrollToEnd() =>
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (_vm is { Log.Count: > 0 })
-                LogScroller.ScrollToEnd();
-            else
-                LogScroller.ScrollToHome();
-        }, DispatcherPriority.Background);
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _clock?.Stop();
+        _clock = null;
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnLogChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        _vm?.RefreshTimes(DateTimeOffset.Now);
+        ScrollToTop();
+    }
+
+    /// <summary>Keeps the newest card (at the top) in view.</summary>
+    private void ScrollToTop() => Dispatcher.UIThread.Post(() => LogScroller.ScrollToHome(), DispatcherPriority.Background);
 
     private void OnHeaderPressed(object? sender, PointerPressedEventArgs e)
     {
         if (_vm is not null && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
             _vm.IsOpen = !_vm.IsOpen;
-            ScrollToEnd();
-        }
-    }
-
-    private void OnComposerKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && _vm is not null)
-        {
-            _vm.SendCommand.Execute(null);
-            e.Handled = true;
+            ScrollToTop();
         }
     }
 }

@@ -116,6 +116,39 @@ public sealed class EditorSession
         }
     }
 
+    /// <summary>
+    /// Reverts one earlier edit as a new edit, keeping everything done after it
+    /// (see <see cref="RevertEditCommand"/>).
+    /// </summary>
+    /// <exception cref="EditException">A later edit changed the same clips, or the edit is not applied.</exception>
+    public HistoryEntry? Revert(HistoryEntry entry, EditOrigin origin = EditOrigin.User)
+    {
+        if (!History.IsApplied(entry))
+            throw new EditException($"“{entry.Description}” is not applied.");
+        if (IsReverted(entry))
+            throw new EditException($"“{entry.Description}” was already reverted.");
+        return Execute(RevertEditCommand.For(entry), origin);
+    }
+
+    /// <summary>
+    /// Whether an applied edit reverts <paramref name="entry"/> (and that revert has not been reverted in turn).
+    /// </summary>
+    public bool IsReverted(HistoryEntry entry) => RevertOf(entry) is not null;
+
+    /// <summary>The applied edit that reverts <paramref name="entry"/>, if any.</summary>
+    public HistoryEntry? RevertOf(HistoryEntry entry)
+    {
+        for (int i = History.Position - 1; i >= 0; i--)
+        {
+            var e = History.Entries[i];
+            if (ReferenceEquals(e, entry))
+                break;
+            if (e.Command is RevertEditCommand r && r.Reverts(entry) && !IsReverted(e))
+                return e;
+        }
+        return null;
+    }
+
     // ---- Operations --------------------------------------------------------------------------
 
     /// <summary>Adds a clip at the end of the output (or at <paramref name="index"/>).</summary>

@@ -27,6 +27,13 @@ public class TimeFormatTests
         Assert.Equal(expected, TimeFormat.Duration(t));
 
     [Theory]
+    [InlineData(33.2, "33.200 s")]
+    [InlineData(103.44, "1:43.440")]
+    [InlineData(59.9996, "1:00.000")]
+    public void ShortDuration_drops_the_minutes_under_a_minute(double t, string expected) =>
+        Assert.Equal(expected, TimeFormat.ShortDuration(t));
+
+    [Theory]
     [InlineData(872.48, "14:32")]
     [InlineData(59.999, "0:59")]
     public void WholeSeconds_truncates_to_whole_seconds(double t, string expected) =>

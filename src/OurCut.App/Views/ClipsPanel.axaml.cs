@@ -43,7 +43,8 @@ public partial class ClipsPanel : UserControl
         }
         if (!props.IsLeftButtonPressed)
             return;
-        if ((e.Source as Visual)?.FindAncestorOfType<CheckBox>(includeSelf: true) is not null)
+        if ((e.Source as Visual)?.FindAncestorOfType<CheckBox>(includeSelf: true) is not null
+            || (e.Source as Visual)?.FindAncestorOfType<Button>(includeSelf: true) is not null)
             return;
         _pressed = RowAt(e.Source as Visual);
         _pressPoint = e.GetPosition(ClipList);

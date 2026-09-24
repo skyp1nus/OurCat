@@ -14,11 +14,14 @@ public class EditorViewModelTests
     public void Totals_match_the_design()
     {
         var editor = Sample();
-        Assert.Equal("7:32.000", editor.TotalText);
-        Assert.Equal("7:32", editor.KeptText);
-        Assert.Equal("7:00", editor.ExcludedText);
-        Assert.Equal("5 of 6 clips", editor.ClipSummary);
+        Assert.Equal("4:47.040", editor.TotalText);
+        Assert.Equal("00:04:47.040", editor.OutputTimecode);
+        Assert.Equal("4:47", editor.KeptText);
+        Assert.Equal("9:45", editor.ExcludedText);
+        Assert.Equal("4 of 5 clips", editor.ClipSummary);
+        Assert.Equal("4 of 5 clips", editor.OutputSummary);
         Assert.Equal("14:32", editor.SourceLengthText);
+        Assert.Equal("Clip 2  00:01:58.400 → 00:03:10.000  ·  1:11.600", editor.SelectionInfo);
     }
 
     [AvaloniaFact]
@@ -41,21 +44,21 @@ public class EditorViewModelTests
     {
         var editor = Sample();
         var gaps = editor.ExcludedGaps();
-        Assert.Equal(7, gaps.Count);
-        Assert.Equal(new TimeRange(0, 12.04), gaps[0]);
-        Assert.Equal(new TimeRange(45.32, 118.6), gaps[1]);
-        Assert.Equal(new TimeRange(828.72, 872.48), gaps[^1]);
+        Assert.Equal(6, gaps.Count);
+        Assert.Equal(new TimeRange(0, 12), gaps[0]);
+        Assert.Equal(new TimeRange(45.2, 118.4), gaps[1]);
+        Assert.Equal(new TimeRange(828.8, 872.48), gaps[^1]);
     }
 
     [AvaloniaFact]
     public void Keep_range_inserts_a_clip_in_source_order()
     {
         var editor = Sample();
-        editor.KeepRange(45.32, 118.6);
+        editor.KeepRange(45.2, 118.4);
         var added = editor.SelectedClip!;
         Assert.Equal(1, editor.Clips.IndexOf(added));
-        Assert.Equal("Clip 7", added.Label);
-        Assert.Equal(6, editor.ExcludedGaps().Count);
+        Assert.Equal("Clip 6", added.Label);
+        Assert.Equal(5, editor.ExcludedGaps().Count);
     }
 
     [AvaloniaFact]
@@ -92,7 +95,7 @@ public class EditorViewModelTests
             editor.Trim(clip, inPoint: true, t, mergeKey: "drag");
         Assert.Equal(9, clip.Start);
         editor.Undo();
-        Assert.Equal(12.04, clip.Start);
+        Assert.Equal(12, clip.Start);
     }
 
     [AvaloniaFact]
@@ -124,14 +127,28 @@ public class EditorViewModelTests
         editor.MoveClip(0, 2);
 
         Assert.Equal(["Excluded clip 1", "Moved clip 1 to position 3"], editor.Claude.Log.Select(a => a.Text));
-        Assert.Equal("set_included · −33.28 s", editor.Claude.Log[0].Meta);
+        Assert.Equal("set_included · −33.20 s", editor.Claude.Log[0].Meta);
+        var first = editor.Claude.Log[0];
 
-        // Undo from the log undoes that entry and everything after it.
-        editor.Claude.Log[0].ToggleUndo();
-        Assert.All(editor.Claude.Log, a => Assert.True(a.IsUndone));
-        Assert.Equal(0, editor.Session.History.Position);
-        editor.Claude.Log[1].ToggleUndo();
-        Assert.Equal(2, editor.Session.History.Position);
+        // Undo on a card reverts just that entry, as a new edit; the later move stays.
+        first.UndoCommand.Execute(null);
+        Assert.True(first.IsUndone);
+        Assert.True(editor.Session.Project.Get(1).IsIncluded);
+        Assert.Equal(2, editor.Session.Project.IndexOf(1));
+        Assert.Equal("Reverted “Excluded clip 1”", editor.Claude.Log[^1].Text);
+        Assert.False(editor.Claude.Log[1].IsUndone);
+
+        // Ctrl+Z undoes the revert, which brings the card back.
+        editor.Undo();
+        Assert.False(first.IsUndone);
+        Assert.False(editor.Session.Project.Get(1).IsIncluded);
+
+        // Undo on an earlier card that conflicts with a later edit is refused with a message.
+        editor.Select(editor.Find(1));
+        editor.ToggleExclude();
+        first.UndoCommand.Execute(null);
+        Assert.False(first.IsUndone);
+        Assert.NotNull(editor.StatusMessage);
     }
 
     [AvaloniaFact]
@@ -144,7 +161,56 @@ public class EditorViewModelTests
         Assert.DoesNotContain(selected, editor.Clips);
         Assert.Same(editor.Clips[index], editor.SelectedClip);
         editor.Undo();
+        Assert.Equal(5, editor.Clips.Count);
+    }
+
+    [AvaloniaFact]
+    public void The_remove_button_of_a_row_removes_that_clip()
+    {
+        var editor = Sample();
+        var selected = editor.SelectedClip!;
+        var other = editor.Clips[0];
+        editor.RemoveClipCommand.Execute(other);
+        Assert.DoesNotContain(other, editor.Clips);
+        Assert.Same(selected, editor.SelectedClip);
+    }
+
+    [AvaloniaFact]
+    public void The_split_tool_cuts_the_clip_where_it_is_clicked()
+    {
+        var editor = Sample();
+        editor.SplitToolCommand.Execute(null);
+        Assert.True(editor.IsSplitTool);
+        var clip = editor.Find(3)!;
+        editor.SplitAt(clip, 300);
+        Assert.Equal(300, clip.End);
+        Assert.Equal(300, editor.SelectedClip!.Start);
         Assert.Equal(6, editor.Clips.Count);
+    }
+
+    [AvaloniaFact]
+    public void Marker_layers_and_snapping_toggle_from_the_toolbar()
+    {
+        var editor = Sample();
+        Assert.True(editor.HasSilenceData);
+        Assert.True(editor.HasSceneData);
+        editor.ToggleSilencesCommand.Execute(null);
+        editor.ToggleScenesCommand.Execute(null);
+        editor.ToggleKeyframesCommand.Execute(null);
+        editor.ToggleSnapCommand.Execute(null);
+        Assert.False(editor.ShowSilences || editor.ShowScenes || editor.ShowKeyframes || editor.SnapToKeyframes);
+
+        // Real files have no silence or scene detection yet.
+        var real = App.CreateEditor(null, new SampleOpener());
+        Assert.False(real.HasSilenceData);
+    }
+
+    [AvaloniaFact]
+    public void The_mcp_badge_follows_the_connection_and_claudes_work()
+    {
+        Assert.Equal("MCP · Claude connected", Sample().McpText);
+        Assert.Equal("MCP · Claude editing", App.CreateEditor(DesignScreen.Ai).McpText);
+        Assert.Equal("MCP · not running", App.CreateEditor(null).McpText);
     }
 
     [AvaloniaFact]
@@ -154,7 +220,7 @@ public class EditorViewModelTests
         editor.SetTime(editor.Duration - 0.05);
         editor.Select(null);
         editor.MarkIn();
-        Assert.Equal(6, editor.Clips.Count);
+        Assert.Equal(5, editor.Clips.Count);
         Assert.NotNull(editor.StatusMessage);
         Assert.Equal(editor.StatusMessage, editor.StatusRight);
     }
@@ -163,17 +229,23 @@ public class EditorViewModelTests
     public void Claude_undo_restores_the_previous_values_and_clears_the_highlight()
     {
         var editor = App.CreateEditor(DesignScreen.Ai);
-        var setup = editor.Clips.Single(c => c.Label == "Setup");
+        var setup = editor.Clips.Single(c => c.Label == "Setup walkthrough");
         Assert.True(setup.IsAiChanged);
-        Assert.Equal("−20.86 s by Claude", editor.ClaudeDeltaText);
+        Assert.Equal("+7.00 s by Claude", editor.ClaudeDeltaText);
+        Assert.True(editor.Find(3)!.IsAiRecent);
+        Assert.True(editor.Find(4)!.IsAiWorking);
 
-        var trim = editor.Claude.Log.Single(a => a.Text == "Trimmed clip 2 in-point");
-        trim.ToggleUndo();
+        // Undo on "Removed 3 silences" reverts only that action: the later trim of clip 3 stays.
+        var silences = editor.Claude.Log.Single(a => a.Text == "Removed 3 silences");
+        silences.UndoCommand.Execute(null);
 
-        Assert.Equal(118.6, setup.Start);
+        Assert.Equal(118.4, setup.Start);
+        Assert.Equal(45.2, editor.Find(1)!.End);
+        Assert.Equal(361.32, editor.Find(3)!.End);
         Assert.False(setup.IsAiChanged);
-        Assert.Equal("−16.32 s by Claude", editor.ClaudeDeltaText);
-        Assert.Equal("Redo", trim.UndoLabel);
+        Assert.Equal("+23.80 s by Claude", editor.ClaudeDeltaText);
+        Assert.True(silences.ShowUndone);
+        Assert.False(silences.ShowUndo);
     }
 
     [AvaloniaFact]
@@ -182,18 +254,28 @@ public class EditorViewModelTests
         var editor = Sample();
         var export = editor.Export;
         export.Open();
-        Assert.Equal(@"C:\Users\You\Videos\Exports\launch-keynote-cut.mp4", export.OutputPath);
+        Assert.Equal(@"C:\Users\You\Videos\Exports\interview_final_v3-cut.mp4", export.OutputPath);
         Assert.Equal("1 file", export.FileCountText);
+        Assert.Equal("4 clips · 00:04:47.040", export.HeaderSummary);
+        Assert.Equal("interview_final_v3-cut.mp4", export.FileNamesText);
+        Assert.StartsWith("3 of 4 in points will snap back", export.SnapNote, StringComparison.Ordinal);
 
         export.Merge = false;
         export.Container = "MKV";
-        Assert.Equal("5 files", export.FileCountText);
-        Assert.EndsWith(@"launch-keynote-{n}-{label}.mkv", export.OutputPath);
+        Assert.Equal("4 files", export.FileCountText);
+        Assert.Equal("Separate files (4)", export.SeparateFilesText);
+        Assert.EndsWith(@"interview_final_v3-{n}-{label}.mkv", export.OutputPath);
+        Assert.Equal("interview_final_v3-1-cold-open.mkv … interview_final_v3-4-outro.mkv", export.FileNamesText);
 
         export.Start(0.5);
-        Assert.Equal(5, export.Rows.Count);
-        Assert.Equal("launch-keynote-3-demo-import.mkv", export.Rows[2].Name);
+        Assert.Equal(4, export.Rows.Count);
+        Assert.Equal("interview_final_v3-3-export-demo.mkv", export.Rows[2].Name);
+        Assert.Equal("Writing clip 3 of 4", export.ProgressText);
         Assert.Single(export.Rows, r => r.IsCurrent);
+
+        // Cancel export goes back to the settings.
+        export.CancelExport();
+        Assert.True(export.IsConfiguring);
         export.Close();
     }
 
@@ -205,5 +287,6 @@ public class EditorViewModelTests
         smart.PickCommand.Execute(null);
         Assert.False(smart.IsAvailable);
         Assert.Equal(ExportMode.Copy, export.Mode);
+        Assert.DoesNotContain(smart, export.ModeCards);
     }
 }

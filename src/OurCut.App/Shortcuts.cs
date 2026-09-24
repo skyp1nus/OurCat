@@ -25,6 +25,16 @@ public static class Shortcuts
             return false;
         }
 
+        if (editor.Settings.IsOpen)
+        {
+            if (key == Key.Escape)
+            {
+                editor.Settings.Close();
+                return true;
+            }
+            return false;
+        }
+
         bool shift = mods.HasFlag(KeyModifiers.Shift);
         if (ctrl && key == Key.O)
         {
@@ -79,11 +89,14 @@ public static class Shortcuts
             case Key.O:
                 editor.MarkOut();
                 return true;
-            case Key.Delete when mods.HasFlag(KeyModifiers.Shift):
+            case Key.Delete or Key.Back:
                 editor.DeleteClip();
                 return true;
-            case Key.E or Key.Delete or Key.Back:
+            case Key.E:
                 editor.ToggleExclude();
+                return true;
+            case Key.V:
+                editor.Tool = TimelineTool.Select;
                 return true;
             case Key.S:
                 editor.Split();

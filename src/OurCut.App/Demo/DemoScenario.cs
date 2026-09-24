@@ -7,7 +7,7 @@ namespace OurCut.App.Demo;
 
 /// <summary>
 /// Puts the editor into one of the design's screens with the prototype's sample data
-/// (<c>fresh()</c>, <c>baseClips()</c>, <c>editLog()</c> and <c>aiLog()</c> in the design file).
+/// (<c>viewState()</c>, <c>priorLog()</c> and <c>runAI()</c> in design/project/OurCut.dc.html).
 /// Claude's scripted actions are real Core commands made with <see cref="EditOrigin.Assistant"/>.
 /// </summary>
 public static class DemoScenario
@@ -16,18 +16,16 @@ public static class DemoScenario
     {
         editor.IsDemo = true;
         editor.Export.Close();
+        editor.Settings.Close();
         editor.Unload();
         editor.PlaceholderDuration = DesignSample.SampleDuration;
         editor.Claude.Log.Clear();
         editor.Claude.IsConnected = true;
-        editor.Claude.IsOpen = true;
+        editor.Claude.IsOpen = screen == DesignScreen.Ai;
         editor.RecentFiles.Clear();
-        editor.RecentFiles.Add(new("keynote_final_4k.mp4", "", "14:32", "Yesterday"));
-        editor.RecentFiles.Add(new("podcast_ep41_raw.mov", "", "1:12:08", "Sep 19"));
-        editor.RecentFiles.Add(new("drone_coast_0412.mp4", "", "6:40", "Sep 14"));
         editor.ToolStatus = "ffmpeg 7.1 · ready";
         editor.ZoomLevel = 0;
-        editor.Time = 301.42;
+        editor.Settings.LoadDemo();
 
         if (screen == DesignScreen.Empty)
         {
@@ -35,38 +33,41 @@ public static class DemoScenario
             return;
         }
 
-        var project = DesignSample.Project;
-        if (screen == DesignScreen.Ai)
-        {
-            // Claude's two trims from the "ai" screen are already applied.
-            project = new SetClipRangeCommand(2, 123.14, 190.12).Apply(project);
-            project = new SetClipRangeCommand(5, 750, 812.4).Apply(project);
-        }
-        editor.LoadProject(project, new DesignSample(), DesignSample.SourceInfo);
-        AddEditLog(editor);
+        editor.LoadProject(DesignSample.Project, new DesignSample(), DesignSample.SourceInfo);
+        AddPriorLog(editor);
 
         if (screen == DesignScreen.Ai)
         {
-            AddAiLog(editor, "Yes, cut it. Also tighten the setup and the outro.");
-            editor.Time = 541.2;
-            editor.Select(editor.Find(4));
+            AddAiLog(editor);
+            editor.Select(null);
+            editor.Time = 268.4;
+        }
+        else if (screen is DesignScreen.Exporting)
+        {
+            editor.Select(null);
+            editor.Time = 151.066;
         }
         else
         {
-            editor.Time = 301.42;
-            editor.Select(editor.Find(3));
+            editor.Select(editor.Find(2));
+            editor.Time = 151.066;
         }
         editor.Claude.Recount();
         editor.ApplyClaudeHighlights();
 
-        if (screen == DesignScreen.Export)
+        switch (screen)
         {
-            editor.Export.Open();
-        }
-        else if (screen == DesignScreen.Exporting)
-        {
-            editor.Export.Loop = true;
-            editor.Export.Start(0.42);
+            case DesignScreen.Export:
+                editor.Export.Open();
+                break;
+            case DesignScreen.Exporting:
+                editor.Export.Open();
+                editor.Export.Loop = true;
+                editor.Export.Start(0.46);
+                break;
+            case DesignScreen.Settings:
+                editor.Settings.Open();
+                break;
         }
     }
 
@@ -77,57 +78,90 @@ public static class DemoScenario
         editor.LoadProject(DesignSample.Project, new DesignSample(), DesignSample.SourceInfo);
     }
 
-    private static void AddEditLog(EditorViewModel editor)
+    /// <summary>What Claude did before the design's screens: labelled the clips and added the first one.</summary>
+    private static void AddPriorLog(EditorViewModel editor)
     {
         var claude = editor.Claude;
         var session = editor.Session;
-        string[] names = ["Intro", "Setup", "Demo — import", "Demo — trim", "Outro"];
+        var now = DateTimeOffset.Now;
+        var labels = DesignSample.Project.Clips.ToDictionary(c => c.Id, c => c.Label);
 
-        claude.Add(new(ClaudeLogKind.User, "Cut this down to the intro, setup, both demo parts and the outro. Drop the dead air."));
-        claude.Add(new(ClaudeLogKind.Action, "Detected 8 scene changes", "detect_scenes · 0.4 s"));
+        Clip? removed = null;
+        claude.Add(new(ClaudeLogKind.Action, "Added clip 00:12–00:45", "Clip 1 · 33.200 s · first mention of “OurCut” in transcript",
+            [1], setUndone: Safe(editor, undone =>
+            {
+                if (undone)
+                {
+                    removed = session.Project.Find(1);
+                    if (removed is not null)
+                        session.Execute(new RemoveClipCommand(1), EditOrigin.Assistant);
+                }
+                else if (removed is not null)
+                {
+                    session.Execute(new AddClipCommand(removed.Start, removed.End, removed.Label, 0, removed.Id, removed.IsIncluded),
+                        EditOrigin.Assistant);
+                }
+            }), at: now.AddMinutes(-21)));
 
-        List<(Clip Clip, int Index)> removed = [];
-        claude.Add(new(ClaudeLogKind.Action, "Added 5 clips at scene boundaries", "add_segment ×5", setUndone: undone =>
-        {
-            if (undone)
-            {
-                removed = [.. session.Project.Clips.Select((c, i) => (c, i)).Where(x => x.c.Id is >= 1 and <= 5)];
-                session.Execute(new BatchCommand("remove_segment", "Removed 5 clips",
-                    [.. removed.Select(x => (IEditCommand)new RemoveClipCommand(x.Clip.Id))]), EditOrigin.Assistant);
-            }
-            else
-            {
-                session.Execute(new BatchCommand("add_segment", "Added 5 clips at scene boundaries",
-                    [.. removed.Select(x => (IEditCommand)new AddClipCommand(x.Clip.Start, x.Clip.End, x.Clip.Label,
-                        Math.Min(x.Index, session.Project.Clips.Count), x.Clip.Id, x.Clip.IsIncluded))]), EditOrigin.Assistant);
-            }
-        }));
-        claude.Add(new(ClaudeLogKind.Action, "Removed silence 3×", "trim_segment ×3 · −15.34 s", setUndone: undone =>
-        {
-            var p = session.Project;
-            session.Execute(new BatchCommand("trim_segment", "Removed silence 3×",
-            [
-                new SetClipRangeCommand(1, undone ? 8.1 : 12.04, p.Get(1).End),
-                new SetClipRangeCommand(3, p.Get(3).Start, undone ? 410.6 : 404),
-                new SetClipRangeCommand(5, undone ? 745.2 : 750, p.Get(5).End),
-            ]), EditOrigin.Assistant);
-        }));
-        claude.Add(new(ClaudeLogKind.Action, "Labeled clips from transcript", "set_label ×5", setUndone: undone =>
-            session.Execute(new BatchCommand("set_label", "Labeled clips from transcript",
-                [.. Enumerable.Range(1, 5).Select(id => (IEditCommand)new RenameClipCommand(id, undone ? "Segment " + id : names[id - 1]))]),
-                EditOrigin.Assistant)));
-        claude.Add(new(ClaudeLogKind.Claude, "Output is 7:32.000, under your 8 minute target. Clip 4 has a 6 s pause around 00:09:00. Want me to cut it?"));
+        claude.Add(new(ClaudeLogKind.Action, "Labeled 5 clips from transcript", "Cold open, Setup walkthrough, Export demo, Q&A highlights, Outro",
+            [1, 2, 3, 4, 5], setUndone: Safe(editor, undone =>
+                session.Execute(new BatchCommand("set_label", "Labeled 5 clips from transcript",
+                    [.. labels.Keys.Where(id => session.Project.Find(id) is not null)
+                        .Select(id => (IEditCommand)new RenameClipCommand(id, undone ? "Clip " + session.Project.NumberOf(id) : labels[id]))]),
+                    EditOrigin.Assistant)),
+            at: now.AddMinutes(-18)));
     }
 
-    private static void AddAiLog(EditorViewModel editor, string text)
+    /// <summary>The "AI editing" screen: Claude's three edits are applied and a fourth is in progress.</summary>
+    private static void AddAiLog(EditorViewModel editor)
     {
         var claude = editor.Claude;
         var session = editor.Session;
-        claude.Add(new(ClaudeLogKind.User, text));
-        claude.Add(new(ClaudeLogKind.Action, "Trimmed clip 2 in-point", "trim_segment · +4.54 s", [2], -4.54, changed: true,
-            setUndone: undone => session.SetRange(2, undone ? 118.6 : 123.14, session.Project.Get(2).End, EditOrigin.Assistant)));
-        claude.Add(new(ClaudeLogKind.Action, "Trimmed clip 5 out-point", "trim_segment · −16.32 s", [5], -16.32, changed: true,
-            setUndone: undone => session.SetRange(5, session.Project.Get(5).Start, undone ? 828.72 : 812.4, EditOrigin.Assistant)));
-        claude.Add(new(ClaudeLogKind.Live, "Removing pause in clip 4", "detect_silence · 08:15 – 10:02", [4]));
+        var now = DateTimeOffset.Now;
+
+        var silences = new BatchCommand("trim_segment", "Removed 3 silences",
+        [
+            new SetClipRangeCommand(1, 12, 40.8),
+            new SetClipRangeCommand(2, 124, 190),
+            new SetClipRangeCommand(5, 750, 822),
+        ]);
+        var silencesEntry = session.Execute(silences, EditOrigin.Assistant)!;
+        claude.Add(new(ClaudeLogKind.Action, "Removed 3 silences",
+            "Trimmed 00:00:40.8–00:00:45.2, 00:01:58.4–00:02:04.0 and 00:13:42.0–00:13:48.8", [1, 2, 5],
+            silencesEntry.OutputDelta, changed: true, setUndone: Safe(editor, undone => Toggle(session, silencesEntry, undone)), at: now.AddSeconds(-5)));
+
+        int index = session.Project.IndexOf(3) + 1;
+        var addEntry = session.Execute(new AddClipCommand(432, 460, "Key quote", index, 6), EditOrigin.Assistant)!;
+        claude.Add(new(ClaudeLogKind.Action, "Added clip 07:12–07:40", "“Key quote” · transcript match for “the whole point is speed”",
+            [6], addEntry.OutputDelta, changed: true, setUndone: Safe(editor, undone => Toggle(session, addEntry, undone)), at: now.AddSeconds(-3)));
+
+        var trimEntry = session.Execute(new SetClipRangeCommand(3, 262.08, 361.32), EditOrigin.Assistant)!;
+        claude.Add(new(ClaudeLogKind.Action, "Trimmed clip 3 out point", "00:06:05.520 → 00:06:01.320 (−4.200 s), cut before “um, so anyway”",
+            [3], trimEntry.OutputDelta, changed: true, setUndone: Safe(editor, undone => Toggle(session, trimEntry, undone)), at: now.AddSeconds(-2)));
+
+        claude.Add(new(ClaudeLogKind.Live, "Reviewing clip 5 for filler words…", "Reading transcript 00:08:40–00:10:12", [4]));
+    }
+
+    /// <summary>Runs a card's undo or redo; if a later edit conflicts, the card stays as it was and says why.</summary>
+    private static Action<bool> Safe(EditorViewModel editor, Action<bool> setUndone) => undone =>
+    {
+        try
+        {
+            setUndone(undone);
+        }
+        catch (EditException e)
+        {
+            editor.ShowMessage(e.Message);
+            throw;
+        }
+    };
+
+    /// <summary>Undo on a demo card reverts just that edit; Redo reverts the revert.</summary>
+    private static void Toggle(EditorSession session, HistoryEntry entry, bool undone)
+    {
+        if (undone)
+            session.Revert(entry, EditOrigin.Assistant);
+        else if (session.RevertOf(entry) is { } revert)
+            session.Revert(revert, EditOrigin.Assistant);
     }
 }

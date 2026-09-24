@@ -4,17 +4,16 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
-using OurCut.App.Demo;
 using OurCut.App.Services;
 using OurCut.App.ViewModels;
-using OurCut.Core.Time;
 
 namespace OurCut.App.Controls;
 
 /// <summary>
-/// The timeline: ruler, the whole source file as a video lane plus one lane per audio stream,
-/// kept clips on top of the greyed-out excluded parts, trim handles and the playhead.
-/// Layout follows the design: ruler 26 px, content from y = 30, video lane 52 px, audio lanes 24 px.
+/// The timeline of the whole source file: ruler with scene markers, thumbnail strip with keyframe
+/// ticks, audio waveform with silence bands, clips as blue-tinted segments with in/out handles,
+/// a pulsing ring on clips Claude just changed, and the playhead.
+/// Layout follows design/project/OurCut.dc.html: ruler 22 px, video track 64 px, audio track 72 px.
 /// </summary>
 public sealed class TimelineControl : Control
 {
@@ -30,53 +29,71 @@ public sealed class TimelineControl : Control
     public static readonly DirectProperty<TimelineControl, double> MaxScrollProperty =
         AvaloniaProperty.RegisterDirect<TimelineControl, double>(nameof(MaxScroll), o => o.MaxScroll);
 
-    private const double RulerHeight = 26;
-    private const double ContentTop = 30;
-    private const double ContentHeight = 134;
-    private const double VideoHeight = 52;
-    private const double AudioTop = 54;
-    private const double AudioPitch = 26;
-    private const double AudioHeight = 24;
-    private const double HandleWidth = 9;
+    public static readonly DirectProperty<TimelineControl, string> ZoomTextProperty =
+        AvaloniaProperty.RegisterDirect<TimelineControl, string>(nameof(ZoomText), o => o.ZoomText);
+
+    public const double RulerHeight = 22;
+    public const double VideoTop = 22;
+    public const double VideoHeight = 64;
+    public const double AudioTop = 86;
+    public const double AudioHeight = 72;
+    public const double TotalHeight = 158;
+
+    private const double SegmentInset = 2;
+    private const double HandleWidth = 6;
+    private const double HandleHeight = 28;
     private const double KeyframeTickHeight = 5;
+    private const double SnapPixels = 8;
+
+    /// <summary>Thumbnails in the strip at 1× (the prototype's 13 frames).</summary>
+    private const int FramesAtFit = 13;
+
+    /// <summary>Waveform bars at 1× (the prototype's 440).</summary>
+    private const int BarsAtFit = 440;
 
     /// <summary>Keyframe ticks are drawn only when they are on average at least this far apart (px).</summary>
-    private const double MinKeyframeSpacing = 6;
+    private const double MinKeyframeSpacing = 4;
 
-    private static readonly Color Accent = Color.Parse("#60CDFF");
-    private static readonly Color Violet = Color.Parse("#AA9CF7");
-    private static readonly IBrush RulerBg = new SolidColorBrush(Color.Parse("#222222"));
-    private static readonly IBrush MinorTick = new SolidColorBrush(Color.Parse("#3C3C3C"));
-    private static readonly IBrush MidTick = new SolidColorBrush(Color.Parse("#5A5A5A"));
-    private static readonly IBrush MajorTick = new SolidColorBrush(Color.Parse("#6A6A6A"));
-    private static readonly IBrush RulerText = new SolidColorBrush(Color.Parse("#C8C8C8"));
-    private static readonly IBrush LaneBg = new SolidColorBrush(Color.Parse("#151515"));
-    private static readonly IBrush BaseThumbBorder = new SolidColorBrush(Color.Parse("#121212"));
-    private static readonly IBrush BaseBar = new SolidColorBrush(Color.Parse("#353535"));
-    private static readonly IBrush HatchBrush = new SolidColorBrush(Color.FromArgb(13, 255, 255, 255));
-    private static readonly IBrush GapText = new SolidColorBrush(Color.Parse("#8A8A8A"));
-    private static readonly IBrush ClipBg = new SolidColorBrush(Color.Parse("#262626"));
-    private static readonly IBrush ClipThumbBorder = new SolidColorBrush(Color.Parse("#141414"));
-    private static readonly IBrush ClipAudioBg = new SolidColorBrush(Color.Parse("#1A262B"));
-    private static readonly IBrush ClipBar = new SolidColorBrush(Color.Parse("#7FA9BA"));
-    private static readonly IBrush KeepBg = new SolidColorBrush(Color.Parse("#232323"));
-    private static readonly IBrush KeepBgHover = new SolidColorBrush(Color.Parse("#333333"));
-    private static readonly IBrush KeepBorder = new SolidColorBrush(Color.Parse("#4C4C4C"));
-    private static readonly IBrush KeepText = new SolidColorBrush(Color.Parse("#E2E2E2"));
-    private static readonly IBrush GripLine = new SolidColorBrush(Color.FromArgb(115, 0, 0, 0));
-    private static readonly IBrush PlayheadBrush = Brushes.White;
-    private static readonly IBrush PlayheadText = new SolidColorBrush(Color.Parse("#111111"));
-    private static readonly IBrush EmptyBorder = new SolidColorBrush(Color.Parse("#404040"));
-    private static readonly IBrush KeyframeTick = new SolidColorBrush(Color.FromArgb(150, 255, 255, 255));
+    /// <summary>A clip Claude just changed pulses this long, then keeps a still ring.</summary>
+    private static readonly TimeSpan PulseTime = TimeSpan.FromSeconds(6);
+
+    private static readonly Color Accent = Color.Parse("#3B82F6");
+    private static readonly IBrush AccentBrush = new SolidColorBrush(Accent);
+    private static readonly IBrush MinorTick = White(0.12);
+    private static readonly IBrush MajorTick = White(0.24);
+    private static readonly IBrush RulerText = new SolidColorBrush(Color.Parse("#858687"));
+    private static readonly IBrush SceneDiamond = new SolidColorBrush(Color.Parse("#9D9E9F"));
+    private static readonly IBrush SceneLine = White(0.16);
+    private static readonly IBrush TrackLine = White(0.05);
+    private static readonly IBrush FrameGap = new SolidColorBrush(Color.Parse("#0B0C0E"));
+    private static readonly IBrush KeyframeTick = White(0.3);
+    private static readonly IBrush AudioBg = new SolidColorBrush(Color.Parse("#101113"));
+    private static readonly IBrush SilenceHatch = White(0.05);
+    private static readonly IBrush SilenceEdge = White(0.12);
+    private static readonly IBrush BarIn = White(0.55);
+    private static readonly IBrush BarOut = White(0.2);
+    private static readonly IBrush EmptyBg = new SolidColorBrush(Color.Parse("#131416"));
+    private static readonly IBrush EmptyText = new SolidColorBrush(Color.Parse("#858687"));
+    private static readonly IBrush ChipBg = new SolidColorBrush(Color.FromArgb(199, 11, 12, 14));
+    private static readonly IBrush ChipNumber = new SolidColorBrush(Color.Parse("#858687"));
+    private static readonly IBrush SegmentFill = new SolidColorBrush(Color.FromArgb(28, 59, 130, 246));
+    private static readonly IBrush SegmentFillSelected = new SolidColorBrush(Color.FromArgb(51, 59, 130, 246));
+    private static readonly IBrush SegmentFillExcluded = White(0.02);
+    private static readonly IPen SegmentBorder = new Pen(new SolidColorBrush(Color.FromArgb(77, 59, 130, 246)), 1);
+    private static readonly IPen SegmentBorderSelected = new Pen(AccentBrush, 1);
+    private static readonly IPen SegmentBorderExcluded = new Pen(White(0.25), 1, new DashStyle([3, 3], 0));
+    private static readonly IBrush Handle = White(0.4);
+    private static readonly IBrush HandleSelected = new SolidColorBrush(Color.Parse("#F2F2F2"));
 
     private readonly List<HitRegion> _hits = [];
+    private readonly Dictionary<int, DateTime> _recentSince = [];
     private EditorViewModel? _editor;
     private double _extentWidth;
     private double _maxScroll;
+    private string _zoomText = "1.0×";
     private Drag _drag;
-    private HitRegion? _hover;
-    private DispatcherTimer? _scanTimer;
-    private double _scanPhase;
+    private DispatcherTimer? _pulseTimer;
+    private DateTime _pulseStart = DateTime.UtcNow;
 
     static TimelineControl()
     {
@@ -90,6 +107,9 @@ public sealed class TimelineControl : Control
     public double ExtentWidth { get => _extentWidth; private set => SetAndRaise(ExtentWidthProperty, ref _extentWidth, value); }
     public double MaxScroll { get => _maxScroll; private set => SetAndRaise(MaxScrollProperty, ref _maxScroll, value); }
 
+    /// <summary>The zoom factor for the toolbar, e.g. "1.0×".</summary>
+    public string ZoomText { get => _zoomText; private set => SetAndRaise(ZoomTextProperty, ref _zoomText, value); }
+
     /// <summary>Largest zoom factor: one frame becomes 12 px wide.</summary>
     public double MaxZoom
     {
@@ -97,8 +117,8 @@ public sealed class TimelineControl : Control
         {
             var e = _editor;
             if (e is null || e.Duration <= 0 || Bounds.Width <= 0)
-                return 6;
-            return Math.Max(6, e.Duration * e.FrameRate * 12 / Bounds.Width);
+                return 8;
+            return Math.Max(8, e.Duration * e.FrameRate * 12 / Bounds.Width);
         }
     }
 
@@ -110,6 +130,8 @@ public sealed class TimelineControl : Control
     private double Pps => Duration > 0 ? Inner / Duration : 0;
     private double X(double t) => Duration > 0 ? t / Duration * Inner : 0;
     private double T(double x) => Inner > 0 ? x / Inner * Duration : 0;
+
+    private static SolidColorBrush White(double alpha) => new(Color.FromArgb((byte)Math.Round(alpha * 255), 255, 255, 255));
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -158,11 +180,15 @@ public sealed class TimelineControl : Control
         {
             FollowPlayhead();
         }
+        else if (e.PropertyName == nameof(EditorViewModel.Tool))
+        {
+            Cursor = Cursor.Default;
+        }
     }
 
     private void OnEditorChanged(object? sender, EventArgs e)
     {
-        UpdateScanTimer();
+        UpdatePulse();
         InvalidateVisual();
     }
 
@@ -171,6 +197,7 @@ public sealed class TimelineControl : Control
         _lastZoom = Zoom;
         ExtentWidth = Inner;
         MaxScroll = Math.Max(0, Inner - Bounds.Width);
+        ZoomText = Zoom.ToString(Zoom < 10 ? "0.0" : "0", CultureInfo.InvariantCulture) + "×";
         if (ScrollOffset > MaxScroll)
             ScrollOffset = MaxScroll;
         InvalidateVisual();
@@ -183,31 +210,39 @@ public sealed class TimelineControl : Control
             ScrollOffset = Math.Clamp(x - Bounds.Width * 0.1, 0, MaxScroll);
     }
 
-    /// <summary>Animates the violet sweep over clips Claude is working on.</summary>
-    private void UpdateScanTimer()
+    /// <summary>Runs the ring animation while a clip is being edited by Claude or was just changed.</summary>
+    private void UpdatePulse()
     {
-        bool working = _editor?.Clips.Any(c => c.IsAiWorking) ?? false;
-        if (working && _scanTimer is null)
+        var now = DateTime.UtcNow;
+        var recent = _editor?.Clips.Where(c => c.IsAiRecent).Select(c => c.Id).ToHashSet() ?? [];
+        foreach (int id in _recentSince.Keys.Where(k => !recent.Contains(k)).ToList())
+            _recentSince.Remove(id);
+        foreach (int id in recent)
+            _recentSince.TryAdd(id, now);
+
+        bool animate = (_editor?.Clips.Any(c => c.IsAiWorking) ?? false) || _recentSince.Values.Any(t => now - t < PulseTime);
+        if (animate && _pulseTimer is null)
         {
-            var start = DateTime.UtcNow;
-            _scanTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, (_, _) =>
+            _pulseStart = now;
+            _pulseTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(33), DispatcherPriority.Render, (_, _) =>
             {
-                _scanPhase = (DateTime.UtcNow - start).TotalSeconds / 1.6 % 1;
                 InvalidateVisual();
+                UpdatePulse();
             });
-            _scanTimer.Start();
+            _pulseTimer.Start();
         }
-        else if (!working && _scanTimer is not null)
+        else if (!animate && _pulseTimer is not null)
         {
-            _scanTimer.Stop();
-            _scanTimer = null;
+            _pulseTimer.Stop();
+            _pulseTimer = null;
+            InvalidateVisual();
         }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        _scanTimer?.Stop();
-        _scanTimer = null;
+        _pulseTimer?.Stop();
+        _pulseTimer = null;
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -219,13 +254,12 @@ public sealed class TimelineControl : Control
         var editor = _editor;
         if (editor is null || Bounds.Width <= 0)
             return;
-        UpdateScanTimer();
+        UpdatePulse();
 
         double scroll = Math.Clamp(ScrollOffset, 0, MaxScroll);
         var visible = new Rect(scroll, 0, Bounds.Width, Bounds.Height);
         using var _ = context.PushTransform(Matrix.CreateTranslation(-scroll, 0));
 
-        DrawRuler(context, editor, visible);
         if (!editor.HasFile)
         {
             DrawEmpty(context, visible);
@@ -233,203 +267,137 @@ public sealed class TimelineControl : Control
         }
 
         var media = editor.Media!;
-        DrawSourceBase(context, editor, media, visible);
-        DrawGaps(context, editor, visible);
-
-        var ordered = editor.Clips
-            .Select((c, i) => (Clip: c, Index: i))
-            .OrderBy(x => x.Clip.IsSelected ? 4 : x.Clip.IsIncluded ? 3 : 2)
-            .ThenBy(x => x.Index);
-        foreach (var (clip, _) in ordered)
-            DrawClip(context, editor, media, clip, visible);
-
-        DrawKeyframes(context, media, visible);
+        DrawRuler(context, editor, media, visible);
+        DrawVideoTrack(context, editor, media, visible);
+        DrawAudioTrack(context, editor, media, visible);
+        foreach (var clip in editor.Clips.OrderBy(c => c.IsSelected))
+            DrawSegment(context, editor, clip, visible);
+        DrawRings(context, editor, visible);
         DrawPlayhead(context, editor);
-    }
-
-    private void DrawRuler(DrawingContext ctx, EditorViewModel editor, Rect visible)
-    {
-        double w = Inner;
-        var rulerRect = new Rect(0, 0, w, RulerHeight);
-        using var clip = ctx.PushClip(new RoundedRect(rulerRect, 4));
-        ctx.FillRectangle(RulerBg, rulerRect);
-        if (Duration <= 0)
-            return;
-
-        double pps = Pps;
-        // Labelled ticks at least 84 px apart (the design uses 5 s … 2 min at 1×).
-        double iv = RulerSteps.FirstOrDefault(c => c * pps >= 84);
-        if (iv == 0)
-            iv = RulerSteps[^1];
-
-        DrawTicks(ctx, iv / 10 / Duration * w, 4, MinorTick, visible);
-        DrawTicks(ctx, iv / 2 / Duration * w, 8, MidTick, visible);
-
-        var font = MonoFace(FontWeight.Medium);
-        for (int k = 0; ; k++)
-        {
-            double t = k * iv;
-            if (t > Duration + 1e-9)
-                break;
-            double x = X(t);
-            if (x > visible.Right + 60)
-                break;
-            if (x < visible.Left - 120)
-                continue;
-            ctx.FillRectangle(MajorTick, new Rect(Math.Floor(x), 0, 1, RulerHeight));
-            // The playhead label covers ruler labels next to it.
-            if (Math.Abs(t - editor.Time) * pps >= 58)
-            {
-                var text = Text(RulerLabel(t, iv), font, 10.5, RulerText);
-                ctx.DrawText(text, new Point(Math.Floor(x) + 6, 4 + (14.7 - text.Height) / 2));
-            }
-        }
-
-        foreach (var clipVm in editor.Clips)
-        {
-            if (!clipVm.IsIncluded)
-                continue;
-            var color = clipVm.IsAi ? Violet : clipVm.IsSelected ? Accent : Color.FromArgb(140, Accent.R, Accent.G, Accent.B);
-            ctx.FillRectangle(new SolidColorBrush(color), new Rect(X(clipVm.Start), RulerHeight - 2, X(clipVm.End) - X(clipVm.Start), 2));
-        }
-    }
-
-    private static readonly double[] RulerSteps =
-        [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
-
-    private static string RulerLabel(double t, double interval)
-    {
-        if (interval < 1)
-        {
-            long tenths = (long)Math.Round(t * 10);
-            long s = tenths / 10;
-            return string.Create(CultureInfo.InvariantCulture, $"{s / 60}:{s % 60:00}.{tenths % 10}");
-        }
-        long whole = (long)Math.Floor(t + 1e-6);
-        return whole >= 3600
-            ? string.Create(CultureInfo.InvariantCulture, $"{whole / 3600}:{whole / 60 % 60:00}:{whole % 60:00}")
-            : string.Create(CultureInfo.InvariantCulture, $"{whole / 60}:{whole % 60:00}");
-    }
-
-    private static void DrawTicks(DrawingContext ctx, double step, double height, IBrush brush, Rect visible)
-    {
-        if (step < 2)
-            return;
-        double start = Math.Floor(visible.Left / step) * step;
-        for (double x = start; x <= visible.Right; x += step)
-            ctx.FillRectangle(brush, new Rect(Math.Floor(x), RulerHeight - height, 1, height));
     }
 
     private void DrawEmpty(DrawingContext ctx, Rect visible)
     {
-        var rect = new Rect(visible.Left + 0.75, ContentTop + 0.75, Bounds.Width - 1.5, ContentHeight - 1.5);
-        var pen = new Pen(EmptyBorder, 1.5, new DashStyle([3, 2], 0));
-        ctx.DrawRectangle(null, pen, new RoundedRect(rect, 6));
-        var text = Text("Open a video. The whole file appears here and you mark what to keep.", SansFace(FontWeight.Normal), 12, GapText);
-        ctx.DrawText(text, new Point(rect.Center.X - text.Width / 2, rect.Center.Y - text.Height / 2));
+        var rect = new Rect(visible.Left, VideoTop, Bounds.Width, TotalHeight - VideoTop);
+        ctx.FillRectangle(EmptyBg, rect);
+        var text = Text("Thumbnails, waveform and segments appear here after you open a video", SansFace(FontWeight.Normal), 12, EmptyText);
+        ctx.DrawText(text, new Point(Math.Round(rect.Center.X - text.Width / 2), Math.Round(rect.Center.Y - text.Height / 2)));
     }
 
-    /// <summary>The whole source, greyed out: excluded parts show this through.</summary>
-    private void DrawSourceBase(DrawingContext ctx, EditorViewModel editor, IMediaPreview media, Rect visible)
+    private static readonly double[] RulerSteps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+
+    private void DrawRuler(DrawingContext ctx, EditorViewModel editor, IMediaPreview media, Rect visible)
+    {
+        if (Duration <= 0)
+            return;
+        double pps = Pps;
+        // Labelled ticks at least 84 px apart, four unlabelled ones between them.
+        double step = RulerSteps.FirstOrDefault(c => c * pps >= 84);
+        if (step == 0)
+            step = RulerSteps[^1];
+
+        double minor = step / 5;
+        int firstMinor = (int)Math.Max(0, Math.Floor(T(visible.Left) / minor));
+        for (int k = firstMinor; ; k++)
+        {
+            double t = k * minor;
+            double x = X(t);
+            if (t > Duration + 1e-9 || x > visible.Right + 1)
+                break;
+            if (k % 5 == 0)
+                continue;
+            ctx.FillRectangle(MinorTick, new Rect(Math.Floor(x), RulerHeight - 4, 1, 4));
+        }
+
+        var font = MonoFace(FontWeight.Normal);
+        int firstMajor = (int)Math.Max(0, Math.Floor(T(visible.Left - 80) / step));
+        for (int k = firstMajor; ; k++)
+        {
+            double t = k * step;
+            double x = X(t);
+            if (t > Duration + 1e-9 || x > visible.Right + 1)
+                break;
+            ctx.FillRectangle(MajorTick, new Rect(Math.Floor(x), RulerHeight - 8, 1, 8));
+            var label = Text(RulerLabel(t, step), font, 10, RulerText);
+            ctx.DrawText(label, new Point(Math.Floor(x) + 4, 3 + (12 - label.Height) / 2 + 1));
+        }
+
+        if (editor.ShowScenes)
+        {
+            foreach (double t in media.SceneChanges)
+            {
+                double x = X(t);
+                if (x < visible.Left - 5 || x > visible.Right + 5)
+                    continue;
+                // A 5 px square turned 45°, centred on the scene change.
+                var c = new Point(x, 12 + 2.5);
+                var geo = new StreamGeometry();
+                using (var g = geo.Open())
+                {
+                    double r = 2.5 * Math.Sqrt(2);
+                    g.BeginFigure(new Point(c.X, c.Y - r), true);
+                    g.LineTo(new Point(c.X + r, c.Y));
+                    g.LineTo(new Point(c.X, c.Y + r));
+                    g.LineTo(new Point(c.X - r, c.Y));
+                    g.EndFigure(true);
+                }
+                ctx.DrawGeometry(SceneDiamond, null, geo);
+            }
+        }
+    }
+
+    private static string RulerLabel(double t, double step)
+    {
+        if (step < 1)
+        {
+            long tenths = (long)Math.Round(t * 10);
+            long s = tenths / 10;
+            return string.Create(CultureInfo.InvariantCulture, $"{s / 60:00}:{s % 60:00}.{tenths % 10}");
+        }
+        long whole = (long)Math.Round(t);
+        return whole >= 3600
+            ? string.Create(CultureInfo.InvariantCulture, $"{whole / 3600}:{whole / 60 % 60:00}:{whole % 60:00}")
+            : string.Create(CultureInfo.InvariantCulture, $"{whole / 60:00}:{whole % 60:00}");
+    }
+
+    private void DrawVideoTrack(DrawingContext ctx, EditorViewModel editor, IMediaPreview media, Rect visible)
     {
         double w = Inner;
-        var video = new Rect(0, ContentTop, w, VideoHeight);
-        using (ctx.PushClip(new RoundedRect(video, 4)))
+        var track = new Rect(0, VideoTop, w, VideoHeight);
+        using (ctx.PushClip(track))
         {
-            ctx.FillRectangle(LaneBg, video);
-            int n = (int)Math.Round(12 * Zoom);
-            double tw = w / n;
-            using (ctx.PushOpacity(0.22))
+            int n = Math.Max(1, (int)Math.Round(FramesAtFit * Zoom));
+            double fw = w / n;
+            for (int i = (int)Math.Max(0, Math.Floor(visible.Left / fw)); i < n && i * fw < visible.Right; i++)
             {
-                for (int i = (int)Math.Max(0, Math.Floor(visible.Left / tw)); i < n && i * tw < visible.Right; i++)
-                {
-                    var r = new Rect(i * tw, ContentTop, tw, VideoHeight);
-                    media.DrawFrame(ctx, r, (i + 0.5) / n * Duration, FrameLook.Excluded, i * 37);
-                    ctx.FillRectangle(BaseThumbBorder, new Rect(r.Right - 1, r.Y, 1, r.Height));
-                }
+                var r = new Rect(i * fw, VideoTop, fw, VideoHeight);
+                media.DrawFrame(ctx, r, (i + 0.5) / n * Duration, FrameLook.Thumbnail, i);
+                ctx.FillRectangle(FrameGap, new Rect(Math.Round(r.Right) - 1, r.Y, 1, r.Height));
+            }
+
+            if (editor.ShowKeyframes)
+                DrawKeyframes(ctx, media, visible);
+            if (editor.ShowScenes)
+            {
+                foreach (double t in media.SceneChanges)
+                    ctx.FillRectangle(SceneLine, new Rect(Math.Floor(X(t)), VideoTop, 1, VideoHeight));
             }
         }
-
-        for (int si = 0; si < editor.AudioLanes.Count; si++)
-        {
-            var lane = new Rect(0, ContentTop + AudioTop + si * AudioPitch, w, AudioHeight);
-            using (ctx.PushOpacity(editor.AudioLanes[si].IsMuted ? 0.3 : 1))
-            using (ctx.PushClip(new RoundedRect(lane, 4)))
-            {
-                ctx.FillRectangle(LaneBg, lane);
-                int count = Math.Max(360, (int)Math.Floor((w - 4) / 4));
-                DrawBars(ctx, media, si, lane.Deflate(new Thickness(2, 0)), 0, Duration, count, BaseBar, visible);
-            }
-        }
-
-        Hatch.Draw(ctx, new Rect(0, ContentTop, w, ContentHeight), visible, HatchBrush, 7);
+        ctx.FillRectangle(TrackLine, new Rect(visible.Left, VideoTop, visible.Width, 1));
     }
 
-    /// <summary>Waveform bars spread over <paramref name="rect"/> with 1 px gaps, centred vertically.</summary>
-    private void DrawBars(DrawingContext ctx, IMediaPreview media, int stream, Rect rect, double from, double to, int count,
-        IBrush brush, Rect visible)
-    {
-        if (count <= 0 || rect.Width <= 0)
-            return;
-        double bw = (rect.Width - (count - 1)) / count;
-        if (bw <= 0)
-            return;
-        var sample = media as DesignSample;
-        int n = sample?.AmplitudeSamples ?? 0;
-        int a0 = 0, a1 = 0;
-        if (sample is not null)
-        {
-            a0 = (int)Math.Floor(from / Duration * n);
-            a1 = Math.Max(a0 + 1, (int)Math.Ceiling(to / Duration * n));
-        }
-        int first = (int)Math.Max(0, Math.Floor((visible.Left - rect.X) / (bw + 1)) - 1);
-        for (int k = first; k < count; k++)
-        {
-            double x = rect.X + k * (bw + 1);
-            if (x > visible.Right)
-                break;
-            double peak;
-            if (sample is not null && from == 0 && to >= Duration && count == 360)
-            {
-                // The prototype's full-lane binning.
-                peak = sample.AudioPeakBySample(stream, (int)Math.Floor((double)k * n / count), (int)Math.Floor((double)(k + 1) * n / count));
-            }
-            else if (sample is not null && !(from == 0 && to >= Duration))
-            {
-                int j0 = a0 + (int)Math.Floor((double)k * (a1 - a0) / count);
-                int j1 = Math.Max(j0 + 1, a0 + (int)Math.Floor((double)(k + 1) * (a1 - a0) / count));
-                peak = sample.AudioPeakBySample(stream, j0, j1);
-            }
-            else
-            {
-                double t0 = from + (to - from) * k / count, t1 = from + (to - from) * (k + 1) / count;
-                peak = media.AudioPeak(stream, t0, t1);
-            }
-            double h = Math.Round(peak * 100, 1) / 100 * rect.Height;
-            if (h <= 0)
-                continue;
-            ctx.DrawRectangle(brush, null, new RoundedRect(new Rect(x, rect.Y + (rect.Height - h) / 2, bw, h), Math.Min(1, bw / 2)));
-        }
-    }
-
-    /// <summary>
-    /// Keyframe ticks along the bottom of the video lane, once zoomed in far enough for them to be
-    /// told apart (lossless cuts start at these).
-    /// </summary>
+    /// <summary>Hairline ticks along the top of the video track where lossless cuts can start.</summary>
     private void DrawKeyframes(DrawingContext ctx, IMediaPreview media, Rect visible)
     {
         var keyframes = media.Keyframes;
         if (keyframes.Count == 0 || Pps <= 0)
             return;
-        double t0 = T(visible.Left), t1 = T(visible.Right);
-        int first = LowerBound(keyframes, t0);
-        int last = LowerBound(keyframes, t1);
-        int count = last - first;
-        if (count > visible.Width / MinKeyframeSpacing)
+        int first = LowerBound(keyframes, T(visible.Left));
+        int last = LowerBound(keyframes, T(visible.Right) + 1e-9);
+        if (last - first > visible.Width / MinKeyframeSpacing)
             return;
-        double y = ContentTop + VideoHeight - KeyframeTickHeight;
         for (int i = first; i < last; i++)
-            ctx.FillRectangle(KeyframeTick, new Rect(Math.Floor(X(keyframes[i])), y, 1, KeyframeTickHeight));
+            ctx.FillRectangle(KeyframeTick, new Rect(Math.Floor(X(keyframes[i])), VideoTop, 1, KeyframeTickHeight));
     }
 
     private static int LowerBound(IReadOnlyList<double> sorted, double value)
@@ -446,203 +414,145 @@ public sealed class TimelineControl : Control
         return lo;
     }
 
-    private void DrawGaps(DrawingContext ctx, EditorViewModel editor, Rect visible)
+    private void DrawAudioTrack(DrawingContext ctx, EditorViewModel editor, IMediaPreview media, Rect visible)
     {
-        foreach (var (from, to) in editor.ExcludedGaps().Select(g => (g.Start, g.End)))
+        double w = Inner;
+        ctx.FillRectangle(AudioBg, new Rect(visible.Left, AudioTop, visible.Width, AudioHeight));
+        ctx.FillRectangle(TrackLine, new Rect(visible.Left, AudioTop, visible.Width, 1));
+
+        if (editor.ShowSilences)
         {
-            double x = X(from), w = X(to) - x;
-            if (x > visible.Right || x + w < visible.Left)
-                continue;
-            var rect = new Rect(x, ContentTop, w, VideoHeight);
-            using var clip = ctx.PushClip(rect);
-            double cx = x + 8;
-            if (w > 150)
+            foreach (var s in media.Silences)
             {
-                var label = Text("Excluded", SansFace(FontWeight.Normal), 11, GapText);
-                ctx.DrawText(label, new Point(cx, rect.Center.Y - label.Height / 2));
-                cx += label.Width + 8;
+                double x0 = X(s.Start), x1 = X(s.End);
+                if (x1 < visible.Left || x0 > visible.Right)
+                    continue;
+                var band = new Rect(x0, AudioTop, x1 - x0, AudioHeight);
+                Hatch.Draw(ctx, band, visible, SilenceHatch, 6, 2);
+                ctx.FillRectangle(SilenceEdge, new Rect(Math.Floor(x0), AudioTop, 1, AudioHeight));
+                ctx.FillRectangle(SilenceEdge, new Rect(Math.Ceiling(x1) - 1, AudioTop, 1, AudioHeight));
             }
-            if (w > 44)
-            {
-                var dur = Text(TimeFormat.WholeSeconds(to - from), MonoFace(FontWeight.Normal), 10.5, GapText);
-                ctx.DrawText(dur, new Point(cx, rect.Center.Y - dur.Height / 2));
-                cx += dur.Width + 8;
-            }
-            if (w > 150)
-                DrawKeepButton(ctx, new Point(cx, rect.Center.Y - 9), new HitRegion(HitKind.KeepGap, null, from, to));
         }
-    }
 
-    private void DrawKeepButton(DrawingContext ctx, Point topLeft, HitRegion region)
-    {
-        var text = Text("+ Keep", SansFace(FontWeight.Medium), 10.5, KeepText);
-        var rect = new Rect(topLeft.X, topLeft.Y, Math.Ceiling(text.Width) + 16, 18);
-        bool hover = _hover is { } h && h.Kind == region.Kind && h.Clip == region.Clip && h.From == region.From;
-        ctx.DrawRectangle(hover ? KeepBgHover : KeepBg, new Pen(KeepBorder, 1), new RoundedRect(rect.Deflate(0.5), 3));
-        ctx.DrawText(hover ? Text("+ Keep", SansFace(FontWeight.Medium), 10.5, Brushes.White) : text,
-            new Point(rect.X + 8, rect.Y + (18 - text.Height) / 2));
-        _hits.Add(region with { Rect = rect });
-    }
-
-    private void DrawClip(DrawingContext ctx, EditorViewModel editor, IMediaPreview media, ClipViewModel clip, Rect visible)
-    {
-        double x = X(clip.Start), w = X(clip.End) - x;
-        if (x > visible.Right + 20 || x + w < visible.Left - 20)
+        // One lane per audio stream, sharing the track; bars are centred with a 1 px gap.
+        int lanes = Math.Max(1, editor.AudioLanes.Count);
+        double laneHeight = (AudioHeight - 12) / lanes;
+        int count = Math.Max(1, (int)Math.Round(BarsAtFit * Zoom));
+        double pitch = (w + 1) / count;
+        double bw = pitch - 1;
+        if (bw <= 0)
             return;
-        var outer = new Rect(x + 1, ContentTop, Math.Max(0, w - 2), ContentHeight);
-        bool ai = clip.IsAi, sel = clip.IsSelected;
-        double pad = sel ? 14 : 7;
-
-        if (clip.IsIncluded)
+        var included = editor.Clips.Where(c => c.IsIncluded).Select(c => (c.Start, c.End)).ToList();
+        int first = (int)Math.Max(0, Math.Floor(visible.Left / pitch) - 1);
+        for (int lane = 0; lane < lanes; lane++)
         {
-            // Video block: header + thumbnails.
-            var video = new Rect(outer.X, ContentTop, outer.Width, VideoHeight);
-            using (ctx.PushClip(new RoundedRect(video, 4)))
+            if (lane >= media.AudioStreamCount)
+                break;
+            double top = AudioTop + 6 + lane * laneHeight;
+            using var fade = ctx.PushOpacity(lane < editor.AudioLanes.Count && editor.AudioLanes[lane].IsMuted ? 0.3 : 1);
+            for (int k = first; k < count; k++)
             {
-                ctx.FillRectangle(ClipBg, video);
-                int nT = Math.Max(1, (int)Math.Round(w / 90));
-                double tw = video.Width / nT;
-                for (int k = 0; k < nT; k++)
-                {
-                    var r = new Rect(video.X + k * tw, ContentTop + 18, tw, VideoHeight - 18);
-                    if (r.Right < visible.Left || r.X > visible.Right)
-                        continue;
-                    media.DrawFrame(ctx, r, clip.Start + (k + 0.5) / nT * clip.Duration, FrameLook.Thumbnail, k * 37 + clip.Id * 13);
-                    ctx.FillRectangle(ClipThumbBorder, new Rect(r.Right - 1, r.Y, 1, r.Height));
-                }
-
-                var headerBg = ai ? Violet : sel ? Accent : Color.Parse("#34474F");
-                var headerFg = new SolidColorBrush(ai ? Color.Parse("#140F22") : sel ? Colors.Black : Color.Parse("#DFF4FD"));
-                var header = new Rect(video.X, ContentTop, video.Width, 18);
-                ctx.FillRectangle(new SolidColorBrush(headerBg), header);
-                DrawClipHeader(ctx, clip, header, pad, headerFg, w > 120, visible);
+                double x = k * pitch;
+                if (x > visible.Right)
+                    break;
+                double t0 = k * Duration / count, t1 = (k + 1) * Duration / count;
+                double level = media.AudioPeak(lane, t0, t1);
+                double h = Math.Round(level * 1000) / 1000 * laneHeight;
+                if (h <= 0)
+                    continue;
+                double mid = (t0 + t1) / 2;
+                bool inClip = included.Any(c => mid >= c.Start && mid <= c.End);
+                ctx.DrawRectangle(inClip ? BarIn : BarOut, null,
+                    new RoundedRect(new Rect(x, top + (laneHeight - h) / 2, bw, h), Math.Min(1, bw / 2)));
             }
-
-            // Audio blocks.
-            for (int si = 0; si < editor.AudioLanes.Count; si++)
-            {
-                var lane = new Rect(outer.X, ContentTop + AudioTop + si * AudioPitch, outer.Width, AudioHeight);
-                using (ctx.PushOpacity(editor.AudioLanes[si].IsMuted ? 0.3 : 1))
-                using (ctx.PushClip(new RoundedRect(lane, 4)))
-                {
-                    ctx.FillRectangle(ClipAudioBg, lane);
-                    int nb = Math.Max(3, (int)Math.Floor(w / 4));
-                    DrawBars(ctx, media, si, lane.Deflate(new Thickness(2, 0)), clip.Start, clip.End, nb, ClipBar, visible);
-                }
-            }
-        }
-        else
-        {
-            // Excluded clip: dashed outline with a struck-through label.
-            var pen = new Pen(new SolidColorBrush(Color.Parse("#6A6A6A")), 1, new DashStyle([3, 3], 0));
-            ctx.DrawRectangle(null, pen, new RoundedRect(outer.Deflate(0.5), 4));
-            using (ctx.PushClip(outer.Deflate(new Thickness(pad, 0))))
-            {
-                var num = Text(clip.Number.ToString(CultureInfo.InvariantCulture), MonoFace(FontWeight.SemiBold), 10.5, GapText);
-                double lx = outer.X + pad;
-                ctx.DrawText(num, new Point(lx, ContentTop + 4 + (14.7 - num.Height) / 2));
-                lx += num.Width + 6;
-                double keepSpace = w > 110 ? 60 : 0;
-                var label = Text(clip.Label, SansFace(FontWeight.Medium), 10.5, GapText, Math.Max(0, outer.Right - pad - keepSpace - lx));
-                var origin = new Point(lx, ContentTop + 4 + (14.7 - label.Height) / 2);
-                ctx.DrawText(label, origin);
-                // line-through at the font's strikeout position (0.319 em above the baseline).
-                double sy = Math.Round(origin.Y + label.Baseline - 0.319 * 10.5);
-                ctx.FillRectangle(GapText, new Rect(lx, sy, label.WidthIncludingTrailingWhitespace, 1));
-            }
-            if (w > 110)
-            {
-                var keepText = Text("+ Keep", SansFace(FontWeight.Medium), 10.5, KeepText);
-                double bw = Math.Ceiling(keepText.Width) + 16;
-                DrawKeepButton(ctx, new Point(outer.Right - pad - bw, ContentTop + 4), new HitRegion(HitKind.KeepClip, clip, 0, 0));
-            }
-        }
-
-        if (clip.IsAiWorking)
-        {
-            using var clipScan = ctx.PushClip(new Rect(outer.X, ContentTop + 18, outer.Width, ContentHeight - 18));
-            double sw = w * 0.3;
-            double sx = x - sw + _scanPhase * 4.4 * sw;
-            var brush = new LinearGradientBrush
-            {
-                StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative),
-                EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative),
-                GradientStops =
-                {
-                    new GradientStop(Colors.Transparent, 0),
-                    new GradientStop(Color.FromArgb(102, Violet.R, Violet.G, Violet.B), 0.5),
-                    new GradientStop(Colors.Transparent, 1),
-                },
-            };
-            ctx.FillRectangle(brush, new Rect(sx, ContentTop + 18, sw, ContentHeight - 18));
-        }
-
-        // Ring.
-        Color? ring = !clip.IsIncluded
-            ? (sel ? Color.Parse("#A6A6A6") : null)
-            : ai ? Violet : sel ? Accent : Color.FromArgb(26, 255, 255, 255);
-        if (ring is { } rc && outer.Width > 0)
-        {
-            double rw = sel || ai ? 2 : 1;
-            ctx.DrawRectangle(null, new Pen(new SolidColorBrush(rc), rw), new RoundedRect(outer.Deflate(rw / 2), 4 - rw / 2));
-        }
-
-        if (sel)
-        {
-            var handleColor = new SolidColorBrush(!clip.IsIncluded ? Color.Parse("#A6A6A6") : ai ? Violet : Accent);
-            var left = new Rect(outer.X, ContentTop, HandleWidth, ContentHeight);
-            var right = new Rect(outer.Right - HandleWidth, ContentTop, HandleWidth, ContentHeight);
-            ctx.DrawRectangle(handleColor, null, new RoundedRect(left, 4, 0, 0, 4));
-            ctx.DrawRectangle(handleColor, null, new RoundedRect(right, 0, 4, 4, 0));
-            foreach (var h in new[] { left, right })
-            {
-                double gy = ContentTop + ContentHeight / 2 - 8;
-                ctx.FillRectangle(GripLine, new Rect(h.X + 2.5, gy, 1, 16));
-                ctx.FillRectangle(GripLine, new Rect(h.X + 5.5, gy, 1, 16));
-            }
-            _hits.Add(new HitRegion(HitKind.TrimIn, clip, 0, 0) { Rect = left });
-            _hits.Add(new HitRegion(HitKind.TrimOut, clip, 0, 0) { Rect = right });
         }
     }
 
-    private static void DrawClipHeader(DrawingContext ctx, ClipViewModel clip, Rect header, double pad, IBrush fg, bool showDuration,
-        Rect visible)
+    private Rect SegmentRect(ClipViewModel clip)
     {
-        using var clipHeader = ctx.PushClip(header);
-        // Keep the name readable when the clip starts left of the view.
-        double lx = Math.Max(header.X, Math.Min(visible.Left, header.Right - 80)) + pad, right = header.Right - pad;
-        using (ctx.PushOpacity(0.75))
+        double x = X(clip.Start);
+        return new Rect(x, VideoTop + SegmentInset, Math.Max(0, X(clip.End) - x), TotalHeight - VideoTop - 2 * SegmentInset);
+    }
+
+    private void DrawSegment(DrawingContext ctx, EditorViewModel editor, ClipViewModel clip, Rect visible)
+    {
+        var rect = SegmentRect(clip);
+        if (rect.X > visible.Right + 10 || rect.Right < visible.Left - 10)
+            return;
+        bool sel = clip.IsSelected;
+        var fill = !clip.IsIncluded ? SegmentFillExcluded : sel ? SegmentFillSelected : SegmentFill;
+        var pen = sel ? SegmentBorderSelected : clip.IsIncluded ? SegmentBorder : SegmentBorderExcluded;
+        ctx.DrawRectangle(fill, pen, new RoundedRect(rect.Deflate(0.5), 3.5));
+        _hits.Add(new HitRegion(HitKind.Segment, clip) { Rect = rect });
+
+        // Label chip: number and name.
+        double maxWidth = rect.Width - 8;
+        if (maxWidth > 14)
         {
-            var num = Text(clip.Number.ToString(CultureInfo.InvariantCulture), MonoFace(FontWeight.SemiBold), 10, fg);
-            ctx.DrawText(num, new Point(lx, header.Y + (18 - num.Height) / 2));
-            lx += num.Width + 6;
+            var num = Text(clip.Number.ToString(CultureInfo.InvariantCulture), MonoFace(FontWeight.Normal), 10, ChipNumber);
+            var labelBrush = clip.IsIncluded ? Brushes.White : ChipNumber;
+            double labelMax = Math.Max(1, maxWidth - 10 - num.Width - 5);
+            var label = Text(clip.Label, SansFace(FontWeight.Normal), 10, labelBrush, labelMax);
+            double chipWidth = Math.Min(maxWidth, 5 + num.Width + 5 + label.WidthIncludingTrailingWhitespace + 5);
+            var chip = new Rect(rect.X + 4, rect.Y + 4, chipWidth, 16);
+            using (ctx.PushClip(new RoundedRect(chip, 3)))
+            {
+                ctx.FillRectangle(ChipBg, chip);
+                ctx.DrawText(num, new Point(chip.X + 5, chip.Y + (16 - num.Height) / 2));
+                ctx.DrawText(label, new Point(chip.X + 5 + num.Width + 5, chip.Y + (16 - label.Height) / 2));
+            }
         }
-        FormattedText? dur = null;
-        if (showDuration)
+
+        // In and out handles, straddling the segment's edges.
+        var handleBrush = sel ? HandleSelected : Handle;
+        double hy = rect.Center.Y - HandleHeight / 2;
+        var left = new Rect(rect.X - HandleWidth / 2, hy, HandleWidth, HandleHeight);
+        var right = new Rect(rect.Right - HandleWidth / 2, hy, HandleWidth, HandleHeight);
+        ctx.DrawRectangle(handleBrush, null, new RoundedRect(left, 2));
+        ctx.DrawRectangle(handleBrush, null, new RoundedRect(right, 2));
+        _hits.Add(new HitRegion(HitKind.TrimIn, clip) { Rect = left.Inflate(new Thickness(2, 4)) });
+        _hits.Add(new HitRegion(HitKind.TrimOut, clip) { Rect = right.Inflate(new Thickness(2, 4)) });
+    }
+
+    /// <summary>Thin blue rings on clips Claude is editing or just changed ("ocPulse" in the design).</summary>
+    private void DrawRings(DrawingContext ctx, EditorViewModel editor, Rect visible)
+    {
+        var now = DateTime.UtcNow;
+        double phase = (now - _pulseStart).TotalSeconds % 1.6 / 1.6;
+        foreach (var clip in editor.Clips)
         {
-            dur = Text(TimeFormat.WholeSeconds(clip.Duration), MonoFace(FontWeight.Medium), 10, fg);
-            right -= dur.Width + 6;
-        }
-        var label = Text(clip.Label, SansFace(FontWeight.Medium), 11, fg, Math.Max(0, right - lx));
-        ctx.DrawText(label, new Point(lx, header.Y + (18 - label.Height) / 2));
-        if (dur is not null)
-        {
-            using (ctx.PushOpacity(0.8))
-                ctx.DrawText(dur, new Point(header.Right - pad - dur.Width, header.Y + (18 - dur.Height) / 2));
+            bool recent = _recentSince.TryGetValue(clip.Id, out var since);
+            if (!clip.IsAiWorking && !recent)
+                continue;
+            double x = X(clip.Start);
+            var rect = new Rect(x, VideoTop, Math.Max(0, X(clip.End) - x), TotalHeight - VideoTop);
+            if (rect.X > visible.Right || rect.Right < visible.Left)
+                continue;
+            bool pulsing = clip.IsAiWorking || now - since < PulseTime;
+            double opacity = 1, spread = 0, glow = 0;
+            if (pulsing)
+            {
+                // box-shadow 0 → 6 px fading out by 70 %, opacity 1 → .5 → 1.
+                double p = phase / 0.7;
+                spread = phase < 0.7 ? 6 * p : 0;
+                glow = phase < 0.7 ? 0.55 * (1 - p) : 0;
+                opacity = phase < 0.7 ? 1 - 0.5 * p : 0.5 + 0.5 * (phase - 0.7) / 0.3;
+            }
+            if (spread > 0.1)
+            {
+                var glowPen = new Pen(new SolidColorBrush(Accent, glow), spread);
+                ctx.DrawRectangle(null, glowPen, new RoundedRect(rect.Inflate(spread / 2), 4 + spread / 2));
+            }
+            using (ctx.PushOpacity(opacity))
+                ctx.DrawRectangle(null, new Pen(AccentBrush, 1), new RoundedRect(rect.Deflate(0.5), 3.5));
         }
     }
 
     private void DrawPlayhead(DrawingContext ctx, EditorViewModel editor)
     {
         double x = X(editor.Time);
-        ctx.FillRectangle(PlayheadBrush, new Rect(x - 0.5, 18, 1, Bounds.Height - 18));
-        var text = Text(TimeFormat.MinutesSeconds(editor.Time), MonoFace(FontWeight.SemiBold), 10.5, PlayheadText);
-        double lw = text.Width + 12;
-        // Centred on the playhead, but kept inside the timeline at its very start and end.
-        var rect = new Rect(Math.Clamp(x - lw / 2, 3, Math.Max(3, Inner - lw - 3)), 3, lw, 17);
-        ctx.DrawRectangle(RulerBg, null, new RoundedRect(rect.Inflate(3), 6));
-        ctx.DrawRectangle(PlayheadBrush, null, new RoundedRect(rect, 3));
-        ctx.DrawText(text, new Point(rect.X + 6, rect.Y + (17 - text.Height) / 2));
+        ctx.FillRectangle(AccentBrush, new Rect(x - 0.5, 0, 1, TotalHeight));
+        ctx.DrawRectangle(AccentBrush, null, new RoundedRect(new Rect(x - 5, 0, 10, 11), 2, 2, 5, 5));
     }
 
     // ---- Text helpers --------------------------------------------------------------------
@@ -667,13 +577,9 @@ public sealed class TimelineControl : Control
     private HitRegion? HitTest(Point p)
     {
         var content = new Point(p.X + ScrollOffset, p.Y);
-        for (int i = _hits.Count - 1; i >= 0; i--)
-        {
-            var h = _hits[i];
-            if (h.Rect.Inflate(new Thickness(h.Kind is HitKind.TrimIn or HitKind.TrimOut ? 2 : 0, 0)).Contains(content))
-                return h;
-        }
-        return null;
+        // Handles first (they overhang the segments), then segments, the selected one on top.
+        return _hits.LastOrDefault(h => h.Kind is HitKind.TrimIn or HitKind.TrimOut && h.Rect.Contains(content))
+               ?? _hits.LastOrDefault(h => h.Kind == HitKind.Segment && h.Rect.Contains(content));
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -683,26 +589,24 @@ public sealed class TimelineControl : Control
         if (editor is null || !editor.HasFile || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             return;
         var p = e.GetPosition(this);
+        double t = Math.Clamp(T(p.X + ScrollOffset), 0, Duration);
         var hit = HitTest(p);
-        switch (hit?.Kind)
+        if (editor.Tool == TimelineTool.Split && hit is { Clip: { } target } && p.Y > RulerHeight)
         {
-            case HitKind.KeepGap:
-                editor.KeepRange(hit.From, hit.To);
-                break;
-            case HitKind.KeepClip:
-                editor.Keep(hit.Clip!);
-                break;
-            case HitKind.TrimIn or HitKind.TrimOut:
-                _drag = new Drag(hit.Kind == HitKind.TrimIn ? DragKind.TrimIn : DragKind.TrimOut, hit.Clip,
-                    p.X, hit.Kind == HitKind.TrimIn ? hit.Clip!.Start : hit.Clip!.End, Guid.NewGuid().ToString("N"));
-                editor.Select(hit.Clip);
-                e.Pointer.Capture(this);
-                break;
-            default:
-                _drag = new Drag(DragKind.Scrub, null, p.X, 0, null);
-                editor.ScrubTo(T(p.X + ScrollOffset), select: true);
-                e.Pointer.Capture(this);
-                break;
+            editor.SplitAt(target, t);
+        }
+        else if (hit?.Kind is HitKind.TrimIn or HitKind.TrimOut && editor.Tool == TimelineTool.Select)
+        {
+            _drag = new Drag(hit.Kind == HitKind.TrimIn ? DragKind.TrimIn : DragKind.TrimOut, hit.Clip,
+                p.X, hit.Kind == HitKind.TrimIn ? hit.Clip!.Start : hit.Clip!.End, Guid.NewGuid().ToString("N"));
+            editor.Select(hit.Clip);
+            e.Pointer.Capture(this);
+        }
+        else
+        {
+            _drag = new Drag(DragKind.Scrub, null, p.X, 0, null);
+            editor.ScrubTo(t, select: true);
+            e.Pointer.Capture(this);
         }
         e.Handled = true;
         InvalidateVisual();
@@ -722,18 +626,17 @@ public sealed class TimelineControl : Control
                 return;
             case DragKind.TrimIn or DragKind.TrimOut:
                 double v = _drag.Origin + (p.X - _drag.StartX) / Pps;
-                editor.Trim(_drag.Clip!, _drag.Kind == DragKind.TrimIn, v, 8 / Pps, _drag.MergeKey);
+                // Alt drags freely, without snapping to keyframes.
+                double snap = e.KeyModifiers.HasFlag(KeyModifiers.Alt) ? 0 : SnapPixels / Pps;
+                editor.Trim(_drag.Clip!, _drag.Kind == DragKind.TrimIn, v, snap, _drag.MergeKey);
                 return;
         }
 
-        var hit = HitTest(p);
-        Cursor = hit?.Kind is HitKind.TrimIn or HitKind.TrimOut ? new Cursor(StandardCursorType.SizeWestEast)
-            : hit is not null ? new Cursor(StandardCursorType.Hand) : Cursor.Default;
-        if (!Equals(hit, _hover))
-        {
-            _hover = hit;
-            InvalidateVisual();
-        }
+        var hit = editor.HasFile ? HitTest(p) : null;
+        Cursor = editor.Tool == TimelineTool.Split && hit is not null && p.Y > RulerHeight ? new Cursor(StandardCursorType.Cross)
+            : hit?.Kind is HitKind.TrimIn or HitKind.TrimOut ? new Cursor(StandardCursorType.SizeWestEast)
+            : hit is not null ? new Cursor(StandardCursorType.Hand)
+            : Cursor.Default;
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -750,16 +653,6 @@ public sealed class TimelineControl : Control
     {
         base.OnPointerCaptureLost(e);
         _drag = default;
-    }
-
-    protected override void OnPointerExited(PointerEventArgs e)
-    {
-        base.OnPointerExited(e);
-        if (_hover is not null)
-        {
-            _hover = null;
-            InvalidateVisual();
-        }
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -797,13 +690,12 @@ public sealed class TimelineControl : Control
 
     private enum HitKind
     {
-        KeepGap,
-        KeepClip,
+        Segment,
         TrimIn,
         TrimOut,
     }
 
-    private sealed record HitRegion(HitKind Kind, ClipViewModel? Clip, double From, double To)
+    private sealed record HitRegion(HitKind Kind, ClipViewModel? Clip)
     {
         public Rect Rect { get; init; }
     }

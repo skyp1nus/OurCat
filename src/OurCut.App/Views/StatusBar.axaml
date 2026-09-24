@@ -3,36 +3,32 @@
              xmlns:vm="using:OurCut.App.ViewModels"
              x:Class="OurCut.App.Views.StatusBar"
              x:DataType="vm:EditorViewModel">
-  <!-- Keyboard hints and status, 24 px + 1 px top border. -->
-  <Border Height="25" Background="{StaticResource ChromeBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
+  <!-- Media details and messages on the left, keyboard hints on the right. 24 px including the top hairline. -->
+  <Border Height="24" Background="{StaticResource ChromeBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
           Padding="14,0">
-    <Grid ColumnDefinitions="Auto,*,Auto">
-      <StackPanel Orientation="Horizontal" Spacing="16">
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Text="{Binding StatusLeft}" FontSize="10.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
+                 TextTrimming="CharacterEllipsis" Margin="0,0,16,0" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16">
         <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="Space" /></Border><TextBlock Text="Play" /></StackPanel>
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="I" /></Border><Border Classes="kbd status"><TextBlock Text="O" /></Border><TextBlock Text="In / out" /></StackPanel>
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="←" /></Border><Border Classes="kbd status"><TextBlock Text="→" /></Border><TextBlock Text="Frame · Shift for 1 s" /></StackPanel>
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="S" /></Border><TextBlock Text="Split" /></StackPanel>
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="E" /></Border><TextBlock Text="Exclude / keep" /></StackPanel>
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="Ctrl+E" /></Border><TextBlock Text="Export" /></StackPanel>
+        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="I / O" /></Border><TextBlock Text="In / out" /></StackPanel>
+        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="← / →" /></Border><TextBlock Text="Frame step" /></StackPanel>
+        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="Del" /></Border><TextBlock Text="Remove" /></StackPanel>
+        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="Ctrl Z" /></Border><TextBlock Text="Undo" /></StackPanel>
       </StackPanel>
-      <TextBlock Grid.Column="2" Classes="mono" Text="{Binding StatusRight}" FontSize="11" Foreground="{StaticResource Muted2Brush}"
-                 VerticalAlignment="Center" />
     </Grid>
   </Border>
 
   <UserControl.Styles>
     <Style Selector="StackPanel.hint">
       <Setter Property="Orientation" Value="Horizontal" />
-      <Setter Property="Spacing" Value="6" />
+      <Setter Property="Spacing" Value="5" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="StackPanel.hint > TextBlock">
-      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontSize" Value="10.5" />
       <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
       <Setter Property="VerticalAlignment" Value="Center" />
-    </Style>
-    <Style Selector="StackPanel.hint Border.kbd > TextBlock">
-      <Setter Property="Foreground" Value="{StaticResource Text3Brush}" />
     </Style>
   </UserControl.Styles>
 </UserControl>

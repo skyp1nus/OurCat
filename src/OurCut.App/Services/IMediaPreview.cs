@@ -24,6 +24,12 @@ public interface IMediaPreview
     /// <summary>Keyframe times, sorted. Empty until the file has been scanned.</summary>
     IReadOnlyList<double> Keyframes { get; }
 
+    /// <summary>Silent source ranges, sorted. Empty until silence detection exists (only the demo has them).</summary>
+    IReadOnlyList<OurCut.Core.Model.TimeRange> Silences => [];
+
+    /// <summary>Scene change times, sorted. Empty until scene detection exists (only the demo has them).</summary>
+    IReadOnlyList<double> SceneChanges => [];
+
     int AudioStreamCount { get; }
 
     /// <summary>True for the design's shaded placeholder frames (demo mode).</summary>

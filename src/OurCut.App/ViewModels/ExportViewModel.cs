@@ -18,9 +18,14 @@ public enum ExportMode
     Encode,
 }
 
-public sealed partial class ExportModeOption(ExportViewModel owner, ExportMode mode, string title, string tag, string description, bool isAvailable)
+public sealed partial class ExportModeOption(ExportViewModel owner, ExportMode mode, string title, string tag, string description, bool isAvailable,
+    string cardTitle = "", string cardDescription = "")
     : ViewModelBase
 {
+    /// <summary>Title and one-line description on the mode card of the export dialog.</summary>
+    public string CardTitle { get; } = cardTitle;
+    public string CardDescription { get; } = cardDescription;
+
     public ExportMode Mode { get; } = mode;
     public string Title { get; } = title;
     public string Tag { get; } = tag;
@@ -123,9 +128,11 @@ public sealed partial class ExportViewModel : ViewModelBase
         _editor = editor;
         Modes =
         [
-            new(this, ExportMode.Copy, "Lossless copy", "Fastest", "Stream copy, no re-encoding. Cut points snap to the nearest keyframe.", true),
+            new(this, ExportMode.Copy, "Lossless copy", "Fastest", "Stream copy, no re-encoding. Cut points snap to the nearest keyframe.", true,
+                "Lossless", "Stream copy · keyframe-snapped"),
             new(this, ExportMode.Smart, "Smart cut", "Soon", "Re-encodes only the frames around each cut and copies everything else.", false),
-            new(this, ExportMode.Encode, "Re-encode", "Slowest", "Full transcode with the codec and quality you choose.", true),
+            new(this, ExportMode.Encode, "Re-encode", "Slowest", "Full transcode with the codec and quality you choose.", true,
+                "Re-encode", "Frame-accurate · slower"),
         ];
         Containers = [.. ContainerNames.Select(f => new ChoiceOption(f, () => Container = f))];
         Outputs =
@@ -139,6 +146,13 @@ public sealed partial class ExportViewModel : ViewModelBase
     }
 
     public IReadOnlyList<ExportModeOption> Modes { get; }
+
+    /// <summary>The modes offered in the dialog (smart cut is not available yet, so it is left out).</summary>
+    public IReadOnlyList<ExportModeOption> ModeCards => [.. Modes.Where(m => m.IsAvailable)];
+
+    /// <summary>Container, chapters and track options, folded away by default.</summary>
+    [ObservableProperty]
+    public partial bool ShowMoreOptions { get; set; }
     public IReadOnlyList<ChoiceOption> Containers { get; }
     public IReadOnlyList<ChoiceOption> Outputs { get; }
     public ObservableCollection<ExportRowViewModel> Rows { get; } = [];
@@ -151,15 +165,15 @@ public sealed partial class ExportViewModel : ViewModelBase
     public partial ExportStage Stage { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsEncode), nameof(ModeTitle), nameof(Estimate), nameof(Footer), nameof(Stats))]
+    [NotifyPropertyChangedFor(nameof(IsEncode), nameof(IsCopy), nameof(ModeTitle), nameof(Estimate), nameof(EstimateLine), nameof(Footer), nameof(Stats))]
     public partial ExportMode Mode { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(OutputPath), nameof(Footer))]
+    [NotifyPropertyChangedFor(nameof(OutputPath), nameof(Footer), nameof(FileNamesText))]
     public partial string Container { get; set; } = "MP4";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(OutputPath), nameof(FileCountText), nameof(Footer), nameof(CanAddChapters))]
+    [NotifyPropertyChangedFor(nameof(OutputPath), nameof(FileCountText), nameof(Footer), nameof(CanAddChapters), nameof(FileNamesText))]
     public partial bool Merge { get; set; } = true;
 
     [ObservableProperty]
@@ -169,7 +183,7 @@ public sealed partial class ExportViewModel : ViewModelBase
     public partial bool KeepAllTracks { get; set; } = true;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Estimate))]
+    [NotifyPropertyChangedFor(nameof(Estimate), nameof(EstimateLine))]
     public partial VideoEncoding Video { get; set; } = VideoEncoding.H264Quality;
 
     [ObservableProperty]
@@ -182,17 +196,18 @@ public sealed partial class ExportViewModel : ViewModelBase
 
     /// <summary>Overall progress 0..1.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PercentText), nameof(IsDone), nameof(IsNotDone), nameof(IsRunning), nameof(Title), nameof(Stats))]
+    [NotifyPropertyChangedFor(nameof(PercentText), nameof(IsDone), nameof(IsNotDone), nameof(IsRunning), nameof(Title), nameof(Stats),
+        nameof(ProgressText), nameof(ProgressDetail))]
     public partial double Progress { get; set; }
 
     /// <summary>Why the export failed; null while it runs or after it succeeds.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasError), nameof(IsRunning), nameof(Title), nameof(Stats))]
+    [NotifyPropertyChangedFor(nameof(HasError), nameof(IsRunning), nameof(Title), nameof(Stats), nameof(ProgressText), nameof(ProgressDetail))]
     public partial string? ErrorText { get; set; }
 
     /// <summary>Waiting for the keyframe scan before the cuts can be planned.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Title), nameof(Stats))]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(Stats), nameof(ProgressText))]
     public partial bool IsPreparing { get; set; }
 
     /// <summary>Demo only: restart the simulated progress after it completes.</summary>
@@ -232,6 +247,73 @@ public sealed partial class ExportViewModel : ViewModelBase
     }
 
     public string Summary => $"{Included.Count} clips · {TimeFormat.Duration(Total)} · from {_editor.MediaFileName}";
+
+    /// <summary>Next to the dialog title: "4 clips · 00:04:31.360".</summary>
+    public string HeaderSummary => $"{Included.Count} clips · {TimeFormat.Timecode(Total)}";
+
+    public bool IsCopy => Mode == ExportMode.Copy;
+
+    /// <summary>"Separate files (4)".</summary>
+    public string SeparateFilesText => $"Separate files ({Included.Count})";
+
+    /// <summary>The file names the export will write.</summary>
+    public string FileNamesText
+    {
+        get
+        {
+            if (Merge)
+                return $"{BaseName}-cut.{Extension}";
+            var on = Included;
+            return on.Count switch
+            {
+                0 => "",
+                1 => $"{BaseName}-1-{ExportPlanner.Slug(on[0].Label)}.{Extension}",
+                _ => $"{BaseName}-1-{ExportPlanner.Slug(on[0].Label)}.{Extension} … {BaseName}-{on.Count}-{ExportPlanner.Slug(on[^1].Label)}.{Extension}",
+            };
+        }
+    }
+
+    /// <summary>
+    /// Lossless mode: how far the in-points move back to a keyframe. Out-points are exact.
+    /// </summary>
+    public string SnapNote
+    {
+        get
+        {
+            var keyframes = _editor.Media?.Keyframes ?? [];
+            var on = Included;
+            if (keyframes.Count == 0)
+                return "In points snap back to the previous keyframe. Out points stay exact.";
+            var shifts = on.Select(c => c.Start - (keyframes.LastOrDefault(k => k <= c.Start + 1e-6)))
+                .Where(d => d > 0.0005).ToList();
+            return shifts.Count == 0
+                ? "All in points already sit on keyframes."
+                : $"{shifts.Count} of {on.Count} in points will snap back to the previous keyframe (up to {shifts.Max().ToString("0.000", CultureInfo.InvariantCulture)} s earlier). Out points stay exact.";
+        }
+    }
+
+    /// <summary>The line above the progress bar: "Writing clip 2 of 4", "Concatenating 4 clips", "Export complete".</summary>
+    public string ProgressText
+    {
+        get
+        {
+            if (HasError)
+                return "Export failed";
+            if (IsDone)
+                return "Export complete";
+            if (IsPreparing)
+                return "Preparing…";
+            int clips = Math.Max(1, Merge && Rows.Count > Included.Count ? Rows.Count - 1 : Rows.Count);
+            int current = Rows.IndexOf(Rows.FirstOrDefault(r => r.IsCurrent) ?? Rows.LastOrDefault()!) + 1;
+            return current > clips ? $"Concatenating {clips} clips" : $"Writing clip {Math.Max(1, current)} of {clips}";
+        }
+    }
+
+    /// <summary>Under the progress bar: time left and speed, or where the result went.</summary>
+    public string ProgressDetail => HasError ? ErrorText! : IsDone ? $"{(Merge ? $"{BaseName}-cut.{Extension}" : FileCountText)} · {OutputFolder}" : Stats;
+
+    /// <summary>The dialog's footer: estimated size and whether anything is re-encoded.</summary>
+    public string EstimateLine => Estimate + (Mode == ExportMode.Copy ? " · no re-encode" : " · " + Video.Label.Split(' ')[0] + " re-encode");
     public string FileCountText => Merge ? "1 file" : $"{Included.Count} files";
     public string Footer => $"{ModeTitle} · {Container} · {(Merge ? "merged" : "separate files")}";
     public string PercentText => Math.Floor(Progress * 100).ToString(CultureInfo.InvariantCulture) + "%";
@@ -323,6 +405,7 @@ public sealed partial class ExportViewModel : ViewModelBase
         Outputs[0].IsSelected = Merge;
         Outputs[1].IsSelected = !Merge;
         OnPropertyChanged(nameof(Estimate));
+        OnPropertyChanged(nameof(EstimateLine));
     }
 
     [RelayCommand]
@@ -336,7 +419,12 @@ public sealed partial class ExportViewModel : ViewModelBase
         ErrorText = null;
         Stage = ExportStage.Configure;
         OnPropertyChanged(nameof(Summary));
+        OnPropertyChanged(nameof(HeaderSummary));
+        OnPropertyChanged(nameof(SeparateFilesText));
+        OnPropertyChanged(nameof(FileNamesText));
+        OnPropertyChanged(nameof(SnapNote));
         OnPropertyChanged(nameof(Estimate));
+        OnPropertyChanged(nameof(EstimateLine));
         OnPropertyChanged(nameof(FileCountText));
         OnPropertyChanged(nameof(OutputPath));
     }
@@ -381,6 +469,23 @@ public sealed partial class ExportViewModel : ViewModelBase
         string? folder = await _editor.Dialogs.PickFolderAsync("Save exports to", OutputFolder).ConfigureAwait(true);
         if (folder is not null)
             OutputFolder = folder;
+    }
+
+    [RelayCommand]
+    private void ToggleMoreOptions() => ShowMoreOptions = !ShowMoreOptions;
+
+    /// <summary>Cancel export: stops it and goes back to the settings.</summary>
+    [RelayCommand]
+    public void CancelExport()
+    {
+        StopTimer();
+        StopStatsTimer();
+        _exportCts?.Cancel();
+        Stage = ExportStage.Configure;
+        Progress = 0;
+        ErrorText = null;
+        IsPreparing = false;
+        Rows.Clear();
     }
 
     [RelayCommand]
@@ -497,7 +602,11 @@ public sealed partial class ExportViewModel : ViewModelBase
     {
         StopStatsTimer();
         _statsTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background,
-            (_, _) => OnPropertyChanged(nameof(Stats)));
+            (_, _) =>
+            {
+                OnPropertyChanged(nameof(Stats));
+                OnPropertyChanged(nameof(ProgressDetail));
+            });
         _statsTimer.Start();
     }
 
@@ -638,6 +747,7 @@ public sealed partial class ExportViewModel : ViewModelBase
             Rows[i].IsCurrent = i == current;
             Rows[i].IsPast = i < current;
         }
+        OnPropertyChanged(nameof(ProgressText));
     }
 }
 
