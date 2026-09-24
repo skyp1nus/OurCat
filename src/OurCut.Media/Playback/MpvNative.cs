@@ -138,7 +138,9 @@ internal static partial class MpvNative
         if (name != Library)
             return IntPtr.Zero;
         var folders = new[] { AppContext.BaseDirectory, Environment.GetEnvironmentVariable(MpvDirEnvironmentVariable) }
-            .OfType<string>().Where(d => d.Length > 0);
+            .OfType<string>().Where(d => d.Length > 0).ToList();
+        if (OperatingSystem.IsWindows())
+            EnsureVulkanLoader(folders);
         foreach (string candidate in Candidates)
         {
             foreach (string folder in folders)
@@ -150,6 +152,24 @@ internal static partial class MpvNative
                 return system;
         }
         return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// libmpv-2.dll imports vulkan-1.dll, which normally comes with the GPU driver. Without it (VMs,
+    /// the basic display adapter) libmpv would not load at all, so the Khronos loader that
+    /// fetch-deps.ps1 puts in vulkan-fallback\ is loaded first; Windows then binds libmpv's import to
+    /// the module already in the process. It lives in a subfolder so it never shadows the driver's own.
+    /// </summary>
+    private static void EnsureVulkanLoader(IEnumerable<string> folders)
+    {
+        if (NativeLibrary.TryLoad("vulkan-1.dll", out _))
+            return;
+        foreach (string folder in folders)
+        {
+            string fallback = Path.Combine(folder, "vulkan-fallback", "vulkan-1.dll");
+            if (File.Exists(fallback) && NativeLibrary.TryLoad(fallback, out _))
+                return;
+        }
     }
 
     /// <summary>Loads libmpv; returns false with a reason if it is missing or unusable.</summary>

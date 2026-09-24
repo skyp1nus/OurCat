@@ -31,6 +31,7 @@ public partial class App : Application
                 editor.Settings.Load(settings.Load());
                 editor.Settings.Store = settings;
             }
+            CrashLog.Install(editor.ShowMessage);
             var window = new MainWindow { DataContext = editor };
             editor.Dialogs = new StorageFileDialogs(window);
             desktop.MainWindow = window;

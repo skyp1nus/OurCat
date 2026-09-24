@@ -25,4 +25,12 @@
     <InternalsVisibleTo Include="OurCut.App.Tests" />
   </ItemGroup>
   <Import Project="..\..\build\OurCut.NativeDeps.targets" />
+
+  <!-- Release builds: SkiaSharp and HarfBuzz ship ~100 MB of native debug symbols that users do not need. -->
+  <Target Name="OurCutDropNativeSymbols" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+                             Condition="'%(Extension)' == '.pdb' and ('%(Filename)' == 'libSkiaSharp' or '%(Filename)' == 'libHarfBuzzSharp')" />
+    </ItemGroup>
+  </Target>
 </Project>

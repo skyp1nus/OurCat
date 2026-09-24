@@ -224,3 +224,39 @@ public class MediaPreviewDrawingTests
         Assert.True(partial[2] > partial[1]);
     }
 }
+
+public sealed class CrashLogTests : IDisposable
+{
+    private readonly string _saved = CrashLog.Folder;
+    private readonly string _dir = Directory.CreateTempSubdirectory("ourcut-log").FullName;
+
+    public CrashLogTests() => CrashLog.Folder = _dir;
+
+    public void Dispose()
+    {
+        CrashLog.Folder = _saved;
+        Directory.Delete(_dir, recursive: true);
+    }
+
+    [Fact]
+    public void Entries_are_appended_to_todays_log()
+    {
+        CrashLog.Write("First", new InvalidOperationException("boom"));
+        CrashLog.Write("Second", null);
+
+        string text = File.ReadAllText(CrashLog.CurrentFile);
+        Assert.Contains("First", text, StringComparison.Ordinal);
+        Assert.Contains("System.InvalidOperationException: boom", text, StringComparison.Ordinal);
+        Assert.Contains("Second", text, StringComparison.Ordinal);
+        Assert.StartsWith(_dir, CrashLog.CurrentFile, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_unwritable_folder_is_ignored()
+    {
+        string file = Path.Combine(_dir, "not-a-folder");
+        File.WriteAllText(file, "");
+        CrashLog.Folder = Path.Combine(file, "logs");
+        CrashLog.Write("Lost", new InvalidOperationException());
+    }
+}

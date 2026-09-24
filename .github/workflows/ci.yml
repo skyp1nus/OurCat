@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [master, 'claude/**']
+    tags: ['v*']
   pull_request:
 
 permissions:
@@ -52,6 +53,22 @@ jobs:
           path: artifacts/screenshots/
           if-no-files-found: ignore
 
+      # A ready-to-run folder with ffmpeg and libmpv: unzip and start OurCut.exe (no .NET install needed).
+      - name: Publish the app (win-x64)
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.1.0-dev' }
+          dotnet publish src/OurCut.App -c Release -r win-x64 --self-contained -p:PublishReadyToRun=true `
+            -p:Version=$version -o artifacts/OurCut-win-x64
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: OurCut-win-x64
+          path: artifacts/OurCut-win-x64/
+          if-no-files-found: error
+          retention-days: 14
+
   linux:
     runs-on: ubuntu-latest
     steps:
@@ -77,3 +94,25 @@ jobs:
           name: screenshots-linux
           path: artifacts/screenshots/
           if-no-files-found: ignore
+
+  # Tags v* become a GitHub release with the Windows build attached.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: OurCut-win-x64
+          path: OurCut-win-x64
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="OurCut-${GITHUB_REF_NAME}-win-x64.zip"
+          (cd OurCut-win-x64 && zip -qr9 "../$archive" .)
+          gh release create "$GITHUB_REF_NAME" "$archive" --repo "$GITHUB_REPOSITORY" \
+            --title "OurCut $GITHUB_REF_NAME" --generate-notes

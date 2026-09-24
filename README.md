@@ -7,8 +7,8 @@ or as separate files. Cuts are lossless by default (stream copy, no re-encoding)
 It is inspired by [LosslessCut](https://github.com/mifi/lossless-cut). Every edit is a command in a UI-independent
 core, so an AI assistant (Claude via MCP) can later edit the same timeline through the same operations.
 
-> **Status:** early development, Phase 1. Windows only for now; the code is kept cross-platform so macOS and
-> Linux can follow. Opening videos, playback (libmpv: frame-exact seeking and stepping, speed, volume, per-track
+> **Status:** Phase 1 is feature-complete and being tested on Windows. Windows only for now; the code is kept
+> cross-platform so macOS and Linux can follow. Opening videos, playback (libmpv: frame-exact seeking and stepping, speed, volume, per-track
 > mute), the timeline (thumbnails, waveforms, keyframes), editing with undo/redo, project files and export
 > (lossless or re-encoded, merged or separate) work.
 
@@ -43,14 +43,24 @@ Not in Phase 1: the MCP server, transcription and smart cut. The UI already has 
 | Ctrl+S / Ctrl+Shift+S | Save project / save as |
 | Ctrl+E | Export |
 
+## Download
+
+Every CI run builds a ready-to-run Windows folder: open the latest run under
+[Actions](https://github.com/skyp1nus/OurCut/actions), download **OurCut-win-x64**, unzip it and start
+`OurCut.exe`. It includes .NET, ffmpeg, ffprobe and libmpv, so nothing else needs installing. Tagged versions
+(`v*`) are published under [Releases](https://github.com/skyp1nus/OurCut/releases).
+
+If something goes wrong, the details are in `%LOCALAPPDATA%\OurCut\logs`. Settings, the recent files list and
+the preview cache are in `%LOCALAPPDATA%\OurCut`.
+
 ## Building
 
 Requirements: the [.NET 10 SDK](https://dotnet.microsoft.com/download) and PowerShell (Windows PowerShell 5.1
 that ships with Windows, or PowerShell 7).
 
 ```powershell
-git clone https://github.com/skyp1nus/OurCat.git
-cd OurCat
+git clone https://github.com/skyp1nus/OurCut.git
+cd OurCut
 powershell -ExecutionPolicy Bypass -File scripts\fetch-deps.ps1   # or: pwsh scripts/fetch-deps.ps1
 dotnet run --project src/OurCut.App
 ```
@@ -60,6 +70,9 @@ repository. The build copies them next to `OurCut.exe`. Versions, URLs and SHA-2
 [`scripts/deps.json`](scripts/deps.json), and the script refuses anything that does not match.
 Useful options: `-Check` (verify only, no downloads), `-Force` (reinstall), `-Component ffmpeg`,
 `-Proxy http://proxy:8080`. Downloads are cached in `deps/.cache`.
+
+A self-contained build like the one CI publishes:
+`dotnet publish src/OurCut.App -c Release -r win-x64 --self-contained -p:PublishReadyToRun=true -o out/OurCut`.
 
 `dotnet run --project src/OurCut.App -- path/to/video.mp4` opens a video (or an `.ourcut.json` project) at start.
 
