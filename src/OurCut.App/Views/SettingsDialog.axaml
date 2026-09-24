@@ -151,7 +151,7 @@
                                        HorizontalAlignment="Right" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
                               <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsDownloading}">
-                                <ProgressBar Width="64" Height="3" MinHeight="3" CornerRadius="2" Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                <ProgressBar Width="64" MinWidth="0" Height="3" MinHeight="3" CornerRadius="2" Minimum="0" Maximum="1" Value="{Binding Progress}"
                                              Background="{StaticResource FieldBrush}" Foreground="{StaticResource Text2Brush}" VerticalAlignment="Center" />
                                 <TextBlock Classes="mono" Text="{Binding PercentText}" FontSize="10.5" Width="28" TextAlignment="Right"
                                            Foreground="{StaticResource Text4Brush}" VerticalAlignment="Center" />

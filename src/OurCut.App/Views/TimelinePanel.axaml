@@ -90,6 +90,8 @@
               <TextBlock Classes="track" Text="V1" />
             </Border>
             <Border Grid.Row="2" BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,1,0,0">
+              <Panel>
+              <TextBlock Classes="track" Text="A1" IsVisible="{Binding !AudioLanes.Count}" />
               <ItemsControl ItemsSource="{Binding AudioLanes}" VerticalAlignment="Center">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:AudioLaneViewModel">
@@ -100,6 +102,7 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
+              </Panel>
             </Border>
           </Grid>
         </Border>

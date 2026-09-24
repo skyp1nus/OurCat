@@ -1,34 +1,7 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <!-- Path data copied from the design's inline SVGs (24×24 view box unless noted). -->
-  <StreamGeometry x:Key="IconFolder">M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z</StreamGeometry>
-  <StreamGeometry x:Key="IconSettings">M4 7h9M17 7h3M4 17h3M11 17h9M13 7a2 2 0 1 0 4 0a2 2 0 1 0 -4 0zM7 17a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z</StreamGeometry>
-  <StreamGeometry x:Key="IconExport">M12 15V4M7 9l5-5 5 5M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5</StreamGeometry>
-  <StreamGeometry x:Key="IconDrop">M12 4v11M7 10l5 5 5-5M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2</StreamGeometry>
-  <!-- 10×10 view box. -->
-  <StreamGeometry x:Key="IconMinimize">M0 5h10</StreamGeometry>
-  <StreamGeometry x:Key="IconMaximize">M2 0.5h6a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1 -1.5 1.5h-6a1.5 1.5 0 0 1 -1.5 -1.5v-6a1.5 1.5 0 0 1 1.5 -1.5z</StreamGeometry>
-  <StreamGeometry x:Key="IconCloseWindow">M0.5 0.5l9 9M9.5 0.5l-9 9</StreamGeometry>
-  <!-- Transport (filled). -->
-  <StreamGeometry x:Key="IconJumpIn">M6 5h0.2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-0.2a1 1 0 0 1 -1 -1v-12a1 1 0 0 1 1 -1zM19 5.5v13L9 12z</StreamGeometry>
-  <StreamGeometry x:Key="IconStepBack">M15 6v12l-8-6zM17.5 6a1 1 0 0 1 1 1v10a1 1 0 0 1 -2 0v-10a1 1 0 0 1 1 -1z</StreamGeometry>
-  <StreamGeometry x:Key="IconPlay">M8 5v14l11-7z</StreamGeometry>
-  <StreamGeometry x:Key="IconPause">M7 5h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1v-12a1 1 0 0 1 1 -1zM15 5h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1v-12a1 1 0 0 1 1 -1z</StreamGeometry>
-  <StreamGeometry x:Key="IconStepForward">M6.5 6a1 1 0 0 1 1 1v10a1 1 0 0 1 -2 0v-10a1 1 0 0 1 1 -1zM9 6v12l8-6z</StreamGeometry>
-  <StreamGeometry x:Key="IconJumpOut">M5 5.5v13L15 12zM17.8 5h0.2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-0.2a1 1 0 0 1 -1 -1v-12a1 1 0 0 1 1 -1z</StreamGeometry>
-  <!-- Volume: speaker is filled and stroked, the waves only stroked. -->
-  <StreamGeometry x:Key="IconSpeaker">M4 9.5v5h3.5L12 18V6L7.5 9.5z</StreamGeometry>
-  <StreamGeometry x:Key="IconSpeakerWaves">M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10</StreamGeometry>
-  <StreamGeometry x:Key="IconPlus">M12 5v14M5 12h14</StreamGeometry>
+  <!-- Path data copied from the design's inline SVGs. 24×24 view box unless noted. -->
   <StreamGeometry x:Key="IconCheck">M5 12.5L10 17L19 7</StreamGeometry>
-  <StreamGeometry x:Key="IconChevronDown">M6 9l6 6 6-6</StreamGeometry>
-  <StreamGeometry x:Key="IconUndo">M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11</StreamGeometry>
-  <StreamGeometry x:Key="IconSend">M12 19V5M5 12l7-7 7 7</StreamGeometry>
-  <StreamGeometry x:Key="IconClose">M6 6l12 12M18 6L6 18</StreamGeometry>
-  <!-- 16×16 view box (track mute). -->
-  <StreamGeometry x:Key="IconTrackSpeaker">M2.5 6h2.5l3.5-3v10L5 10H2.5z</StreamGeometry>
-  <StreamGeometry x:Key="IconTrackOn">M2.5 6h2.5l3.5-3v10L5 10H2.5zM11 5.5a3.5 3.5 0 0 1 0 5</StreamGeometry>
-  <StreamGeometry x:Key="IconTrackMuted">M2.5 6h2.5l3.5-3v10L5 10H2.5zM11 6l3 4M14 6l-3 4</StreamGeometry>
   <!-- design/project/OurCut.dc.html icons. 16×16 view box. -->
   <StreamGeometry x:Key="IconOpen16">M2 4.5h4l1.5 1.5H14v6.5H2z</StreamGeometry>
   <StreamGeometry x:Key="IconGearHub16">M5.6 8a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0 -4.8 0z</StreamGeometry>

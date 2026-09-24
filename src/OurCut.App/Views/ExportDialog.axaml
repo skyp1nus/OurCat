@@ -144,7 +144,7 @@
               <TextBlock Grid.Column="2" Classes="mono" Text="{Binding PercentText}" FontSize="11.5" FontWeight="Medium"
                          Foreground="{StaticResource TextBrush}" />
             </Grid>
-            <ProgressBar Name="Bar" Minimum="0" Maximum="1" Value="{Binding Progress}" Height="4" MinHeight="4" CornerRadius="2"
+            <ProgressBar Name="Bar" MinWidth="0" Minimum="0" Maximum="1" Value="{Binding Progress}" Height="4" MinHeight="4" CornerRadius="2"
                          Background="{StaticResource FieldBrush}" />
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Text="{Binding ProgressDetail}" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />

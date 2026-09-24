@@ -99,7 +99,7 @@
         <StackPanel Orientation="Horizontal" Spacing="6" Margin="10,0,0,0" VerticalAlignment="Center">
           <TextBlock Classes="mono" Text="{Binding TimeText}" Foreground="{StaticResource TextBrush}" />
           <TextBlock Classes="mono" Text="/" Foreground="{StaticResource Muted3Brush}" />
-          <TextBlock Classes="mono" Text="{Binding DurationText}" Foreground="{StaticResource MutedBrush}" />
+          <TextBlock Classes="mono" Text="{Binding TransportDurationText}" Foreground="{StaticResource MutedBrush}" />
         </StackPanel>
       </StackPanel>
 

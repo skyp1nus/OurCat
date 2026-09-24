@@ -1,32 +1,75 @@
-# LosslessCut AI Editor
+# OurCut Desktop Editor
 
-_Started 2026-09-22 22:09 UTC_
+_Started 2026-09-24 14:24 UTC_
 
 ---
 
 ## User
 
-Design a desktop video editor UI inspired by LosslessCut: fast, minimal, focused on cutting and assembling clips without re-encoding. It also has a built-in AI assistant (Claude via MCP) that edits the timeline alongside the user.
+Design OurCut, a desktop video editor inspired by LosslessCut. It's fast and minimal, focused on cutting segments and merging them without re-encoding. A built-in AI assistant (Claude via MCP) edits the timeline alongside the user.
 
-Platform: desktop (Windows/macOS), window 1440×900, dark theme by default.
+Visual style: follow the attached DESIGN.md (dark "mission control" style: matte-black surfaces, hairline borders, Inter at light weights, rationed blue accent). It describes a marketing site, so adapt it to a desktop app:
+- Ignore hero, logo strip, announcement bar, footer, display-size type and large section gaps.
+- UI text 11–14px, compact density, 4px grid.
+- Signal Blue only for:
+  - playhead
+  - selected segment outline
+  - active tool/tab
+  - focus rings
+  - links
+  Timeline segments get a low-alpha blue tint.
+- Export is the only bone (#f2f2f2) pill button. Other buttons are ghost.
+- Green/red only for status (MCP connected, export done) and destructive actions (delete, errors).
+- Timecodes use tabular numbers (Inter tnum or JetBrains Mono), format HH:MM:SS.mmm.
+
+Platform: Windows desktop, window 1440×900, dark only.
 
 Layout:
-1. Top bar: app name, open file, project name, export button (primary), settings.
-2. Video preview (center, largest area): player with play/pause, frame step ←/→, current timecode (HH:MM:SS.mmm), duration, volume, playback speed.
+1. Top bar (48px):
+   - app name, Open file, project name
+   - MCP status badge
+   - settings icon
+   - Export as a bone pill on the right
+2. Video preview (center, largest area):
+   - player with play/pause, frame step ←/→
+   - current timecode / duration
+   - volume, playback speed
 3. Timeline (bottom, full width):
-   - video thumbnails strip + audio waveform
-   - playhead, zoom slider, keyframe markers
-   - selected segments shown as colored ranges with draggable in/out handles
-   - silence/scene-detection markers as subtle overlays
-4. Clips panel (right sidebar): ordered list of segments (index, start–end, duration, label), drag to reorder, toggle include/exclude, delete. Total output duration at the bottom.
-5. AI panel (collapsible, right or bottom-right): chat-like activity log showing what Claude did ("Added clip 00:12–00:45", "Removed silence 3×"), undo per action, connection status (MCP connected/disconnected).
-6. Export dialog: format, lossless (copy) vs smart cut vs re-encode, merge clips into one file or export separately, output path.
+   - thumbnails strip, audio waveform, playhead, zoom slider
+   - keyframe markers as tiny hairline ticks
+   - silence/scene markers as subtle bands
+   - segments with draggable in/out handles
+4. Clips panel (right sidebar), styled as data-table rows:
+   - index, start–end, duration, label
+   - drag to reorder, include/exclude toggle, delete
+   - total output duration at the bottom
+5. AI panel (collapsible):
+   - log of Claude's actions as small node-cards, e.g. "Added clip 00:12–00:45", "Removed 3 silences"
+   - undo per action
+   - changed segments get a thin pulsing blue ring on the timeline
+6. Export dialog:
+   - mode: lossless (copy, keyframe-snapped) / re-encode
+   - merge into one file or export clips separately
+   - output path, progress bar, cancel
+7. Settings → Transcription:
+   - engine (Auto / Parakeet / Whisper)
+   - model
+   - device (Auto / GPU / CPU)
+   - language
+   - models folder with download/delete buttons
 
-States to show: empty state (drop a video here), editing with 5 clips, AI actively editing (highlight changed segments), exporting with progress.
+States to show:
+1. empty (drop a video here)
+2. editing with 5 clips
+3. AI actively editing
+4. exporting with progress
+5. settings open
 
-Style: clean pro-tool look (like DaVinci Resolve / Figma dark), neutral grays, one accent color for selections, monospace font for timecodes, compact spacing, clear keyboard shortcut hints (I/O for in/out, Space play, Del remove).
+Show keyboard hints subtly: Space play, I/O in/out, Del remove, Ctrl+Z undo, ←/→ frame step.
 
 ## Assistant
+
+_[tool: read_file]_
 
 _[tool: update_todos]_
 
@@ -34,18 +77,20 @@ _[tool: dc_write]_
 
 _[tool: show_html]_
 
-Now the states canvas.
-
-_[tool: dc_write]_
-
 _[tool: ready_for_verification]_
 
-I've built the editor, working name "Cutline". A board file shows all five states side by side, each a live 1440×900 window: empty with MCP disconnected, editing with 5 clips, Claude editing, the export dialog, and exporting. The last one loops its progress. A background check is still running, so I haven't looked at the rendered screens myself yet.
+I've built `OurCut.dc.html` as one working prototype of the 1440×900 Windows window. A switcher above it jumps between the five states. It's out for a background check now.
 
-- **Colours:** amber is the only selection colour (clips, handles, the Export button). Violet is used only for Claude's changes, so its edits stay separate from yours. The playhead is white.
-- **Interactive:** hover any window to use the shortcuts. Space plays, I/O set in/out points, ←/→ step a frame (Shift for 1 s), S splits and Del removes. You can drag in/out handles (snapping to keyframes is on by default), drag clip rows to reorder, and toggle clips on or off. Each Claude action has its own Undo/Redo, and the Claude panel collapses. Clicking the status pill switches MCP between connected and disconnected. Zoom works, as do the keyframe, silence and scene overlays.
-- **Standalone file:** `CutlineEditor.dc.html` opens on its own, with Tweaks for which screen to show, MCP status and whether the Claude panel is open.
-- **Placeholders:** video frames and thumbnails are shaded placeholders, not real footage. Send me screenshots or media if you want real frames.
+- **Empty:** a drop zone where dropping a file or clicking Open file loads the video.
+- **Editing:** the five clips are live. You can scrub, play, drag in/out handles (with an optional snap to keyframes), drag rows to reorder, turn clips on or off, and delete them. The shortcuts work: Space, I/O, ←/→ (Shift steps by one second), Del and Ctrl+Z.
+- **AI editing:** a scripted run plays out on its own. Claude removes 3 silences, adds a clip, trims one, then keeps a "reviewing" step running. Changed segments get a pulsing blue ring on the timeline, and each action has its own Undo.
+- **Exporting:** the dialog shows progress and turns green when done. In lossless mode it says how many in points will snap back to a keyframe, and by how much. Cancel works.
+- **Settings → Transcription:** the model list is live. Download shows a progress bar and Delete (in red) removes an installed model.
+
+A few things to know:
+- The video frame and thumbnails are striped placeholders, and the waveform is generated rather than real audio.
+- The other Settings sections in the side menu are labels only; just Transcription is designed.
+- I didn't add a place to type instructions to Claude in the AI panel, because you'd talk to Claude through its own MCP client. The panel only logs what it does.
 
 ## User
 
@@ -55,98 +100,12 @@ Found issues — fixing…
 
 _[tool: dc_js_str_replace]_
 
-_[tool: ready_for_verification]_
-
-I fixed the Claude activity log so it now scrolls to the newest entry when a window loads. In the "Claude actively editing" window, that brings the violet trim actions and the live "Removing pause in clip 4" item into view. A background check of the fix is still running.
-
-## User
-
-жовтий акцентний мені не подобається
-
-## Assistant
-
 _[tool: run_script]_
 
 _[tool: ready_for_verification]_
 
-_[tool: get_webview_logs]_
-
-_[tool: show_html]_
-
-_[tool: get_webview_logs]_
-
-_[tool: save_screenshot]_
-
-_[tool: ready_for_verification]_
-
-Я замінив жовтий акцент на бірюзово-блакитний в обох файлах: виділення кліпів, маркери обрізки та кнопка «Export». Фіолетовий, як і раніше, позначає зміни від Claude.
-
-Після заміни при завантаженні з'являються помилки в консолі, які не показують тексту. На моєму знімку редактор відображається нормально, але причину я ще не знайшов, тому запустив фонову перевірку.
-
-Якщо цей колір не підходить, назвіть інший. Зелений і червоний я б не брав: зелений уже позначає підключення, а червоний — видалення.
-
-## User
-
-Found issues — fixing…
-
-## Assistant
-
-_[tool: dc_html_str_replace]_
-
-_[tool: ready_for_verification]_
-
-У вступній примітці на сторінці зі станами досі був згаданий жовтий колір — я виправив текст на бірюзовий. Перевірка пройшла: помилок у консолі більше немає.
-
-## User
-
-цей застосунок буде поки тільки для віндовс зроби в стилі Avalonia
-
-## Assistant
-
-_[tool: run_script]_
-
-_[tool: dc_html_str_replace]_
-
-_[tool: ready_for_verification]_
-
-Я зробив Windows-версію в стилі темної теми Fluent з Avalonia: це новий файл `CutlineEditorWin.dc.html`. Він відкривається як окремий інтерактивний редактор, а на сторінці станів доданий як новий ряд з усіма п'ятьма станами (2a–2e) над попередньою версією. Зараз його ще перевіряють у фоні.
-
-- **Вікно:** замість кнопок macOS тепер кнопки згортання, розгортання та закриття Windows праворуч і меню File / Edit / View / Help у верхньому рядку.
-- **Шрифти:** інтерфейс у Segoe UI Variable, таймкоди в Cascadia Mono. Якщо Cascadia Mono немає, підставляється Consolas.
-- **Кольори й форми:** нейтральні сірі кольори Fluent, заокруглення 4 px у кнопок і полів, 8 px у діалогу.
-- **Акцент:** стандартний блакитний Fluent (#60CDFF). Ним же тепер позначені прапорці й повзунок масштабу. Зміни від Claude, як і раніше, фіолетові.
-- **Windows-деталі:** Ctrl замість ⌘ у підказках, шляхи збереження в C:\Users\…, кнопка «Show in Explorer» замість «Show in Finder».
-
-Шрифти Segoe UI Variable і Cascadia Mono є лише в Windows, тож на macOS перегляд покаже системні шрифти.
-
-## User
-
-назва ourcut зроби щоб більше був схожий на finel cut мені там подобається таймлайн
-
-## Assistant
-
-I'll keep it original rather than copying Final Cut: the timeline becomes a gapless storyline where each clip is one rounded block (name, film strip, attached waveform), with a thin source overview bar above it.
-
-_[tool: run_script]_
-
-_[tool: show_html]_
-
-_[tool: save_screenshot]_
-
-_[tool: run_script]_
-
-_[tool: save_screenshot]_
-
-_[tool: dc_html_str_replace]_
-
-_[tool: ready_for_verification]_
-
-Застосунок тепер називається OurCut, а таймлайн я переробив за мотивами Final Cut, не копіюючи його один в один. Нова версія — `OurCutEditor.dc.html`, вона також додана зверху на сторінку зі станами (3a–3e). Фонова перевірка ще триває.
-
-- **Кліпи в ряд:** кліпи стоять упритул один до одного в тому порядку, в якому піде експорт. Кожен кліп — окремий заокруглений блок: зверху назва й тривалість, під ними кадри, а внизу його власна звукова хвиля.
-- **Перетягування й обрізка:** блоки можна перетягувати, щоб змінити порядок. У виділеного кліпу з'являються ручки обрізки по краях, і наступні кліпи зсуваються, щоб не лишалося проміжків.
-- **Смуга «SOURCE» над таймлайном:** показує, звідки кожен кліп взято у вихідному файлі, разом з тишею та змінами сцен. По ній можна перемотувати.
-- **Мітки:** ключові кадри, тиша й сцени показані всередині кожного кліпу. Позначка «End» вказує загальну тривалість результату.
-
-Щоб таймлайн став вищим, я трохи зменшив панель Claude. Попередні версії лишаються нижче на тій самій сторінці.
+I fixed the three problems from the check, and it's running again now:
+- **Speed button:** it read "1.×" at normal speed and now reads 1×, 1.5×, 0.5× and 2×.
+- **Model table in Settings:** long model names like parakeet-tdt-0.6b-v2 were cut off next to the Installed badge. I narrowed the other columns to make room.
+- **Timeline scrollbar:** a horizontal scrollbar showed even at 1× zoom. It should now only appear when you zoom in.
 

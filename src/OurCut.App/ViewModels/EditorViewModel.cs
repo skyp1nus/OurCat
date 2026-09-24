@@ -110,7 +110,8 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasFile), nameof(IsEmpty), nameof(Duration), nameof(DurationText),
-        nameof(SourceLengthText), nameof(StatusRight), nameof(FrameText), nameof(HasSilenceData), nameof(HasSceneData))]
+        nameof(SourceLengthText), nameof(StatusRight), nameof(FrameText), nameof(HasSilenceData), nameof(HasSceneData),
+        nameof(TransportDurationText))]
     public partial IMediaPreview? Media { get; set; }
 
     partial void OnMediaChanged(IMediaPreview? oldValue, IMediaPreview? newValue)
@@ -175,6 +176,9 @@ public sealed partial class EditorViewModel : ViewModelBase
     public double Duration => HasFile ? Session.Project.SourceDuration : PlaceholderDuration;
     public double FrameRate => Session.Project.Source?.FrameRate is > 0 and var fps ? fps : 30;
     public string DurationText => TimeFormat.Timecode(Duration);
+
+    /// <summary>Duration next to the player's timecode; zero until a file is open.</summary>
+    public string TransportDurationText => TimeFormat.Timecode(HasFile ? Duration : 0);
     public string SourceLengthText => HasFile ? TimeFormat.WholeSeconds(Duration) : "no media";
     public string WindowTitle => HasFile ? $"{ProjectName} — OurCut" : "OurCut";
 
@@ -403,7 +407,7 @@ public sealed partial class EditorViewModel : ViewModelBase
     private void RaiseProjectReplaced()
     {
         foreach (string name in (string[])[nameof(ProjectName), nameof(WindowTitle), nameof(ProjectTitle), nameof(MediaInfoText),
-                     nameof(HasSilenceData), nameof(HasSceneData), nameof(HasFile), nameof(IsEmpty),
+                     nameof(HasSilenceData), nameof(HasSceneData), nameof(HasFile), nameof(IsEmpty), nameof(TransportDurationText),
                      nameof(Duration), nameof(DurationText), nameof(SourceLengthText), nameof(FrameRate), nameof(FrameText),
                      nameof(StatusRight)])
             OnPropertyChanged(name);

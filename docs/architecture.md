@@ -35,9 +35,16 @@ The session is not thread-safe. A future MCP server must marshal its calls to th
 | `MoveClipCommand` | `move_segment` | Moves a clip to another output position |
 | `RenameClipCommand` | `set_label` | Renames a clip |
 | `BatchCommand` | any | Several commands as one undo step |
+| `RevertEditCommand` | `revert_action` | Reverts one earlier edit and keeps the edits made after it |
 
 `EditorSession` wraps these with UI-friendly helpers (`Trim` clamps and snaps to keyframes, `KeepRange`
 inserts by source position, `Split` returns the new clip).
+
+`Revert(entry)` is the Undo on a single card in the Claude panel. Unlike `Undo`, which steps back through the
+history, it applies a `RevertEditCommand`: the clips that edit added, removed, changed or reordered go back to how
+they were before it, and every other clip stays as it is now. The revert is an ordinary edit, so Ctrl+Z undoes it
+and it can be reverted in turn (`RevertOf`, `IsReverted`). If a later edit changed one of the same clips there is no
+single right answer, so the command refuses with an `EditException` and the UI shows the reason.
 
 ## Media
 
@@ -85,12 +92,19 @@ overwritten (" (2)" is added) and an export never writes over its source. Tempor
 
 ## Extension points
 
-- **MCP server**: call `EditorSession.Execute` with `EditOrigin.Assistant`. The UI already highlights assistant
-  edits in violet and shows them in the Claude panel with undo.
+- **MCP server**: call `EditorSession.Execute` with `EditOrigin.Assistant`. The Claude panel logs each edit as a
+  card with its own Undo (`EditorSession.Revert`), the clips of the latest assistant edit get a pulsing blue ring on
+  the timeline, and the title bar badge shows the connection. Until the server exists the badge reads
+  "MCP · not running" and the panel lists the project's edit history.
 - **Smart cut**: `CutMode.SmartCut` exists in the export settings; the planner rejects it for now. It becomes
   a third kind of plan (re-encode the GOP around each cut, copy the rest, concat). The dialog lists it as not
   yet available.
 - **Transcription**: a future source of labels and ranges for `AddClipCommand` / `RenameClipCommand`.
+  Settings → Transcription (engine, model, device, language, models folder) is saved to
+  `%LOCALAPPDATA%\OurCut\settings.json`; outside demo mode the model table only reports which models are in the
+  models folder, and downloads come with transcription.
+- **Silence and scene detection**: `IMediaPreview.Silences` and `SceneChanges` feed the timeline's marker layers.
+  They are empty for real files for now (only the demo sample has them), so those toolbar chips are disabled.
 
 ## Project file (`.ourcut.json`)
 

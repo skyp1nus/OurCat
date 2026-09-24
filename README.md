@@ -18,7 +18,8 @@ core, so an AI assistant (Claude via MCP) can later edit the same timeline throu
 - Player: play/pause, frame step, precise seek, `HH:MM:SS.mmm` timecode, volume, speed.
 - Timeline: thumbnails, audio waveform per audio track, playhead, zoom, keyframe markers,
   clips with draggable in/out handles. Parts that are not kept stay visible as "Excluded".
-- Clips panel: reorder output by drag, include/exclude, total output duration.
+- Clips panel: reorder output by drag, include/exclude, remove, total output duration.
+- Claude panel: every edit as a card with its own undo, which reverts just that edit.
 - Export: lossless copy (cut points on keyframes) or re-encode; merge into one file or separate files;
   progress and cancel.
 - Projects saved as `.ourcut.json`. Undo/redo for every edit.
@@ -33,8 +34,9 @@ Not in Phase 1: the MCP server, transcription and smart cut. The UI already has 
 | I / O | Set in-point / out-point |
 | ← / → | Previous / next frame (Shift: 1 second) |
 | S | Split clip at playhead |
-| E or Del | Exclude / keep the selected clip |
-| Shift+Del | Delete the selected clip |
+| E | Exclude / keep the selected clip |
+| Del (or Shift+Del) | Delete the selected clip |
+| V | Select tool (the Split tool cuts a clip where you click it) |
 | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) | Undo / redo |
 | Ctrl+O | Open video |
 | Ctrl+Shift+O | Open project |
@@ -62,7 +64,8 @@ Useful options: `-Check` (verify only, no downloads), `-Force` (reinstall), `-Co
 `dotnet run --project src/OurCut.App -- path/to/video.mp4` opens a video (or an `.ourcut.json` project) at start.
 
 To see the UI with the sample project from the design, start it in demo mode:
-`dotnet run --project src/OurCut.App -- --demo editing` (other screens: `empty`, `ai`, `export`, `exporting`).
+`dotnet run --project src/OurCut.App -- --demo editing` (other screens: `empty`, `ai`, `export`, `exporting`,
+`settings`).
 
 Run the tests with `dotnet test OurCut.slnx`. The UI tests render the app headlessly and write screenshots to
 `artifacts/screenshots/`. Tests that run ffmpeg generate their own small videos; they are skipped when ffmpeg

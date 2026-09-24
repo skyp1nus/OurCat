@@ -24,9 +24,6 @@
   <!-- Export is the only bone button. -->
   <SolidColorBrush x:Key="BoneBrush" Color="#F2F2F2" />
   <SolidColorBrush x:Key="InkBrush" Color="#333333" />
-  <!-- Kept for older references: Claude's edits used to be violet; they now share the accent. -->
-  <SolidColorBrush x:Key="VioletBrush" Color="#3B82F6" />
-  <SolidColorBrush x:Key="VioletTextBrush" Color="#CECECF" />
 
   <!-- Surfaces. -->
   <SolidColorBrush x:Key="WindowBrush" Color="#0B0C0E" />
@@ -58,5 +55,4 @@
   <SolidColorBrush x:Key="MutedBrush" Color="#858687" />
   <SolidColorBrush x:Key="Muted2Brush" Color="#858687" />
   <SolidColorBrush x:Key="Muted3Brush" Color="#71717A" />
-  <SolidColorBrush x:Key="Muted4Brush" Color="#71717A" />
 </ResourceDictionary>
