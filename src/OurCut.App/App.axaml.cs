@@ -20,8 +20,11 @@ public partial class App : Application
         {
             var args = desktop.Args ?? [];
             var demo = ParseDemoScreen(args);
+            var player = MpvPlaybackEngine.TryCreate(out string? playbackError);
             var editor = CreateEditor(demo, new FfmpegMediaOpener(new MediaCache()),
-                demo is null ? new RecentFilesStore(RecentFilesStore.DefaultFile) : null);
+                demo is null ? new RecentFilesStore(RecentFilesStore.DefaultFile) : null, player, playbackError);
+            // The window (and with it the video view's renderer) closes first; then the player core.
+            desktop.Exit += (_, _) => player?.Dispose();
             if (demo is null)
             {
                 var settings = new AppSettingsStore(AppSettingsStore.DefaultFile);
@@ -43,9 +46,12 @@ public partial class App : Application
     /// </summary>
     /// <param name="opener">Opens videos; null when the editor never opens real files (tests).</param>
     /// <param name="recent">Recent files list; null keeps no history.</param>
-    public static EditorViewModel CreateEditor(DesignScreen? demo, IMediaOpener? opener = null, RecentFilesStore? recent = null)
+    /// <param name="player">Video playback; null simulates it over thumbnails.</param>
+    /// <param name="playbackError">Why there is no player, shown in the status bar.</param>
+    public static EditorViewModel CreateEditor(DesignScreen? demo, IMediaOpener? opener = null, RecentFilesStore? recent = null,
+        IPlayer? player = null, string? playbackError = null)
     {
-        var editor = new EditorViewModel { MediaOpener = opener, RecentStore = recent };
+        var editor = new EditorViewModel { MediaOpener = opener, RecentStore = recent, Player = player };
         if (demo is { } screen)
         {
             DemoScenario.Apply(editor, screen);
@@ -53,17 +59,19 @@ public partial class App : Application
         else
         {
             editor.LoadRecentFiles();
-            _ = CheckFfmpegAsync(editor);
+            _ = CheckToolsAsync(editor, playbackError);
         }
         return editor;
     }
 
-    private static async Task CheckFfmpegAsync(EditorViewModel editor)
+    private static async Task CheckToolsAsync(EditorViewModel editor, string? playbackError)
     {
         string? version = await Task.Run(() => NativeTools.GetVersionAsync("ffmpeg")).ConfigureAwait(true);
         editor.ToolStatus = version is null
             ? "ffmpeg not found · run scripts/fetch-deps.ps1"
             : $"ffmpeg {version} · ready";
+        if (playbackError is not null)
+            editor.ToolStatus += " · no playback (libmpv unavailable)";
     }
 
     /// <summary>Reads <c>--demo &lt;empty|editing|ai|export|exporting|settings&gt;</c> from the command line.</summary>

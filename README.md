@@ -8,9 +8,9 @@ It is inspired by [LosslessCut](https://github.com/mifi/lossless-cut). Every edi
 core, so an AI assistant (Claude via MCP) can later edit the same timeline through the same operations.
 
 > **Status:** early development, Phase 1. Windows only for now; the code is kept cross-platform so macOS and
-> Linux can follow. Opening videos, the timeline (thumbnails, waveforms, keyframes), editing with undo/redo,
-> project files and export (lossless or re-encoded, merged or separate) work. Playback with libmpv is next;
-> until then the player shows the nearest thumbnail.
+> Linux can follow. Opening videos, playback (libmpv: frame-exact seeking and stepping, speed, volume, per-track
+> mute), the timeline (thumbnails, waveforms, keyframes), editing with undo/redo, project files and export
+> (lossless or re-encoded, merged or separate) work.
 
 ## Phase 1 scope
 
@@ -69,7 +69,11 @@ To see the UI with the sample project from the design, start it in demo mode:
 
 Run the tests with `dotnet test OurCut.slnx`. The UI tests render the app headlessly and write screenshots to
 `artifacts/screenshots/`. Tests that run ffmpeg generate their own small videos; they are skipped when ffmpeg
-is not found (in `deps/`, `OURCUT_FFMPEG_DIR` or `PATH`).
+is not found (in `deps/`, `OURCUT_FFMPEG_DIR` or `PATH`). Playback tests also need libmpv (in `deps/`,
+`OURCUT_MPV_DIR` or the system; on Ubuntu `apt install libmpv2`).
+
+Without libmpv the editor still works; playback is then simulated over the thumbnails. Video is drawn with
+OpenGL when available and with mpv's software renderer otherwise; `OURCUT_VIDEO=software` forces the latter.
 
 Avalonia's build tooling sends anonymous build telemetry. Set `AVALONIA_TELEMETRY_OPTOUT=1` to turn it off
 (CI does this).
@@ -79,8 +83,8 @@ Avalonia's build tooling sends anonymous build telemetry. Set `AVALONIA_TELEMETR
 ```
 src/OurCut.App      Avalonia UI: views and view models (CommunityToolkit.Mvvm)
 src/OurCut.Core     Project model, timeline and edit commands with undo/redo. No UI references.
-src/OurCut.Media    ffprobe/ffmpeg: probing, keyframes, export (FFMpegCore), thumbnails, waveforms, cache
-                    (SkiaSharp); libmpv playback comes next
+src/OurCut.Media    libmpv playback; ffprobe/ffmpeg: probing, keyframes, export (FFMpegCore), thumbnails,
+                    waveforms, cache (SkiaSharp)
 tests/              xUnit tests for Core, Media and headless UI tests for App
 scripts/            fetch-deps.ps1 and the pinned dependency manifest
 design/             The Claude Design export the UI is built from

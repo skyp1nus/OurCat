@@ -89,6 +89,9 @@ public sealed class DesignSample : IMediaPreview
     /// <summary>The sample draws its own placeholder picture (the player's overlay is not needed).</summary>
     public bool IsPlaceholder => false;
 
+    /// <summary>There is no file behind the sample; its playback is simulated.</summary>
+    public bool IsPlayable => false;
+
     public string? Activity => null;
     public string? AnalysisError => null;
 

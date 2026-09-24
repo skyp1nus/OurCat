@@ -60,6 +60,8 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     public double FrameRate => Info.Video?.FrameRate ?? 0;
     public IReadOnlyList<double> Keyframes => Volatile.Read(ref _keyframes);
     public int AudioStreamCount => Info.Audio.Length;
+
+    public double AspectRatio => Info.Video?.DisplaySize is var (w, h) && w > 0 && h > 0 ? (double)w / h : 16.0 / 9.0;
     public bool IsPlaceholder => false;
 
     /// <summary>Completes with the keyframes once they are scanned (empty if the scan failed).</summary>

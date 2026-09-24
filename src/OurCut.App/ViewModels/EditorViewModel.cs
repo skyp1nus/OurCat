@@ -11,6 +11,7 @@ using OurCut.Core.Editing;
 using OurCut.Core.Model;
 using OurCut.Core.Serialization;
 using OurCut.Core.Time;
+using OurCut.Media.Playback;
 using OurCut.Media.Tools;
 
 namespace OurCut.App.ViewModels;
@@ -32,6 +33,11 @@ public sealed partial class EditorViewModel : ViewModelBase
     private CancellationTokenSource? _openCts;
     private IReadOnlyList<double>? _appliedKeyframes;
     private bool _previewErrorShown;
+    private IPlayer? _player;
+    private bool _playerLoaded;
+    private bool _playerHasFile;
+    private int _playerGeneration;
+    private bool _timeFromPlayer;
 
     public EditorViewModel()
     {
@@ -83,6 +89,31 @@ public sealed partial class EditorViewModel : ViewModelBase
     /// <summary>Probes and analyses media files. Without one, videos cannot be opened.</summary>
     public IMediaOpener? MediaOpener { get; set; }
 
+    /// <summary>
+    /// Plays the video (libmpv). Null in tests and when libmpv is missing; playback is then simulated
+    /// over the thumbnails, as it is for the design's sample.
+    /// </summary>
+    public IPlayer? Player
+    {
+        get => _player;
+        set
+        {
+            if (ReferenceEquals(_player, value))
+                return;
+            if (_player is not null)
+                _player.StateChanged -= OnPlayerStateChanged;
+            _player = value;
+            _playerLoaded = false;
+            if (value is not null)
+                value.StateChanged += OnPlayerStateChanged;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasPlayback));
+        }
+    }
+
+    /// <summary>The loaded file plays through <see cref="Player"/> (not simulated).</summary>
+    public bool HasPlayback => _player is not null && _playerLoaded && Media is { IsPlayable: true };
+
     /// <summary>Remembers recently opened files; null keeps no history (demo mode and tests).</summary>
     public RecentFilesStore? RecentStore { get; set; }
 
@@ -111,8 +142,11 @@ public sealed partial class EditorViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasFile), nameof(IsEmpty), nameof(Duration), nameof(DurationText),
         nameof(SourceLengthText), nameof(StatusRight), nameof(FrameText), nameof(HasSilenceData), nameof(HasSceneData),
-        nameof(TransportDurationText))]
+        nameof(TransportDurationText), nameof(VideoAspect), nameof(HasPlayback))]
     public partial IMediaPreview? Media { get; set; }
+
+    /// <summary>Width / height of the picture, for the player frame (16:9 until a file is open).</summary>
+    public double VideoAspect => Media?.AspectRatio is > 0 and var ratio ? ratio : 16.0 / 9.0;
 
     partial void OnMediaChanged(IMediaPreview? oldValue, IMediaPreview? newValue)
     {
@@ -379,6 +413,7 @@ public sealed partial class EditorViewModel : ViewModelBase
     public void LoadProject(Project project, IMediaPreview media, string info, string? projectPath = null)
     {
         StopPlayback();
+        SetPlayerLoaded(false);
         Export.Close();
         Select(null);
         MediaFileName = project.Source is { } s ? Path.GetFileName(s.Path) : "";
@@ -396,11 +431,94 @@ public sealed partial class EditorViewModel : ViewModelBase
         for (int i = 0; i < tracks.Length; i++)
         {
             var lane = new AudioLaneViewModel(i, "A" + (i + 1).ToString(CultureInfo.InvariantCulture), tracks[i].Label);
-            lane.PropertyChanged += (_, _) => RaiseTimelineChanged();
+            lane.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(AudioLaneViewModel.IsMuted))
+                    ApplyAudioTracks();
+                RaiseTimelineChanged();
+            };
             AudioLanes.Add(lane);
         }
         Time = 0;
         RaiseProjectReplaced();
+        if (_player is not null && media.IsPlayable && project.Source is { } source)
+            _ = LoadPlayerAsync(source.Path);
+        else
+            UnloadPlayer();
+    }
+
+    /// <summary>Opens the file in the player; until it is ready (or if it fails) playback is simulated.</summary>
+    private async Task LoadPlayerAsync(string path)
+    {
+        int generation = ++_playerGeneration;
+        SetPlayerLoaded(false);
+        _playerHasFile = true;
+        try
+        {
+            await _player!.LoadAsync(path).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (MpvException e)
+        {
+            if (generation == _playerGeneration)
+                ShowMessage("No playback for this file: " + e.Message);
+            return;
+        }
+        if (generation != _playerGeneration || _player is null)
+            return;
+        SetPlayerLoaded(true);
+        _player.SetVolume(Volume);
+        _player.SetSpeed(Speed);
+        ApplyAudioTracks();
+        if (Time > 0)
+            _player.Seek(Time);
+    }
+
+    private void UnloadPlayer()
+    {
+        _playerGeneration++;
+        if (_playerHasFile)
+            _player?.Unload();
+        _playerHasFile = false;
+        SetPlayerLoaded(false);
+    }
+
+    private void SetPlayerLoaded(bool loaded)
+    {
+        if (_playerLoaded == loaded)
+            return;
+        _playerLoaded = loaded;
+        OnPropertyChanged(nameof(HasPlayback));
+    }
+
+    /// <summary>Muted lanes are left out of what the player plays (preview only).</summary>
+    private void ApplyAudioTracks()
+    {
+        if (HasPlayback)
+            _player!.SetAudioTracks([.. AudioLanes.Select(l => !l.IsMuted)]);
+    }
+
+    /// <summary>The player moved (playing, a frame step or a seek that landed): follow it.</summary>
+    private void OnPlayerStateChanged(object? sender, EventArgs e)
+    {
+        if (!HasPlayback || _player is not { } player)
+            return;
+        IsPlaying = player.IsPlaying;
+        // Keep the playhead where the user put it until the seek lands.
+        if (player.IsSeeking)
+            return;
+        _timeFromPlayer = true;
+        try
+        {
+            Time = Math.Clamp(player.Position, 0, Duration);
+        }
+        finally
+        {
+            _timeFromPlayer = false;
+        }
     }
 
     /// <summary>Everything derived from the project or its source changes when a project is (un)loaded.</summary>
@@ -418,6 +536,7 @@ public sealed partial class EditorViewModel : ViewModelBase
     public void Unload()
     {
         StopPlayback();
+        UnloadPlayer();
         Export.Close();
         Select(null);
         Media = null;
@@ -650,6 +769,15 @@ public sealed partial class EditorViewModel : ViewModelBase
             StopPlayback();
             return;
         }
+        if (HasPlayback)
+        {
+            // Play at the end starts over.
+            if (Time >= Duration - 1 / FrameRate)
+                SetTime(0);
+            _player!.Play();
+            IsPlaying = true;
+            return;
+        }
         IsPlaying = true;
         _lastTick = DateTime.UtcNow;
         _playTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(40), DispatcherPriority.Render, (_, _) =>
@@ -672,14 +800,29 @@ public sealed partial class EditorViewModel : ViewModelBase
     {
         _playTimer?.Stop();
         _playTimer = null;
+        if (HasPlayback && IsPlaying)
+            _player!.Pause();
         IsPlaying = false;
     }
 
     [RelayCommand]
-    private void StepBack() => SetTime(Time - 1 / FrameRate);
+    private void StepBack() => StepFrame(forward: false);
 
     [RelayCommand]
-    private void StepForward() => SetTime(Time + 1 / FrameRate);
+    private void StepForward() => StepFrame(forward: true);
+
+    /// <summary>One frame back or forward. The player decodes the exact neighbouring frame.</summary>
+    private void StepFrame(bool forward)
+    {
+        if (HasPlayback)
+        {
+            // mpv pauses for a frame step.
+            IsPlaying = false;
+            _player!.StepFrame(forward);
+            return;
+        }
+        SetTime(Time + (forward ? 1 : -1) / FrameRate);
+    }
 
     public void StepSeconds(double seconds) => SetTime(Time + seconds);
 
@@ -999,6 +1142,25 @@ public sealed partial class EditorViewModel : ViewModelBase
         OnPropertyChanged(nameof(CurrentClipLabel));
         OnPropertyChanged(nameof(IsCurrentClipAi));
         RaiseTimelineChanged();
+    }
+
+    /// <summary>A new time set by the user (not by the player) moves the player there.</summary>
+    partial void OnTimeChanged(double oldValue, double newValue)
+    {
+        if (!_timeFromPlayer && HasPlayback)
+            _player!.Seek(newValue);
+    }
+
+    partial void OnVolumeChanged(double value)
+    {
+        if (HasPlayback)
+            _player!.SetVolume(value);
+    }
+
+    partial void OnSpeedChanged(double value)
+    {
+        if (HasPlayback)
+            _player!.SetSpeed(value);
     }
 
     partial void OnZoomLevelChanged(double value) => RaiseTimelineChanged();

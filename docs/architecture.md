@@ -90,6 +90,32 @@ Output names: `{project}-cut.{ext}` when merged, `{project}-{n}-{label}.{ext}` o
 overwritten (" (2)" is added) and an export never writes over its source. Temporary files
 (`.ourcut-tmp-*`) and any half-written output are removed on failure or cancel.
 
+## Playback
+
+`OurCut.Media.Playback` talks to libmpv directly (`LibraryImport`, client API 2.x; `libmpv-2.dll` from
+`fetch-deps.ps1`, `libmpv.so.2` on Linux).
+
+- **`MpvPlayer`** owns one mpv core. Everything that controls playback (load, play, pause, seek, frame step,
+  volume, speed, audio tracks) goes through `mpv_command_async`, so the calling thread never waits for the core.
+  That matters because the UI thread also renders video, and mpv's render API forbids waiting for the core on a
+  render thread. State comes back as observed properties (`time-pos`, `pause`, `duration`, `eof-reached`, video
+  size) on a background event thread, which raises `StateChanged`.
+- **Seeking** is exact (`hr-seek`). While a seek is in flight, `Position` reports the target and `IsSeeking` is
+  true; only the playback restart after the newest seek settles the position, so a dragged playhead never jumps
+  back to stale positions.
+- **Audio tracks**: the timeline's lanes map to mpv's `aid1…N`. One unmuted lane plays directly (`aid`),
+  several are mixed with `lavfi-complex` (`amix`), none sets `aid=no`. Muting affects the preview only.
+- **Video** goes through the render API into OurCut's own view: `MpvOpenGlRenderer` draws into Avalonia's OpenGL
+  framebuffer; `MpvSoftwareRenderer` renders BGRX frames into memory on a background thread. `vo=libmpv` without
+  a render context fails the whole file, so the player uses `vo=null` until a renderer is attached and reopens
+  the file where it was when one attaches or detaches.
+
+In the App, `IPlayer` is what `EditorViewModel` uses (`MpvPlaybackEngine` in the app, a fake in tests). The view
+model keeps the playhead: user moves become seeks, the player's positions come back as `Time` without seeking
+again. `VideoView` shows the video (OpenGL first, software if OpenGL is not there within two seconds or fails);
+until its first frame the thumbnail preview underneath shows through. Without libmpv, or for the design's
+sample, playback is simulated over the thumbnails.
+
 ## Extension points
 
 - **MCP server**: call `EditorSession.Execute` with `EditOrigin.Assistant`. The Claude panel logs each edit as a

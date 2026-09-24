@@ -32,8 +32,14 @@ public interface IMediaPreview
 
     int AudioStreamCount { get; }
 
+    /// <summary>Display width / height of the picture.</summary>
+    double AspectRatio => 16.0 / 9.0;
+
     /// <summary>True for the design's shaded placeholder frames (demo mode).</summary>
     bool IsPlaceholder { get; }
+
+    /// <summary>A real file the player can open (the design's sample has none behind it).</summary>
+    bool IsPlayable => true;
 
     /// <summary>
     /// What is still being analysed, e.g. "analysing 45%"; null when everything is ready.

@@ -60,10 +60,12 @@
       </c:AspectPanel>
 
       <!-- Player picture with overlays. VideoSurface is where playback draws. -->
-      <c:AspectPanel IsVisible="{Binding HasFile}">
+      <c:AspectPanel IsVisible="{Binding HasFile}" Ratio="{Binding VideoAspect}">
         <Border CornerRadius="6" ClipToBounds="True" BoxShadow="0 0 0 1 #14FFFFFF">
           <Panel>
             <c:VideoSurface Media="{Binding Media}" Time="{Binding Time}" Caption="{Binding FrameText}" />
+            <!-- libmpv video on top; until its first frame the thumbnail underneath shows through. -->
+            <c:VideoView Name="Video" Player="{Binding Player}" IsVisible="{Binding HasPlayback}" />
             <Border IsVisible="{Binding IsInClip}" Classes="overlay" HorizontalAlignment="Left" VerticalAlignment="Top">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <TextBlock Classes="mono" Text="{Binding CurrentClipNumber}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
