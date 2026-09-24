@@ -1,0 +1,91 @@
+{
+  "comment": "Pinned native dependencies for scripts/fetch-deps.ps1. Every archive and extracted file is checked against its SHA-256. To bump a pin, update version, urls, size and hashes together and run the script with -Force.",
+  "tools": {
+    "7zr": {
+      "version": "7-Zip 26.03 (7zr.exe, public domain)",
+      "sha256": "ad4c82fadcbdf93c03b4fc440f300509c7d60c5c2f4d183e35d9d70d6957037d",
+      "size": 602624,
+      "urls": [
+        "https://github.com/ip7z/7zip/releases/download/26.03/7zr.exe"
+      ]
+    }
+  },
+  "rids": {
+    "win-x64": {
+      "ffmpeg": {
+        "version": "FFmpeg n9.0.1-11-ge47273f4d9, BtbN/FFmpeg-Builds autobuild-2026-08-31-13-27 (win64-gpl)",
+        "license": "GPL-3.0-or-later",
+        "source": "https://github.com/FFmpeg/FFmpeg/commit/e47273f4d9",
+        "archive": {
+          "name": "ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0.zip",
+          "format": "zip",
+          "sha256": "ec9db2cda1f5894ab95446076ad8bf49379db4b53c02e778ad3b49adf91fec83",
+          "size": 169202846,
+          "urls": [
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0.zip"
+          ]
+        },
+        "files": [
+          {
+            "from": "ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0/bin/ffmpeg.exe",
+            "to": "ffmpeg.exe",
+            "sha256": "daeea959fd6a400eec29bf1ede560962e92546ec31fe5f60ccdc076a4c3db3fa"
+          },
+          {
+            "from": "ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0/bin/ffprobe.exe",
+            "to": "ffprobe.exe",
+            "sha256": "fe3a94d2b2899191234870d95e85fd2bcc9c0cee830e7d8d78fcea8a2375155f"
+          },
+          {
+            "from": "ffmpeg-n9.0.1-11-ge47273f4d9-win64-gpl-9.0/LICENSE.txt",
+            "to": "licenses/FFmpeg-LICENSE.txt"
+          }
+        ]
+      },
+      "libmpv": {
+        "version": "mpv v0.41.0-1050-ge76a35ec9 (client API 2.5), shinchiro/mpv-winbuild-cmake 20260920 (x86_64)",
+        "license": "GPL-3.0-or-later (links GPL FFmpeg)",
+        "source": "https://github.com/mpv-player/mpv/commit/e76a35ec95",
+        "archive": {
+          "name": "mpv-dev-x86_64-20260920-git-e76a35ec95.7z",
+          "format": "7z",
+          "sha256": "60f9102db46aea8cef9bfb4345ee6a106f34fdbd1df9587e38f0660688039341",
+          "size": 31473132,
+          "urls": [
+            "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260920/mpv-dev-x86_64-20260920-git-e76a35ec95.7z",
+            "https://downloads.sourceforge.net/project/mpv-player-windows/libmpv/mpv-dev-x86_64-20260920-git-e76a35ec95.7z"
+          ]
+        },
+        "files": [
+          {
+            "from": "libmpv-2.dll",
+            "to": "libmpv-2.dll",
+            "sha256": "63e1fbb4ee890d153a9f5086410157174ee18582846bf35f6cc4e5d08d4bb662"
+          }
+        ]
+      },
+      "vulkan": {
+        "version": "Vulkan loader 1.3.283 from Silk.NET.Vulkan.Loader.Native 2025.9.12",
+        "license": "Apache-2.0",
+        "source": "https://github.com/KhronosGroup/Vulkan-Loader",
+        "comment": "libmpv-2.dll imports vulkan-1.dll, which normally comes with the GPU driver. This copy is loaded only when the system has none (VMs, basic display adapter). It stays in a subfolder so it never shadows the driver's loader.",
+        "archive": {
+          "name": "silk.net.vulkan.loader.native.2025.9.12.nupkg",
+          "format": "zip",
+          "sha256": "33811c05ab0bcba632ad38abba459b0d72d6e58859342e0782d011863dde07d1",
+          "size": 1354627,
+          "urls": [
+            "https://api.nuget.org/v3-flatcontainer/silk.net.vulkan.loader.native/2025.9.12/silk.net.vulkan.loader.native.2025.9.12.nupkg"
+          ]
+        },
+        "files": [
+          {
+            "from": "runtimes/win-x64/native/vulkan-1.dll",
+            "to": "vulkan-fallback/vulkan-1.dll",
+            "sha256": "2cb843cfa9ee9586d2c863ff33454b8ce352a8a96dfe1021b492dfd237ecf8af"
+          }
+        ]
+      }
+    }
+  }
+}

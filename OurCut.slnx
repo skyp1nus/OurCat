@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OurCut.App/OurCut.App.csproj" />
+    <Project Path="src/OurCut.Core/OurCut.Core.csproj" />
+    <Project Path="src/OurCut.Media/OurCut.Media.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OurCut.App.Tests/OurCut.App.Tests.csproj" />
+    <Project Path="tests/OurCut.Core.Tests/OurCut.Core.Tests.csproj" />
+    <Project Path="tests/OurCut.Media.Tests/OurCut.Media.Tests.csproj" />
+  </Folder>
+</Solution>

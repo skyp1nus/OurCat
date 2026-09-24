@@ -1,0 +1,10 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OurCut.App.Views.MainWindow"
+        Title="OurCut"
+        Icon="/Assets/ourcut.ico"
+        Width="1440" Height="900"
+        Background="#1c1c1c">
+  <TextBlock Text="OurCut" HorizontalAlignment="Center" VerticalAlignment="Center"
+             FontSize="13" FontWeight="SemiBold" Foreground="#ffffff" />
+</Window>

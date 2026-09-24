@@ -1,0 +1,35 @@
+# Third-party notices
+
+OurCut is licensed under GPL-3.0-or-later. It depends on the components below.
+
+## Native binaries (downloaded by `scripts/fetch-deps.ps1`, not stored in this repository)
+
+| Component | Version | License | Source |
+| --- | --- | --- | --- |
+| FFmpeg (`ffmpeg.exe`, `ffprobe.exe`) | n9.0.1-11-ge47273f4d9, [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) `autobuild-2026-08-31-13-27`, win64-gpl | GPL-3.0-or-later | [FFmpeg e47273f4d9](https://github.com/FFmpeg/FFmpeg/commit/e47273f4d9) |
+| libmpv (`libmpv-2.dll`) | v0.41.0-1050-ge76a35ec9, [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake) `20260920` | GPL (built with GPL FFmpeg) | [mpv e76a35ec95](https://github.com/mpv-player/mpv/commit/e76a35ec95) |
+| Vulkan loader (`vulkan-fallback/vulkan-1.dll`) | 1.3.283, from `Silk.NET.Vulkan.Loader.Native` 2025.9.12 | Apache-2.0 | [KhronosGroup/Vulkan-Loader](https://github.com/KhronosGroup/Vulkan-Loader) |
+| 7-Zip (`7zr.exe`, build tool only, never shipped) | 26.03 | Public domain | [ip7z/7zip](https://github.com/ip7z/7zip) |
+
+This software uses code of FFmpeg (https://ffmpeg.org) licensed under the GPLv3, and its source can be
+downloaded from the links above. FFmpeg and mpv are trademarks of their respective owners; OurCut is not
+affiliated with or endorsed by either project.
+
+Anyone distributing OurCut builds that include these binaries must also offer their corresponding source
+code (GPLv3 section 6).
+
+## NuGet packages
+
+| Package | License |
+| --- | --- |
+| Avalonia | MIT |
+| CommunityToolkit.Mvvm | MIT |
+| FFMpegCore | MIT |
+| SkiaSharp | MIT |
+| xUnit | Apache-2.0 |
+
+## Fonts
+
+| Font | License |
+| --- | --- |
+| Geist, Geist Mono (Vercel) | SIL Open Font License 1.1, see `src/OurCut.App/Assets/Fonts/OFL.txt` |
