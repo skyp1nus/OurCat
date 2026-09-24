@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@500&amp;display=swap" rel="stylesheet"><style>body{margin:0;background:#1c1c1f;font-family:'Geist',system-ui,sans-serif;color:#e7e7ea}a{color:#e7e7ea}a:hover{color:#fff}.dv-turn{padding:40px 44px 40px;scroll-margin-top:16px}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 24px}.dv-tid{font:600 10px 'Geist Mono',monospace;padding:3px 7px;background:#e7e7ea;color:#111;border-radius:4px;text-decoration:none}.dv-tname{font:600 13px/1.2 'Geist',sans-serif}.dv-opts{display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}.dv-oid{font:600 10.5px 'Geist Mono',monospace;padding:3px 7px;background:rgba(255,255,255,.1);color:#e7e7ea;border-radius:5px;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 'Geist',sans-serif;color:rgba(255,255,255,.6)}.dv-card{width:1440px;height:900px;border-radius:10px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.08),0 20px 50px rgba(0,0,0,.4)}.dv-opt:target .dv-oid{background:oklch(0.78 0.12 210);color:#061a20}.dv-next{margin:28px 0 0;font:12px/1.5 'Geist',sans-serif;color:rgba(255,255,255,.5)}</style></helmet>
+<section class="dv-turn" id="t3" style="border-bottom:1px solid rgba(255,255,255,.08)">
+  <div style="max-width:760px;margin:0 0 36px;display:flex;flex-direction:column;gap:10px">
+    <div style="font-size:22px;font-weight:600;letter-spacing:-0.01em">OurCut · storyline timeline</div>
+    <div style="font-size:13px;line-height:1.6;color:rgba(255,255,255,.62);text-wrap:pretty">Renamed to OurCut and built on the Windows (Fluent) version from turn 2. The timeline is now an assembled storyline: clips sit back to back in output order, and each one is a single rounded block with its name and duration, a film strip, and its own waveform directly underneath. Drag a block to reorder it. When a clip is selected, trim handles appear on its edges and the clips after it shift to close the gap. A thin source bar above shows where each clip comes from in the original file, along with silences and scene cuts. Click it to scrub the source.</div>
+  </div>
+  <div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">OurCut · storyline · states</span></div>
+  <div class="dv-opts">
+    <div class="dv-opt" id="3a"><div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Empty · MCP disconnected</div><div class="dv-card" style="border-radius:8px"><dc-import name="OurCutEditor" screen="empty" mcp-connected="{{ false }}" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="3b"><div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a>Editing · 5 clips</div><div class="dv-card" style="border-radius:8px"><dc-import name="OurCutEditor" screen="editing" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="3c"><div class="dv-olabel"><a class="dv-oid" href="#3c">3c</a>Claude actively editing</div><div class="dv-card" style="border-radius:8px"><dc-import name="OurCutEditor" screen="ai" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="3d"><div class="dv-olabel"><a class="dv-oid" href="#3d">3d</a>Export dialog</div><div class="dv-card" style="border-radius:8px"><dc-import name="OurCutEditor" screen="export" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="3e"><div class="dv-olabel"><a class="dv-oid" href="#3e">3e</a>Exporting</div><div class="dv-card" style="border-radius:8px"><dc-import name="OurCutEditor" screen="exporting" hint-size="1440px,900px"></dc-import></div></div>
+  </div>
+  <p class="dv-next">Try next: "taller clips with bigger thumbnails in <a class="dv-oid" href="#3b">3b</a>" · "add a second audio lane" · "show the source bar as a full waveform"</p>
+</section>
+<section class="dv-turn" id="t2" style="border-bottom:1px solid rgba(255,255,255,.08)">
+  <div style="max-width:760px;margin:0 0 36px;display:flex;flex-direction:column;gap:10px">
+    <div style="font-size:22px;font-weight:600;letter-spacing:-0.01em">Windows · Avalonia Fluent</div>
+    <div style="font-size:13px;line-height:1.6;color:rgba(255,255,255,.62);text-wrap:pretty">Same layout and behaviour as turn 1, restyled to Avalonia's Fluent dark theme: Windows caption buttons and a menu bar in the title bar, Segoe UI Variable with Cascadia Mono for timecodes, neutral Fluent grays, 4 px control radius, 8 px dialog radius, and the default Fluent accent (#60CDFF), which is also used for checkboxes and the slider. Shortcuts show Ctrl, and paths point to C:\Users. Claude's changes are still violet.</div>
+  </div>
+  <div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Windows (Avalonia) · states</span></div>
+  <div class="dv-opts">
+    <div class="dv-opt" id="2a"><div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a>Empty · MCP disconnected</div><div class="dv-card" style="border-radius:8px"><dc-import name="CutlineEditorWin" screen="empty" mcp-connected="{{ false }}" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="2b"><div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a>Editing · 5 clips</div><div class="dv-card" style="border-radius:8px"><dc-import name="CutlineEditorWin" screen="editing" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="2c"><div class="dv-olabel"><a class="dv-oid" href="#2c">2c</a>Claude actively editing</div><div class="dv-card" style="border-radius:8px"><dc-import name="CutlineEditorWin" screen="ai" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="2d"><div class="dv-olabel"><a class="dv-oid" href="#2d">2d</a>Export dialog</div><div class="dv-card" style="border-radius:8px"><dc-import name="CutlineEditorWin" screen="export" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="2e"><div class="dv-olabel"><a class="dv-oid" href="#2e">2e</a>Exporting</div><div class="dv-card" style="border-radius:8px"><dc-import name="CutlineEditorWin" screen="exporting" hint-size="1440px,900px"></dc-import></div></div>
+  </div>
+  <p class="dv-next">Try next: "use Mica backdrop tint in the title bar" · "compact density for <a class="dv-oid" href="#2b">2b</a>" · "light Fluent theme"</p>
+</section>
+<section class="dv-turn" id="t1">
+  <div style="max-width:760px;margin:0 0 36px;display:flex;flex-direction:column;gap:10px">
+    <div style="font-size:22px;font-weight:600;letter-spacing:-0.01em">OurCut (earlier name: Cutline) · desktop cutter with Claude</div>
+    <div style="font-size:13px;line-height:1.6;color:rgba(255,255,255,.62);text-wrap:pretty">Working name and all source media are placeholders. Neutral grays throughout; cyan is the only selection color (selected clip, handles, primary action). Violet is reserved for anything Claude changed or is changing, so AI edits stay distinguishable from yours. Playhead is white. Timecodes, durations and tool calls use Geist Mono. Every artboard is live: hover one, then use Space, I, O, ←/→, S, Del; drag clip handles on the timeline and rows in the clips list; each Claude action has its own Undo.</div>
+  </div>
+  <div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">States</span></div>
+  <div class="dv-opts">
+    <div class="dv-opt" id="1a"><div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Empty · MCP disconnected</div><div class="dv-card"><dc-import name="CutlineEditor" screen="empty" mcp-connected="{{ false }}" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="1b"><div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Editing · 5 clips, clip 3 selected</div><div class="dv-card"><dc-import name="CutlineEditor" screen="editing" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Claude actively editing · changed clips in violet</div><div class="dv-card"><dc-import name="CutlineEditor" screen="ai" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="1d"><div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Export dialog</div><div class="dv-card"><dc-import name="CutlineEditor" screen="export" hint-size="1440px,900px"></dc-import></div></div>
+    <div class="dv-opt" id="1e"><div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Exporting · progress (loops)</div><div class="dv-card"><dc-import name="CutlineEditor" screen="exporting" hint-size="1440px,900px"></dc-import></div></div>
+  </div>
+  <p class="dv-next">Try next: "move the Claude panel to a bottom-right dock in <a class="dv-oid" href="#1c">1c</a>" · "try a lighter theme of <a class="dv-oid" href="#1b">1b</a>" · "show a denser timeline with more tracks"</p>
+</section>
+</x-dc>
+</body>
+</html>

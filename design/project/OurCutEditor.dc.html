@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0;background:#0b0b0c;-webkit-font-smoothing:antialiased}a{color:#ffffff}a:hover{color:#fff}input::placeholder{color:#8a8a8a}@keyframes cl-scan{from{transform:translateX(-100%)}to{transform:translateX(340%)}}@keyframes cl-pulse{0%,100%{opacity:1}50%{opacity:.3}}</style>
+</helmet>
+<div onMouseEnter="{{ enter }}" onMouseLeave="{{ leave }}" style="width:1440px;height:900px;position:relative;display:flex;flex-direction:column;overflow:hidden;background:#1c1c1c;color:#ffffff;font:400 12px/1.4 'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;user-select:none">
+
+<div style="height:44px;flex:none;display:flex;align-items:center;gap:12px;padding:0 0 0 12px;background:#202020;border-bottom:1px solid #2e2e2e">
+  
+  <div style="display:flex;align-items:center;gap:8px"><div style="width:18px;height:18px;border-radius:4px;background:#60CDFF;display:flex;align-items:center;justify-content:center"><div style="width:2px;height:12px;border-radius:1px;background:#202020;transform:rotate(18deg)"></div></div><span style="font-weight:600;font-size:13px;letter-spacing:-0.01em">OurCut</span></div>
+  <div style="display:flex;gap:1px"><div style="height:28px;padding:0 9px;border-radius:4px;display:flex;align-items:center;font-size:12px;color:#d0d0d0;cursor:default" style-hover="background:rgba(255,255,255,0.06)">File</div><div style="height:28px;padding:0 9px;border-radius:4px;display:flex;align-items:center;font-size:12px;color:#d0d0d0;cursor:default" style-hover="background:rgba(255,255,255,0.06)">Edit</div><div style="height:28px;padding:0 9px;border-radius:4px;display:flex;align-items:center;font-size:12px;color:#d0d0d0;cursor:default" style-hover="background:rgba(255,255,255,0.06)">View</div><div style="height:28px;padding:0 9px;border-radius:4px;display:flex;align-items:center;font-size:12px;color:#d0d0d0;cursor:default" style-hover="background:rgba(255,255,255,0.06)">Help</div></div>
+  <div style="width:1px;height:18px;background:#3c3c3c"></div>
+  <button onClick="{{ openFile }}" title="Open file (Ctrl+O)" style="white-space:nowrap;height:28px;padding:0 8px 0 9px;border-radius:4px;background:#2d2d2d;border:1px solid #404040;color:#ffffff;font:500 12px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:7px;cursor:pointer" style-hover="background:#3a3a3a"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><span>Open</span><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:3px 5px;border-radius:4px;border:1px solid #484848;background:#262626;color:#a6a6a6">Ctrl+O</span></button>
+  <sc-if value="{{ hasFile }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:baseline;gap:10px;min-width:0"><span style="font-weight:500;font-size:12.5px">launch-keynote</span><span style="font:400 11px 'Cascadia Mono',Consolas,monospace;color:#8a8a8a;white-space:nowrap">keynote_final_4k.mp4 · 4K · 29.97 fps</span></div>
+  </sc-if>
+  <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:baseline;gap:10px"><span style="font-weight:500;font-size:12.5px;color:#c5c5c5">Untitled project</span><span style="font:400 11px 'Cascadia Mono',Consolas,monospace;color:#686868">no media</span></div>
+  </sc-if>
+  <div style="flex:1"></div>
+  <sc-if value="{{ aiBusy }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;gap:7px;height:24px;padding:0 10px;border-radius:12px;background:oklch(0.74 0.13 290 / 0.14);color:oklch(0.86 0.08 290);font-weight:500;font-size:11.5px">{{ pulseDot }}<span>Claude is editing</span></div>
+  </sc-if>
+  <button title="Settings" style="white-space:nowrap;width:28px;height:28px;border-radius:4px;background:transparent;border:1px solid transparent;color:#c5c5c5;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="background:#2d2d2d;color:#ffffff"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2"></circle><circle cx="9" cy="17" r="2"></circle></svg></button>
+  <sc-if value="{{ hasFile }}" hint-placeholder-val="{{ true }}">
+    <button onClick="{{ openExport }}" title="Export (Ctrl+E)" style="white-space:nowrap;height:28px;padding:0 11px;border-radius:4px;background:#60CDFF;color:#000000;border:none;font:600 12px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:7px;cursor:pointer" style-hover="background:#7AD6FF"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7 9l5-5 5 5M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"></path></svg><sc-if value="{{ notExporting }}" hint-placeholder-val="{{ true }}"><span>Export</span></sc-if><sc-if value="{{ isExporting }}" hint-placeholder-val="{{ false }}"><span>Exporting {{ pctBig }}</span></sc-if><span style="font:500 10px 'Cascadia Mono',Consolas,monospace;opacity:0.55">Ctrl+E</span></button>
+  </sc-if>
+  <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+    <button disabled="" style="white-space:nowrap;height:28px;padding:0 11px;border-radius:4px;background:#2d2d2d;color:#646464;border:1px solid #2e2e2e;font:600 12px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:7px;cursor:default"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7 9l5-5 5 5M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"></path></svg><span>Export</span></button>
+  </sc-if>
+  <div style="display:flex;align-self:stretch;margin-left:4px">
+    <div title="Minimize" style="width:46px;display:flex;align-items:center;justify-content:center;color:#d0d0d0" style-hover="background:rgba(255,255,255,0.06)"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1"></path></svg></div>
+    <div title="Maximize" style="width:46px;display:flex;align-items:center;justify-content:center;color:#d0d0d0" style-hover="background:rgba(255,255,255,0.06)"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1"></rect></svg></div>
+    <div title="Close" style="width:46px;display:flex;align-items:center;justify-content:center;color:#d0d0d0" style-hover="background:#c42b1c;color:#ffffff"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0.5 0.5l9 9M9.5 0.5l-9 9" stroke="currentColor" stroke-width="1"></path></svg></div>
+  </div>
+</div>
+
+<div style="flex:1;min-height:0;display:flex">
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#171717">
+    <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:16px 20px 12px">
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div onDragOver="{{ dropOver }}" onDragLeave="{{ dropLeave }}" onDrop="{{ dropFile }}" style="width:100%;height:100%;max-width:900px;box-sizing:border-box;border:1.5px dashed {{ dropBorder }};border-radius:12px;background:{{ dropBg }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px">
+          <div style="width:44px;height:44px;border-radius:12px;background:#2d2d2d;border:1px solid #3c3c3c;display:flex;align-items:center;justify-content:center;color:#d6d6d6"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"></path></svg></div>
+          <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Drop a video here</div>
+          <div style="font-size:12.5px;color:#a6a6a6;max-width:380px;text-align:center;line-height:1.5;text-wrap:pretty">MP4, MOV, MKV, WebM and most other containers. Cuts are lossless by default, so nothing is re-encoded unless you ask.</div>
+          <button onClick="{{ openFile }}" style="white-space:nowrap;margin-top:4px;height:32px;padding:0 10px 0 12px;border-radius:4px;background:#ffffff;color:#1c1c1c;border:none;font:600 12.5px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:8px;cursor:pointer" style-hover="background:#ffffff"><span>Open file…</span><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:3px 5px;border-radius:4px;background:rgba(0,0,0,0.08);color:#44444a">Ctrl+O</span></button>
+          <div style="margin-top:22px;width:420px;display:flex;flex-direction:column;gap:2px">
+            <div style="font-size:11px;color:#8a8a8a;padding:0 10px 6px">Recent</div>
+            <div onClick="{{ openFile }}" style="display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:4px;cursor:pointer" style-hover="background:#262626"><span style="flex:1;font:400 12px 'Cascadia Mono',Consolas,monospace;color:#e2e2e2">keynote_final_4k.mp4</span><span style="font:400 11px 'Cascadia Mono',Consolas,monospace;color:#8a8a8a">14:32</span><span style="font-size:11px;color:#8a8a8a;width:70px;text-align:right">Yesterday</span></div>
+            <div onClick="{{ openFile }}" style="display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:4px;cursor:pointer" style-hover="background:#262626"><span style="flex:1;font:400 12px 'Cascadia Mono',Consolas,monospace;color:#e2e2e2">podcast_ep41_raw.mov</span><span style="font:400 11px 'Cascadia Mono',Consolas,monospace;color:#8a8a8a">1:12:08</span><span style="font-size:11px;color:#8a8a8a;width:70px;text-align:right">Sep 19</span></div>
+            <div onClick="{{ openFile }}" style="display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:4px;cursor:pointer" style-hover="background:#262626"><span style="flex:1;font:400 12px 'Cascadia Mono',Consolas,monospace;color:#e2e2e2">drone_coast_0412.mp4</span><span style="font:400 11px 'Cascadia Mono',Consolas,monospace;color:#8a8a8a">6:40</span><span style="font-size:11px;color:#8a8a8a;width:70px;text-align:right">Sep 14</span></div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ hasFile }}" hint-placeholder-val="{{ true }}">
+        <div style="height:100%;max-height:100%;max-width:100%;aspect-ratio:16/9;position:relative;border-radius:2px;overflow:hidden;background:{{ frameBg }};box-shadow:0 0 0 1px #2a2a2a">
+          <div style="position:absolute;inset:0;background:repeating-linear-gradient(135deg, rgba(255,255,255,0.028) 0 1px, transparent 1px 12px)"></div>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font:400 11px 'Cascadia Mono',Consolas,monospace;color:rgba(255,255,255,0.42)"><span>source frame</span><span>{{ frameNo }}</span></div>
+          <sc-if value="{{ inClip }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:7px;height:24px;padding:0 9px;border-radius:4px;background:rgba(10,10,11,0.72);font-size:11.5px;font-weight:500"><div style="width:7px;height:7px;border-radius:2px;background:{{ curDot }}"></div><span style="font-family:'Cascadia Mono',Consolas,monospace;color:#c5c5c5">{{ curN }}</span><span>{{ curLabel }}</span></div>
+          </sc-if>
+          <div style="position:absolute;top:12px;right:12px;height:24px;padding:0 8px;border-radius:4px;background:rgba(10,10,11,0.72);display:flex;align-items:center;font:500 10.5px 'Cascadia Mono',Consolas,monospace;color:#c5c5c5">{{ speedText }}</div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div style="height:52px;flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 16px;border-top:1px solid #2a2a2a;background:#1f1f1f;opacity:{{ ctlOpacity }};pointer-events:{{ ctlPE }}">
+      <div style="display:flex;align-items:baseline;gap:8px;font-family:'Cascadia Mono',Consolas,monospace"><span style="font-size:15px;font-weight:500;color:#ffffff">{{ tcNow }}</span><span style="font-size:12px;color:#6e6e6e">/ {{ tcDur }}</span></div>
+      <div style="display:flex;align-items:center;gap:2px">
+        <button onClick="{{ markIn }}" title="Set in-point (I)" style="white-space:nowrap;height:28px;padding:0 9px 0 6px;margin-right:8px;border-radius:4px;border:1px solid #3a3a3a;background:transparent;color:#d6d6d6;font:500 11.5px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:7px;cursor:pointer" style-hover="background:#2d2d2d"><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:3px 5px;border-radius:4px;border:1px solid #484848;background:#262626;color:#c5c5c5">I</span>Set in</button>
+        <button onClick="{{ jumpIn }}" title="Go to in-point" style="white-space:nowrap;width:30px;height:30px;border-radius:4px;border:none;background:transparent;color:#d6d6d6;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="background:#2d2d2d"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="2.2" height="14" rx="1"></rect><path d="M19 5.5v13L9 12z"></path></svg></button>
+        <button onClick="{{ stepBack }}" title="Previous frame (←)" style="white-space:nowrap;width:30px;height:30px;border-radius:4px;border:none;background:transparent;color:#d6d6d6;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="background:#2d2d2d"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M15 6v12l-8-6z"></path><rect x="16.5" y="6" width="2" height="12" rx="1"></rect></svg></button>
+        <button onClick="{{ togglePlay }}" title="Play / pause (Space)" style="white-space:nowrap;width:38px;height:38px;margin:0 4px;border-radius:50%;background:#ffffff;color:#1c1c1c;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="background:#ffffff">
+          <sc-if value="{{ notPlaying }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg></sc-if>
+          <sc-if value="{{ playing }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg></sc-if>
+        </button>
+        <button onClick="{{ stepFwd }}" title="Next frame (→)" style="white-space:nowrap;width:30px;height:30px;border-radius:4px;border:none;background:transparent;color:#d6d6d6;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="background:#2d2d2d"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="5.5" y="6" width="2" height="12" rx="1"></rect><path d="M9 6v12l8-6z"></path></svg></button>
+        <button onClick="{{ jumpOut }}" title="Go to out-point" style="white-space:nowrap;width:30px;height:30px;border-radius:4px;border:none;background:transparent;color:#d6d6d6;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="background:#2d2d2d"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5.5v13L15 12z"></path><rect x="16.8" y="5" width="2.2" height="14" rx="1"></rect></svg></button>
+        <button onClick="{{ markOut }}" title="Set out-point (O)" style="white-space:nowrap;height:28px;padding:0 6px 0 9px;margin-left:8px;border-radius:4px;border:1px solid #3a3a3a;background:transparent;color:#d6d6d6;font:500 11.5px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:7px;cursor:pointer" style-hover="background:#2d2d2d">Set out<span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:3px 5px;border-radius:4px;border:1px solid #484848;background:#262626;color:#c5c5c5">O</span></button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:14px">
+        <button onClick="{{ cycleSpeed }}" title="Playback speed" style="white-space:nowrap;height:24px;padding:0 8px;border-radius:4px;border:1px solid #3a3a3a;background:transparent;color:#d6d6d6;font:500 11.5px 'Cascadia Mono',Consolas,monospace;cursor:pointer" style-hover="background:#2d2d2d">{{ speedText }}</button>
+        <div style="display:flex;align-items:center;gap:8px;color:#c5c5c5"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5L12 18V6L7.5 9.5z" fill="currentColor"></path><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10"></path></svg><div style="width:72px;height:3px;border-radius:2px;background:#404040;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:70%;background:#c5c5c5;border-radius:2px"></div><div style="position:absolute;left:70%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#ffffff"></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="width:360px;flex:none;display:flex;flex-direction:column;min-height:0;background:#202020;border-left:1px solid #2e2e2e">
+    <div style="height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;border-bottom:1px solid #2d2d2d">
+      <span style="font-weight:600;font-size:12px">Clips</span>
+      <span style="font:500 10.5px 'Cascadia Mono',Consolas,monospace;color:#a6a6a6;background:#2d2d2d;padding:1px 6px;border-radius:4px">{{ clipCount }}</span>
+      <div style="flex:1"></div>
+      <span style="font-size:11px;color:#6e6e6e">Drag to reorder output</span>
+      <button onClick="{{ markIn }}" title="New clip at playhead (I)" style="white-space:nowrap;width:24px;height:24px;border-radius:4px;border:none;background:transparent;color:#c5c5c5;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="background:#2e2e2e;color:#ffffff"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>
+    </div>
+    <div style="flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#484848 transparent;padding:4px 6px;display:flex;flex-direction:column">
+      <sc-if value="{{ noClips }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:20px;text-align:center"><div style="font-size:12.5px;font-weight:500;color:#d6d6d6">No clips yet</div><div style="font-size:11.5px;color:#8a8a8a;line-height:1.5;max-width:220px">Mark a segment with I and O, or ask Claude to find the parts worth keeping.</div></div>
+      </sc-if>
+      <sc-for list="{{ clips }}" as="c" hint-placeholder-count="5">
+        <div draggable="true" onDragStart="{{ c.dragStart }}" onDragOver="{{ c.dragOver }}" onDrop="{{ c.drop }}" onDragEnd="{{ c.dragEnd }}" onClick="{{ c.select }}" style="height:44px;flex:none;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 6px 0 4px;border-radius:4px;border:1px solid {{ c.rowBorder }};background:{{ c.rowBg }};opacity:{{ c.rowOpacity }};cursor:default">
+          <div style="display:grid;grid-template-columns:2px 2px;gap:2px;padding:4px 3px;cursor:grab;flex:none"><div style="width:2px;height:2px;background:#5c5c5c"></div><div style="width:2px;height:2px;background:#5c5c5c"></div><div style="width:2px;height:2px;background:#5c5c5c"></div><div style="width:2px;height:2px;background:#5c5c5c"></div><div style="width:2px;height:2px;background:#5c5c5c"></div><div style="width:2px;height:2px;background:#5c5c5c"></div></div>
+          <div style="width:20px;height:20px;flex:none;border-radius:4px;background:{{ c.numBg }};color:{{ c.numCol }};font:600 10.5px/20px 'Cascadia Mono',Consolas,monospace;text-align:center">{{ c.n }}</div>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+            <div style="display:flex;align-items:center;gap:6px;min-width:0"><span style="font-weight:500;font-size:12px;color:{{ c.textCol }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.label }}</span><sc-if value="{{ c.ai }}" hint-placeholder-val="{{ false }}"><span style="flex:none;font:500 9.5px/15px 'Segoe UI Variable Text','Segoe UI',sans-serif;padding:0 5px;border-radius:3px;background:oklch(0.74 0.13 290 / 0.18);color:oklch(0.86 0.08 290)">{{ c.aiTag }}</span></sc-if></div>
+            <div style="font:400 10.5px 'Cascadia Mono',Consolas,monospace;color:#8e8e8e;white-space:nowrap">{{ c.start }} – {{ c.end }}</div>
+          </div>
+          <div style="font:500 11.5px 'Cascadia Mono',Consolas,monospace;color:{{ c.durCol }};text-decoration:{{ c.durDeco }};flex:none">{{ c.dur }}</div>
+          <button onClick="{{ c.toggle }}" title="Include in export" style="white-space:nowrap;width:16px;height:16px;flex:none;box-sizing:border-box;border-radius:4px;border:1.5px solid {{ c.chkBorder }};background:{{ c.chkBg }};padding:0;margin-left:4px;display:flex;align-items:center;justify-content:center;cursor:pointer"><sc-if value="{{ c.on }}" hint-placeholder-val="{{ true }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12.5 10 17 19 7"></polyline></svg></sc-if></button>
+          <button onClick="{{ c.remove }}" title="Remove (Del)" style="white-space:nowrap;width:22px;height:22px;flex:none;border-radius:4px;border:none;background:transparent;color:#6e6e6e;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="background:#3a3a3a;color:oklch(0.72 0.16 25)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg></button>
+        </div>
+      </sc-for>
+    </div>
+    <div style="height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;border-top:1px solid #2d2d2d">
+      <span style="font-size:11.5px;color:#a6a6a6">Output</span>
+      <span style="font-size:11.5px;color:#6e6e6e">{{ clipSummary }}</span>
+      <div style="flex:1"></div>
+      <sc-if value="{{ hasDelta }}" hint-placeholder-val="{{ false }}"><span style="font:500 11px 'Cascadia Mono',Consolas,monospace;color:oklch(0.84 0.09 290)">{{ deltaText }}</span></sc-if>
+      <span style="font:500 15px 'Cascadia Mono',Consolas,monospace;color:#ffffff">{{ totalText }}</span>
+    </div>
+
+    <div style="flex:{{ aiFlex }};min-height:0;display:flex;flex-direction:column;border-top:1px solid #2e2e2e;background:#1f1f1f">
+      <div onClick="{{ toggleAi }}" style="height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px 0 12px;cursor:pointer">
+        <div style="width:14px;height:14px;display:flex;align-items:center;justify-content:center;color:#a6a6a6;transform:{{ aiChevron }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div>
+        <div style="width:8px;height:8px;border-radius:50%;background:oklch(0.74 0.13 290)"></div>
+        <span style="font-weight:600;font-size:12px">Claude</span>
+        <span style="font:500 9.5px 'Cascadia Mono',Consolas,monospace;color:#a6a6a6;border:1px solid #404040;padding:1px 5px;border-radius:3px">MCP</span>
+        <div style="flex:1"></div>
+        <button onClick="{{ toggleMcp }}" title="Toggle connection" style="white-space:nowrap;height:22px;padding:0 8px;border-radius:11px;border:1px solid #3a3a3a;background:#262626;display:flex;align-items:center;gap:6px;cursor:pointer;font:500 11px 'Segoe UI Variable Text','Segoe UI',sans-serif;color:{{ mcpCol }}"><div style="width:6px;height:6px;border-radius:50%;background:{{ mcpDot }}"></div>{{ mcpText }}</button>
+      </div>
+      <sc-if value="{{ aiOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;border-top:1px solid #2d2d2d">
+          <sc-if value="{{ aiBusy }}" hint-placeholder-val="{{ false }}">
+            <div style="margin:8px 10px 0;flex:none;display:flex;align-items:center;gap:8px;padding:6px 6px 6px 10px;border-radius:4px;background:oklch(0.74 0.13 290 / 0.10);border:1px solid oklch(0.74 0.13 290 / 0.35)">
+              {{ pulseDot }}
+              <span style="flex:1;font-size:11.5px;font-weight:500;color:oklch(0.88 0.06 290)">Editing · {{ changeCount }} changes so far</span>
+              <button onClick="{{ undoAll }}" style="white-space:nowrap;height:22px;padding:0 8px;border-radius:4px;border:none;background:transparent;color:#d6d6d6;font:500 11px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer" style-hover="background:rgba(255,255,255,0.06)">Undo all</button>
+              <button onClick="{{ stopAi }}" style="white-space:nowrap;height:22px;padding:0 8px;border-radius:4px;border:1px solid oklch(0.74 0.13 290 / 0.4);background:transparent;color:#ffffff;font:500 11px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer" style-hover="background:rgba(255,255,255,0.06)">Stop</button>
+            </div>
+          </sc-if>
+          <div ref="{{ logRef }}" style="flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#484848 transparent;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+            <sc-if value="{{ aiIntro }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:auto 0;display:flex;flex-direction:column;gap:10px;padding:4px 2px">
+                <div style="font-size:12px;line-height:1.5;color:#c5c5c5;text-wrap:pretty">Open a file and Claude can mark, trim, and reorder clips on the timeline with you. Every change is logged here and can be undone.</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px"><span style="height:24px;padding:0 9px;border-radius:12px;border:1px solid #3a3a3a;color:#8a8a8a;font-size:11px;display:flex;align-items:center">Remove silences</span><span style="height:24px;padding:0 9px;border-radius:12px;border:1px solid #3a3a3a;color:#8a8a8a;font-size:11px;display:flex;align-items:center">Split at scene changes</span><span style="height:24px;padding:0 9px;border-radius:12px;border:1px solid #3a3a3a;color:#8a8a8a;font-size:11px;display:flex;align-items:center">Keep highlights under 60 s</span></div>
+              </div>
+            </sc-if>
+            <sc-for list="{{ log }}" as="a" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column">
+                <sc-if value="{{ a.isUser }}" hint-placeholder-val="{{ false }}"><div style="align-self:flex-end;max-width:84%;background:#2e2e2e;border-radius:8px 8px 2px 8px;padding:7px 10px;font-size:12px;line-height:1.45;color:#ffffff;text-wrap:pretty">{{ a.text }}</div></sc-if>
+                <sc-if value="{{ a.isClaude }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;line-height:1.5;color:#cfcfcf;text-wrap:pretty">{{ a.text }}</div></sc-if>
+                <sc-if value="{{ a.isAct }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;align-items:center;gap:9px;padding:6px 6px 6px 10px;border-radius:4px;background:{{ a.bg }};border:1px solid {{ a.border }}">
+                    <div style="width:6px;height:6px;border-radius:50%;background:{{ a.dot }};flex:none"></div>
+                    <div style="flex:1;min-width:0"><div style="font-size:12px;color:{{ a.textCol }};text-decoration:{{ a.deco }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.text }}</div><div style="font:400 10.5px 'Cascadia Mono',Consolas,monospace;color:#8a8a8a;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.meta }}</div></div>
+                    <sc-if value="{{ a.canUndo }}" hint-placeholder-val="{{ true }}"><button onClick="{{ a.undo }}" title="Undo this action" style="white-space:nowrap;height:24px;padding:0 8px;flex:none;border-radius:4px;border:1px solid #404040;background:transparent;color:#c5c5c5;font:500 11px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:5px;cursor:pointer" style-hover="background:#2e2e2e;color:#ffffff"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg>{{ a.undoLabel }}</button></sc-if>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ a.isLive }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:7px 10px 8px;border-radius:4px;background:oklch(0.74 0.13 290 / 0.06);border:1px dashed oklch(0.74 0.13 290 / 0.45)">
+                    <div style="display:flex;align-items:center;gap:9px">{{ pulseDot }}<span style="flex:1;font-size:12px;color:#ffffff">{{ a.text }}…</span></div>
+                    <div style="font:400 10.5px 'Cascadia Mono',Consolas,monospace;color:#8a8a8a;margin:2px 0 0 16px">{{ a.meta }}</div>
+                    <div style="height:2px;margin:7px 0 0 16px;background:#3a3a3a;border-radius:1px;overflow:hidden;position:relative">{{ a.scan }}</div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ mcpOff }}" hint-placeholder-val="{{ false }}">
+            <div style="margin:0 10px 8px;flex:none;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 10px;border-radius:4px;background:#2b2b2b;border:1px solid #3c3c3c">
+              <div style="flex:1;font-size:11.5px;line-height:1.45;color:#c5c5c5">MCP server not reachable. Start it with <span style="font-family:'Cascadia Mono',Consolas,monospace;color:#e2e2e2">ourcut mcp</span> or check Settings.</div>
+              <button onClick="{{ toggleMcp }}" style="white-space:nowrap;height:24px;padding:0 9px;flex:none;border-radius:4px;border:1px solid #484848;background:#2d2d2d;color:#ffffff;font:500 11px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer" style-hover="background:#3a3a3a">Reconnect</button>
+            </div>
+          </sc-if>
+          <div style="flex:none;padding:0 10px 10px">
+            <div style="height:36px;display:flex;align-items:center;gap:8px;padding:0 4px 0 11px;border-radius:8px;background:#2b2b2b;border:1px solid #3c3c3c;opacity:{{ composerOpacity }}">
+              <input value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onDraftKey }}" disabled="{{ composerOff }}" placeholder="Ask Claude to edit the timeline…" style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:#ffffff;font:400 12px 'Segoe UI Variable Text','Segoe UI',sans-serif">
+              <span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:3px 5px;border-radius:4px;border:1px solid #484848;color:#8a8a8a">Ctrl+K</span>
+              <button onClick="{{ send }}" title="Send (Enter)" style="white-space:nowrap;width:28px;height:28px;border-radius:4px;border:none;background:{{ sendBg }};color:#1f1f1f;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+
+<div style="flex:none;background:#1f1f1f;border-top:1px solid #2e2e2e;display:flex;flex-direction:column">
+  <div style="height:34px;display:flex;align-items:center;gap:14px;padding:0 12px;opacity:{{ ctlOpacity }};pointer-events:{{ ctlPE }}">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="font-size:11px;color:#a6a6a6;margin-right:2px">Zoom</span>
+      <button onClick="{{ zoomOut }}" style="white-space:nowrap;width:20px;height:20px;border-radius:4px;border:none;background:transparent;color:#c5c5c5;cursor:pointer;padding:0;font:500 14px/1 'Segoe UI Variable Text','Segoe UI',sans-serif" style-hover="background:#2d2d2d">−</button>
+      <input type="range" min="1" max="6" step="0.1" value="{{ zoom }}" onChange="{{ onZoom }}" style="width:110px;accent-color:#60CDFF;margin:0">
+      <button onClick="{{ zoomIn }}" style="white-space:nowrap;width:20px;height:20px;border-radius:4px;border:none;background:transparent;color:#c5c5c5;cursor:pointer;padding:0;font:500 14px/1 'Segoe UI Variable Text','Segoe UI',sans-serif" style-hover="background:#2d2d2d">+</button>
+      <span style="font:500 11px 'Cascadia Mono',Consolas,monospace;color:#c5c5c5;width:32px">{{ zoomText }}</span>
+    </div>
+    <div style="width:1px;height:16px;background:#3a3a3a"></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="font-size:11px;color:#a6a6a6;margin-right:2px">Show</span>
+      <sc-for list="{{ toggles }}" as="g" hint-placeholder-count="3">
+        <button onClick="{{ g.click }}" style="white-space:nowrap;height:24px;padding:0 8px;border-radius:4px;border:1px solid {{ g.border }};background:{{ g.bg }};color:{{ g.col }};font:500 11px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:6px;cursor:pointer"><div style="width:9px;height:9px;border-radius:2px;background:{{ g.swatch }}"></div>{{ g.label }}<span style="font-family:'Cascadia Mono',Consolas,monospace;color:#8a8a8a">{{ g.count }}</span></button>
+      </sc-for>
+    </div>
+    <div style="flex:1"></div>
+    <button onClick="{{ toggleSnap }}" style="white-space:nowrap;height:24px;padding:0 8px;border-radius:4px;border:1px solid {{ snapBorder }};background:{{ snapBg }};color:{{ snapCol }};font:500 11px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer">Snap to keyframes</button>
+    <button onClick="{{ split }}" title="Split clip at playhead (S)" style="white-space:nowrap;height:24px;padding:0 6px 0 8px;border-radius:4px;border:1px solid #3a3a3a;background:transparent;color:#d6d6d6;font:500 11px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:6px;cursor:pointer" style-hover="background:#2d2d2d">Split<span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 4px;border-radius:3px;border:1px solid #484848;color:#a6a6a6">S</span></button>
+    <button onClick="{{ delSel }}" title="Remove selected clip (Del)" style="white-space:nowrap;height:24px;padding:0 6px 0 8px;border-radius:4px;border:1px solid #3a3a3a;background:transparent;color:#d6d6d6;font:500 11px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:6px;cursor:pointer" style-hover="background:#2d2d2d">Remove<span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 4px;border-radius:3px;border:1px solid #484848;color:#a6a6a6">Del</span></button>
+  </div>
+  <div style="display:flex;flex-direction:column;padding-bottom:8px">
+    <div style="display:flex">
+      <div style="width:86px;flex:none;position:relative;height:{{ tlH }}">
+        <div style="position:absolute;left:8px;right:6px;top:0;height:20px;display:flex;gap:4px">
+          <button onClick="{{ addV }}" title="Add video track" style="white-space:nowrap;flex:1;height:18px;border-radius:4px;border:1px solid #3a3a3a;background:transparent;color:#c5c5c5;padding:0;cursor:pointer;font:600 10px 'Cascadia Mono',Consolas,monospace" style-hover="background:#2d2d2d">+ V</button>
+          <button onClick="{{ addA }}" title="Add audio track" style="white-space:nowrap;flex:1;height:18px;border-radius:4px;border:1px solid #3a3a3a;background:transparent;color:#c5c5c5;padding:0;cursor:pointer;font:600 10px 'Cascadia Mono',Consolas,monospace" style-hover="background:#2d2d2d">+ A</button>
+        </div>
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="2">
+          <div style="position:absolute;left:8px;right:6px;top:{{ r.top }};height:{{ r.h }};display:flex;align-items:center;gap:2px;padding:0 3px 0 7px;border-radius:4px;background:#232323;box-sizing:border-box">
+            <span style="flex:1;font:600 10.5px 'Cascadia Mono',Consolas,monospace;color:{{ r.nameCol }}">{{ r.name }}</span>
+            <button onClick="{{ r.toggle }}" title="{{ r.toggleTip }}" style="white-space:nowrap;width:20px;height:20px;border:none;border-radius:4px;background:transparent;color:{{ r.iconCol }};padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#333333">
+              <sc-if value="{{ r.vOn }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg></sc-if>
+              <sc-if value="{{ r.vOff }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle><path d="M2.5 2.5l11 11"></path></svg></sc-if>
+              <sc-if value="{{ r.aOn }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z"></path><path d="M11 5.5a3.5 3.5 0 0 1 0 5"></path></svg></sc-if>
+              <sc-if value="{{ r.aOff }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z"></path><path d="M11 6l3 4M14 6l-3 4"></path></svg></sc-if>
+            </button>
+            <sc-if value="{{ r.canRemove }}" hint-placeholder-val="{{ false }}"><button onClick="{{ r.remove }}" title="Remove track" style="white-space:nowrap;width:18px;height:20px;border:none;border-radius:4px;background:transparent;color:#8a8a8a;padding:0;cursor:pointer;font:400 13px/1 'Segoe UI Variable Text','Segoe UI',sans-serif" style-hover="background:#333333;color:#ffffff">×</button></sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex:1;min-width:0;margin-right:12px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:#484848 transparent">
+        <div ref="{{ storyRef }}" style="position:relative;width:{{ innerW }};min-width:100%;height:{{ tlH }}">
+          <div onPointerDown="{{ storyScrub }}" style="position:absolute;top:0;left:0;right:0;height:20px;border-bottom:1px solid #2e2e2e;background-image:linear-gradient(to right, #484848 1px, transparent 1px);background-size:{{ minorSize }} 5px;background-repeat:repeat-x;background-position:0 100%;cursor:default"></div>
+          <sc-for list="{{ majors }}" as="m" hint-placeholder-count="10"><div style="position:absolute;top:0;height:20px;left:{{ m.left }};border-left:1px solid #565656;padding:3px 0 0 4px;font:400 10px 'Cascadia Mono',Consolas,monospace;color:#a6a6a6;white-space:nowrap;pointer-events:none">{{ m.label }}</div></sc-for>
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="2">
+            <div onPointerDown="{{ storyScrub }}" onDoubleClick="{{ r.dbl }}" title="{{ r.laneTip }}" style="position:absolute;left:0;right:0;top:{{ r.top }};height:{{ r.h }};background:#1c1c1c;border-radius:4px">
+              <sc-if value="{{ r.emptyHint }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:10px;top:0;bottom:0;display:flex;align-items:center;font-size:11px;color:#6e6e6e;white-space:nowrap;pointer-events:none">Empty track · double-click to add media</div></sc-if>
+            </div>
+          </sc-for>
+          <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:0;right:0;top:{{ mainTop }};height:{{ mainH }};border:1.5px dashed #404040;border-radius:8px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:12px;color:#8a8a8a;pointer-events:none">Clips you mark appear here</div>
+          </sc-if>
+          <sc-if value="{{ hasFile }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;top:{{ mainTop }};left:0;right:0;height:{{ mainH }};pointer-events:none">
+              <sc-for list="{{ story }}" as="c" hint-placeholder-count="5">
+                <div draggable="true" onDragStart="{{ c.dragStart }}" onDragOver="{{ c.dragOver }}" onDrop="{{ c.drop }}" onDragEnd="{{ c.dragEnd }}" onClick="{{ c.pick }}" style="position:absolute;top:0;height:100%;left:{{ c.left }};width:{{ c.width }};box-sizing:border-box;padding:0 1px;opacity:{{ c.opacity }};z-index:{{ c.z }};pointer-events:auto">
+                  <div style="position:relative;height:100%;display:flex;flex-direction:column;gap:2px">
+                    <div style="height:44px;flex:none;position:relative;border-radius:6px 6px 2px 2px;overflow:hidden;background:#262626;display:flex;flex-direction:column;opacity:{{ c.vOp }}">
+                      <div style="height:18px;flex:none;display:flex;align-items:center;gap:6px;padding:0 8px;background:{{ c.hdBg }};color:{{ c.hdCol }};font:600 10.5px 'Segoe UI Variable Text','Segoe UI',sans-serif;white-space:nowrap;overflow:hidden">
+                        <span style="font-family:'Cascadia Mono',Consolas,monospace">{{ c.n }}</span><span style="overflow:hidden;text-overflow:ellipsis">{{ c.label }}</span>
+                        <sc-if value="{{ c.ai }}" hint-placeholder-val="{{ false }}"><span style="flex:none;font-weight:500;opacity:0.75">· {{ c.aiTag }}</span></sc-if>
+                        <span style="flex:1"></span><span style="font:500 10px 'Cascadia Mono',Consolas,monospace;opacity:0.8">{{ c.dur }}</span>
+                      </div>
+                      <div style="flex:1;position:relative;display:flex">
+                        <sc-for list="{{ c.thumbs }}" as="th" hint-placeholder-count="2"><div style="flex:1;min-width:0;background:{{ th.bg }};border-right:1px solid #141414"></div></sc-for>
+                        <sc-if value="{{ kfOn }}" hint-placeholder-val="{{ true }}"><sc-for list="{{ c.kfs }}" as="k" hint-placeholder-count="0"><div style="position:absolute;bottom:0;left:{{ k.left }};width:1px;height:5px;background:rgba(255,255,255,0.55);pointer-events:none"></div></sc-for></sc-if>
+                        <sc-if value="{{ scOn }}" hint-placeholder-val="{{ true }}"><sc-for list="{{ c.scn }}" as="q" hint-placeholder-count="0"><div style="position:absolute;top:0;bottom:0;left:{{ q.left }};border-left:1px dashed rgba(255,255,255,0.4);pointer-events:none"></div></sc-for></sc-if>
+                      </div>
+                    </div>
+                    <div style="flex:1;position:relative;border-radius:2px 2px 6px 6px;overflow:hidden;background:{{ c.auBg }};display:flex;align-items:center;gap:1px;padding:0 3px;opacity:{{ c.aOp }}">
+                      <sc-for list="{{ c.bars }}" as="b" hint-placeholder-count="20"><div style="flex:1;min-width:0;height:{{ b.h }};background:{{ c.barCol }};border-radius:1px"></div></sc-for>
+                      <sc-if value="{{ silOn }}" hint-placeholder-val="{{ true }}"><sc-for list="{{ c.sils }}" as="z" hint-placeholder-count="0"><div style="position:absolute;top:0;bottom:0;left:{{ z.left }};width:{{ z.width }};background:repeating-linear-gradient(135deg, rgba(255,255,255,0.09) 0 1px, transparent 1px 5px);border-top:1px solid rgba(255,255,255,0.18);box-sizing:border-box;pointer-events:none"></div></sc-for></sc-if>
+                    </div>
+                    {{ c.scan }}
+                    <div style="position:absolute;inset:0;border-radius:6px;box-shadow:inset 0 0 0 {{ c.ringW }} {{ c.ring }};pointer-events:none"></div>
+                    <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}">
+                      <div onPointerDown="{{ c.inDown }}" title="Trim in-point" style="position:absolute;left:0;top:0;bottom:0;width:10px;border-radius:6px 0 0 6px;background:{{ c.handleBg }};cursor:ew-resize;display:flex;align-items:center;justify-content:center;gap:2px"><div style="width:1px;height:16px;background:rgba(0,0,0,0.45)"></div><div style="width:1px;height:16px;background:rgba(0,0,0,0.45)"></div></div>
+                      <div onPointerDown="{{ c.outDown }}" title="Trim out-point" style="position:absolute;right:0;top:0;bottom:0;width:10px;border-radius:0 6px 6px 0;background:{{ c.handleBg }};cursor:ew-resize;display:flex;align-items:center;justify-content:center;gap:2px"><div style="width:1px;height:16px;background:rgba(0,0,0,0.45)"></div><div style="width:1px;height:16px;background:rgba(0,0,0,0.45)"></div></div>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-for>
+              <div style="position:absolute;top:-4px;bottom:0;left:{{ endLeft }};border-left:1px dashed #5c5c5c;pointer-events:none"><div style="position:absolute;top:26px;left:6px;font:500 10.5px 'Cascadia Mono',Consolas,monospace;color:#a6a6a6;white-space:nowrap">End · {{ endText }}</div></div>
+            </div>
+            <sc-for list="{{ xitems }}" as="x" hint-placeholder-count="0">
+              <div onPointerDown="{{ x.down }}" title="{{ x.label }} · drag to move" style="position:absolute;top:{{ x.top }};height:{{ x.h }};left:{{ x.left }};width:{{ x.width }};box-sizing:border-box;padding:0 1px;opacity:{{ x.opacity }};z-index:{{ x.z }};cursor:grab">
+                <div style="position:relative;height:100%;border-radius:5px;overflow:hidden;background:{{ x.bg }};display:flex;flex-direction:column">
+                  <sc-if value="{{ x.isV }}" hint-placeholder-val="{{ false }}">
+                    <div style="height:18px;flex:none;display:flex;align-items:center;gap:6px;padding:0 8px;background:{{ x.hdBg }};color:{{ x.hdCol }};font:600 10.5px 'Segoe UI Variable Text','Segoe UI',sans-serif;white-space:nowrap;overflow:hidden"><span style="overflow:hidden;text-overflow:ellipsis">{{ x.label }}</span><span style="flex:1"></span><span style="font:500 10px 'Cascadia Mono',Consolas,monospace;opacity:0.8">{{ x.dur }}</span></div>
+                    <div style="flex:1;display:flex"><sc-for list="{{ x.thumbs }}" as="th" hint-placeholder-count="2"><div style="flex:1;min-width:0;background:{{ th.bg }};border-right:1px solid #141414"></div></sc-for></div>
+                  </sc-if>
+                  <sc-if value="{{ x.isA }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;inset:0;display:flex;align-items:center;gap:1px;padding:0 3px"><sc-for list="{{ x.bars }}" as="b" hint-placeholder-count="10"><div style="flex:1;min-width:0;height:{{ b.h }};background:{{ x.barCol }};border-radius:1px"></div></sc-for></div>
+                    <div style="position:relative;display:flex;padding:3px 4px;min-width:0"><span style="padding:1px 5px;border-radius:3px;background:{{ x.hdBg }};color:{{ x.hdCol }};font:600 10px 'Segoe UI Variable Text','Segoe UI',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ x.label }} · {{ x.dur }}</span></div>
+                  </sc-if>
+                  <div style="position:absolute;inset:0;border-radius:5px;box-shadow:inset 0 0 0 {{ x.ringW }} {{ x.ring }};pointer-events:none"></div>
+                </div>
+              </div>
+            </sc-for>
+          </sc-if>
+          <sc-if value="{{ storyPhOn }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;top:0;bottom:0;left:{{ storyPh }};width:0;z-index:20;pointer-events:none">
+              <div style="position:absolute;top:0;bottom:0;left:-0.5px;width:1px;background:#ffffff"></div>
+              <div style="position:absolute;top:0;left:-6px;width:12px;height:14px;background:#ffffff;clip-path:polygon(0 0,100% 0,100% 58%,50% 100%,0 58%)"></div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="height:24px;flex:none;white-space:nowrap;display:flex;align-items:center;gap:16px;padding:0 14px;background:#202020;border-top:1px solid #2e2e2e;font-size:11px;color:#a6a6a6">
+  <div style="display:flex;align-items:center;gap:6px"><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 5px;border-radius:3px;border:1px solid #484848;color:#d6d6d6">Space</span>Play</div>
+  <div style="display:flex;align-items:center;gap:6px"><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 5px;border-radius:3px;border:1px solid #484848;color:#d6d6d6">I</span><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 5px;border-radius:3px;border:1px solid #484848;color:#d6d6d6">O</span>In / out</div>
+  <div style="display:flex;align-items:center;gap:6px"><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 5px;border-radius:3px;border:1px solid #484848;color:#d6d6d6">←</span><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 5px;border-radius:3px;border:1px solid #484848;color:#d6d6d6">→</span>Frame · Shift for 1 s</div>
+  <div style="display:flex;align-items:center;gap:6px"><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 5px;border-radius:3px;border:1px solid #484848;color:#d6d6d6">S</span>Split</div>
+  <div style="display:flex;align-items:center;gap:6px"><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 5px;border-radius:3px;border:1px solid #484848;color:#d6d6d6">Del</span>Remove</div>
+  <div style="display:flex;align-items:center;gap:6px"><span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;padding:2px 5px;border-radius:3px;border:1px solid #484848;color:#d6d6d6">Ctrl+E</span>Export</div>
+  <div style="flex:1"></div>
+  <span style="font-family:'Cascadia Mono',Consolas,monospace;color:#8a8a8a">{{ statusRight }}</span>
+</div>
+
+<sc-if value="{{ showDialog }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;z-index:50;background:rgba(6,6,7,0.62);display:flex;align-items:center;justify-content:center">
+    <div style="width:580px;background:#2b2b2b;border:1px solid #404040;border-radius:8px;box-shadow:0 24px 70px rgba(0,0,0,0.55);overflow:hidden">
+      <sc-if value="{{ isConfig }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:16px 16px 14px 18px">
+          <div style="flex:1"><div style="font-size:15px;font-weight:600">Export</div><div style="font-size:12px;color:#a6a6a6;margin-top:3px">{{ exportSummary }}</div></div>
+          <button onClick="{{ closeDialog }}" title="Close (Esc)" style="white-space:nowrap;width:26px;height:26px;border-radius:4px;border:none;background:transparent;color:#a6a6a6;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0" style-hover="background:#2e2e2e;color:#ffffff"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+        </div>
+        <div style="padding:0 18px 18px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div style="font-size:11px;font-weight:500;color:#a6a6a6">Cut mode</div>
+            <sc-for list="{{ modes }}" as="md" hint-placeholder-count="3">
+              <div onClick="{{ md.pick }}" style="display:flex;align-items:flex-start;gap:11px;padding:10px 12px;border-radius:8px;border:1px solid {{ md.border }};background:{{ md.bg }};cursor:pointer">
+                <div style="width:14px;height:14px;flex:none;margin-top:1px;box-sizing:border-box;border-radius:50%;border:{{ md.ring }}"></div>
+                <div style="flex:1"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12.5px;font-weight:600">{{ md.title }}</span><span style="font:500 10px/16px 'Segoe UI Variable Text','Segoe UI',sans-serif;padding:0 6px;border-radius:3px;background:#2e2e2e;color:#c5c5c5">{{ md.tag }}</span></div><div style="font-size:11.5px;color:#b0b0b0;line-height:1.45;margin-top:2px">{{ md.desc }}</div></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:16px">
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="font-size:11px;font-weight:500;color:#a6a6a6">Container</div>
+              <div style="display:flex;padding:2px;gap:2px;border-radius:4px;background:#1f1f1f;border:1px solid #3a3a3a">
+                <sc-for list="{{ fmts }}" as="f" hint-placeholder-count="3"><button onClick="{{ f.pick }}" style="white-space:nowrap;height:26px;padding:0 12px;border-radius:4px;border:none;background:{{ f.bg }};color:{{ f.col }};font:500 11.5px 'Cascadia Mono',Consolas,monospace;cursor:pointer">{{ f.label }}</button></sc-for>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <div style="font-size:11px;font-weight:500;color:#a6a6a6">Output</div>
+              <div style="display:flex;padding:2px;gap:2px;border-radius:4px;background:#1f1f1f;border:1px solid #3a3a3a">
+                <sc-for list="{{ outs }}" as="f" hint-placeholder-count="2"><button onClick="{{ f.pick }}" style="white-space:nowrap;flex:1;height:26px;padding:0 10px;border-radius:4px;border:none;background:{{ f.bg }};color:{{ f.col }};font:500 11.5px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer">{{ f.label }}</button></sc-for>
+              </div>
+            </div>
+          </div>
+          <sc-if value="{{ isEncode }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:7px"><div style="font-size:11px;font-weight:500;color:#a6a6a6">Video</div><div style="height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-radius:4px;background:#1f1f1f;border:1px solid #3a3a3a;font:400 11.5px 'Cascadia Mono',Consolas,monospace;color:#e2e2e2">H.264 · CRF 18 · medium<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a6a6a6" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></div></div>
+              <div style="display:flex;flex-direction:column;gap:7px"><div style="font-size:11px;font-weight:500;color:#a6a6a6">Audio</div><div style="height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-radius:4px;background:#1f1f1f;border:1px solid #3a3a3a;font:400 11.5px 'Cascadia Mono',Consolas,monospace;color:#e2e2e2">Copy (AAC 48 kHz)<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#a6a6a6" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></div></div>
+            </div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ opts }}" as="o" hint-placeholder-count="2">
+              <div onClick="{{ o.click }}" style="display:flex;align-items:center;gap:9px;cursor:pointer;opacity:{{ o.opacity }}"><div style="width:15px;height:15px;box-sizing:border-box;border-radius:4px;border:1.5px solid {{ o.border }};background:{{ o.bg }};display:flex;align-items:center;justify-content:center"><sc-if value="{{ o.on }}" hint-placeholder-val="{{ true }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12.5 10 17 19 7"></polyline></svg></sc-if></div><span style="font-size:12px;color:#e2e2e2">{{ o.label }}</span></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div style="font-size:11px;font-weight:500;color:#a6a6a6">Save to</div>
+            <div style="display:flex;gap:8px"><div style="flex:1;min-width:0;height:30px;display:flex;align-items:center;padding:0 10px;border-radius:4px;background:#1f1f1f;border:1px solid #3a3a3a;font:400 11.5px 'Cascadia Mono',Consolas,monospace;color:#e2e2e2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ outPath }}</div><button style="white-space:nowrap;height:30px;padding:0 12px;border-radius:4px;border:1px solid #404040;background:#2d2d2d;color:#ffffff;font:500 12px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer" style-hover="background:#3a3a3a">Browse…</button></div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 16px 12px 18px;border-top:1px solid #2e2e2e;background:#262626">
+          <span style="flex:1;font:400 11.5px 'Cascadia Mono',Consolas,monospace;color:#a6a6a6">{{ estimate }}</span>
+          <button onClick="{{ closeDialog }}" style="white-space:nowrap;height:30px;padding:0 10px 0 12px;border-radius:4px;border:1px solid #404040;background:transparent;color:#ffffff;font:500 12px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:8px;cursor:pointer" style-hover="background:#2d2d2d">Cancel<span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;color:#8a8a8a">Esc</span></button>
+          <button onClick="{{ doExport }}" style="white-space:nowrap;height:30px;padding:0 10px 0 14px;border-radius:4px;border:none;background:#60CDFF;color:#000000;font:600 12px 'Segoe UI Variable Text','Segoe UI',sans-serif;display:flex;align-items:center;gap:8px;cursor:pointer" style-hover="background:#7AD6FF">Export {{ fileCount }}<span style="font:500 10px/1 'Cascadia Mono',Consolas,monospace;opacity:0.55">Enter</span></button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isExporting }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:16px 18px 6px">
+          <div style="font-size:15px;font-weight:600">{{ exportTitle }}</div>
+          <div style="font:400 11.5px 'Cascadia Mono',Consolas,monospace;color:#a6a6a6;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ outPath }}</div>
+        </div>
+        <div style="padding:0 18px 4px;display:flex;align-items:center;gap:12px"><span style="font:400 11.5px 'Cascadia Mono',Consolas,monospace;color:#a6a6a6">{{ exportStats }}</span><span style="flex:1"></span><span style="font:500 13px/1 'Cascadia Mono',Consolas,monospace;color:#ffffff">{{ pctBig }}</span></div>
+        <div style="display:flex;flex-direction:column;gap:4px;padding:8px 14px 14px">
+          <sc-for list="{{ xrows }}" as="r" hint-placeholder-count="5">
+            <div style="height:{{ r.h }};padding:0 {{ r.px }};box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;gap:{{ r.gap }};border-radius:8px;background:{{ r.bg }};border:1px solid {{ r.bd }};opacity:{{ r.op }};overflow:hidden;transition:height 480ms cubic-bezier(.2,.8,.2,1),padding 480ms cubic-bezier(.2,.8,.2,1),gap 480ms ease,background 480ms ease,border-color 480ms ease,opacity 480ms ease">
+              <div style="display:flex;align-items:center;gap:11px">
+                <sc-if value="{{ r.isDone }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c5c5c5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12.5 10 17 19 7"></polyline></svg></sc-if>
+                <sc-if value="{{ r.isActive }}" hint-placeholder-val="{{ false }}"><div style="width:14px;display:flex;justify-content:center">{{ amberDot }}</div></sc-if>
+                <sc-if value="{{ r.isQueued }}" hint-placeholder-val="{{ true }}"><div style="width:14px;display:flex;justify-content:center"><div style="width:8px;height:8px;box-sizing:border-box;border-radius:50%;border:1.5px solid #5c5c5c"></div></div></sc-if>
+                <span style="flex:1;min-width:0;font-size:{{ r.fs }};font-weight:{{ r.fw }};color:{{ r.col }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:font-size 480ms cubic-bezier(.2,.8,.2,1)">{{ r.name }}</span>
+                <span style="font:500 12px 'Cascadia Mono',Consolas,monospace;color:{{ r.stCol }}">{{ r.status }}</span>
+              </div>
+              <div style="flex:none;height:{{ r.barH }};border-radius:2px;background:#262626;overflow:hidden;opacity:{{ r.barOp }};transition:opacity 300ms ease,height 480ms ease"><div style="height:100%;width:{{ r.locW }};background:#60CDFF;border-radius:2px"></div></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:12px 16px 12px 18px;border-top:1px solid #2e2e2e;background:#262626">
+          <span style="flex:1;font:400 11.5px 'Cascadia Mono',Consolas,monospace;color:#a6a6a6">{{ exportFoot }}</span>
+          <sc-if value="{{ notDone }}" hint-placeholder-val="{{ true }}"><button onClick="{{ closeDialog }}" style="white-space:nowrap;height:30px;padding:0 12px;border-radius:4px;border:1px solid #404040;background:transparent;color:#ffffff;font:500 12px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer" style-hover="background:#2d2d2d">Cancel export</button></sc-if>
+          <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:8px"><button style="white-space:nowrap;height:30px;padding:0 12px;border-radius:4px;border:1px solid #404040;background:transparent;color:#ffffff;font:500 12px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer" style-hover="background:#2d2d2d">Show in Explorer</button><button onClick="{{ closeDialog }}" style="white-space:nowrap;height:30px;padding:0 14px;border-radius:4px;border:none;background:#60CDFF;color:#000000;font:600 12px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer">Done</button></div>
+          </sc-if>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;screen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;empty&quot;,&quot;editing&quot;,&quot;ai&quot;,&quot;export&quot;,&quot;exporting&quot;],&quot;default&quot;:&quot;editing&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;mcpConnected&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;aiPanelOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  DUR = 872.48;
+  D = this.build();
+  trackRef = React.createRef();
+  storyRef = React.createRef();
+  logRef = React.createRef();
+  hover = false;
+  state = this.fresh(this.props.screen || 'editing');
+
+  build() {
+    let seed = 11;
+    const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const DUR = this.DUR;
+    const pct = t => (t / DUR * 100).toFixed(3) + '%';
+    const silence = [[0, 11.2], [46.2, 52.4], [112.3, 123.1], [205, 213.6], [404.4, 417.8], [470, 480.2], [540.1, 546.3], [603, 611.8], [700, 712.5], [829.4, 872.48]];
+    const inSil = t => silence.some(z => t >= z[0] && t <= z[1]);
+    const bars = []; let env = 0.6;
+    for (let i = 0; i < 360; i++) {
+      const t = (i + 0.5) / 360 * DUR;
+      env = Math.min(0.95, Math.max(0.35, env + (rnd() - 0.5) * 0.3));
+      const a = inSil(t) ? 0.04 + rnd() * 0.05 : env * (0.45 + rnd() * 0.55);
+      bars.push({ h: (a * 100).toFixed(1) + '%' });
+    }
+    const amps = []; let env2 = 0.6;
+    for (let i = 0; i < 1200; i++) { const t = (i + 0.5) / 1200 * DUR; env2 = Math.min(0.95, Math.max(0.35, env2 + (rnd() - 0.5) * 0.18)); amps.push(inSil(t) ? 0.04 + rnd() * 0.05 : env2 * (0.4 + rnd() * 0.6)); }
+    const kf = []; for (let t = 0; t < DUR; t += 1.5 + rnd() * 3) kf.push(t);
+    const scenes = [46.2, 118.6, 242.88, 404.0, 495.2, 603, 745, 830.2];
+    const tones = [[250, .36], [55, .44], [215, .30], [30, .40], [195, .46], [285, .32], [145, .38], [20, .42], [235, .34]];
+    return { pct, amps, silence, bars, kf, scenes, tones,
+      sils: silence.map(z => ({ left: pct(z[0]), width: pct(z[1] - z[0]) })),
+      kfs: kf.map(t => ({ left: pct(t) })),
+      sceneView: scenes.map(t => ({ left: pct(t) })) };
+  }
+  tone(t, dark, j) {
+    const i = this.D.scenes.filter(x => x <= t).length;
+    const h = this.D.tones[i][0]; const L = this.D.tones[i][1] - (dark || 0) + (j || 0);
+    return `linear-gradient(165deg, oklch(${(L + 0.08).toFixed(3)} 0.035 ${h}) 0%, oklch(${(L - 0.05).toFixed(3)} 0.028 ${h}) 62%, oklch(${(L - 0.13).toFixed(3)} 0.02 ${h}) 100%)`;
+  }
+  pad(n, l) { return String(n).padStart(l || 2, '0'); }
+  tc(t) { const ms = Math.round(Math.max(0, t) * 1000); return this.pad(Math.floor(ms / 3600000)) + ':' + this.pad(Math.floor(ms / 60000) % 60) + ':' + this.pad(Math.floor(ms / 1000) % 60) + '.' + this.pad(ms % 1000, 3); }
+  ts(t) { const ms = Math.round(Math.max(0, t) * 1000); return this.pad(Math.floor(ms / 60000)) + ':' + this.pad(Math.floor(ms / 1000) % 60) + '.' + this.pad(ms % 1000, 3); }
+  dur(t) { const ms = Math.round(Math.max(0, t) * 1000); return Math.floor(ms / 60000) + ':' + this.pad(Math.floor(ms / 1000) % 60) + '.' + this.pad(ms % 1000, 3); }
+  mmss(t) { t = Math.max(0, Math.round(t)); return this.pad(Math.floor(t / 60)) + ':' + this.pad(t % 60); }
+
+  baseClips() { return [
+    { id: 1, label: 'Intro', s: 12.04, e: 45.32, on: true },
+    { id: 2, label: 'Setup', s: 118.6, e: 190.12, on: true },
+    { id: 3, label: 'Demo — import', s: 242.88, e: 404.0, on: true },
+    { id: 4, label: 'Demo — trim', s: 495.2, e: 602.56, on: true },
+    { id: 5, label: 'Outro', s: 750.0, e: 828.72, on: true }]; }
+  baseItems() { return [
+    { id: 101, kind: 'v', track: 2, label: 'Screen recording', at: 34, len: 62 },
+    { id: 102, kind: 'v', track: 2, label: 'Webcam', at: 252, len: 46 },
+    { id: 103, kind: 'a', track: 2, label: 'Music bed', at: 0, len: 212 },
+    { id: 104, kind: 'a', track: 2, label: 'Music outro', at: 384, len: 68 },
+    { id: 105, kind: 'a', track: 3, label: 'Voiceover', at: 22, len: 94 },
+    { id: 106, kind: 'a', track: 3, label: 'Voiceover 2', at: 206, len: 78 }]; }
+  span(s) { const seq = s.clips.reduce((m, c) => m + c.e - c.s, 0); const xe = (s.items || []).reduce((m, it) => Math.max(m, it.at + it.len), 0); return Math.max(540, seq + 30, xe + 30); }
+  addTrack(kind) { this.setState(s => { const k = kind + 'N', max = kind === 'v' ? 4 : 6; return s[k] < max ? { [k]: s[k] + 1 } : null; }); }
+  removeTrack(kind, n) {
+    this.setState(s => {
+      const P = kind === 'v' ? 'V' : 'A', off = {};
+      Object.keys(s.off).forEach(key => { if (key[0] !== P) { off[key] = s.off[key]; return; } const m = +key.slice(1); if (m < n) off[key] = s.off[key]; else if (m > n) off[P + (m - 1)] = s.off[key]; });
+      return { [kind + 'N']: s[kind + 'N'] - 1, off, xsel: null,
+        items: s.items.filter(it => !(it.kind === kind && it.track === n)).map(it => it.kind === kind && it.track > n ? { ...it, track: it.track - 1 } : it) };
+    });
+  }
+  addItemAt(e, kind, n) {
+    const el = this.storyRef.current; if (!el) return;
+    const r = el.getBoundingClientRect(); const T = (e.clientX - r.left) / r.width * this.span(this.state);
+    this.setState(s => { const id = s.items.reduce((m, it) => Math.max(m, it.id), 100) + 1;
+      return { xsel: id, items: s.items.concat({ id, kind, track: n, label: (kind === 'v' ? 'Video ' : 'Audio ') + (id - 100), at: Math.max(0, T - 2), len: 20 }) }; });
+  }
+  delItem(id) { this.setState(s => ({ items: s.items.filter(it => it.id !== id), xsel: null })); }
+  xDown(e, id) {
+    e.stopPropagation(); e.preventDefault();
+    const el = this.storyRef.current; const it0 = this.state.items.find(it => it.id === id); if (!el || !it0) return;
+    const r0 = el.getBoundingClientRect(); const spp = this.span(this.state) / r0.width; const x0 = e.clientX;
+    const edges = [0]; let cum = 0; this.state.clips.forEach(c => { cum += c.e - c.s; edges.push(cum); });
+    this.state.items.forEach(it => { if (it.id !== id) edges.push(it.at, it.at + it.len); });
+    this.setState({ xsel: id });
+    const move = ev => {
+      let at = Math.max(0, it0.at + (ev.clientX - x0) * spp); const th = 8 * spp;
+      for (const g of edges) { if (Math.abs(g - at) < th) { at = g; break; } if (Math.abs(g - (at + it0.len)) < th) { at = g - it0.len; break; } }
+      const y = ev.clientY - el.getBoundingClientRect().top;
+      const row = (this._rows || []).find(rw => rw.kind === it0.kind && rw.n > 1 && y >= rw._y - 3 && y <= rw._y + rw._h + 3);
+      this.setState(s => ({ items: s.items.map(it => it.id !== id ? it : { ...it, at: Math.max(0, at), track: row ? row.n : it.track }) }));
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+  editLog() {
+    const names = ['Intro', 'Setup', 'Demo — import', 'Demo — trim', 'Outro'];
+    return [
+      { id: 'u1', kind: 'user', text: 'Cut this down to the intro, setup, both demo parts and the outro. Drop the dead air.' },
+      { id: 'a1', kind: 'act', text: 'Detected 8 scene changes', meta: 'detect_scenes · 0.4 s' },
+      { id: 'a2', kind: 'act', text: 'Added 5 clips at scene boundaries', meta: 'add_segment ×5', op: { type: 'add', ids: [1, 2, 3, 4, 5] } },
+      { id: 'a3', kind: 'act', text: 'Removed silence 3×', meta: 'trim_segment ×3 · −15.34 s', op: { type: 'patch', changes: [{ id: 1, from: { s: 8.1 }, to: { s: 12.04 } }, { id: 3, from: { e: 410.6 }, to: { e: 404 } }, { id: 5, from: { s: 745.2 }, to: { s: 750 } }] } },
+      { id: 'a4', kind: 'act', text: 'Labeled clips from transcript', meta: 'set_label ×5', op: { type: 'patch', changes: [1, 2, 3, 4, 5].map((id, i) => ({ id, from: { label: 'Segment ' + id }, to: { label: names[i] } })) } },
+      { id: 'c1', kind: 'claude', text: 'Output is 7:32.000, under your 8 minute target. Clip 4 has a 6 s pause around 00:09:00. Want me to cut it?' }];
+  }
+  aiLog(text) { return [
+    { id: 'u2', kind: 'user', text },
+    { id: 'a5', kind: 'act', text: 'Trimmed clip 2 in-point', meta: 'trim_segment · +4.54 s', changed: true, ids: [2], delta: -4.54, op: { type: 'patch', changes: [{ id: 2, from: { s: 118.6 }, to: { s: 123.14 } }] } },
+    { id: 'a6', kind: 'act', text: 'Trimmed clip 5 out-point', meta: 'trim_segment · −16.32 s', changed: true, ids: [5], delta: -16.32, op: { type: 'patch', changes: [{ id: 5, from: { e: 828.72 }, to: { e: 812.4 } }] } },
+    { id: 'l1', kind: 'live', text: 'Removing pause in clip 4', meta: 'detect_silence · 08:15 – 10:02', ids: [4] }]; }
+  applyAi(clips) { return clips.map(c => c.id === 2 ? { ...c, s: 123.14 } : c.id === 5 ? { ...c, e: 812.4 } : c); }
+
+  fresh(screen) {
+    const base = screen === 'empty' ? 'empty' : screen === 'ai' ? 'ai' : 'editing';
+    const dialog = screen === 'export' ? 'export' : screen === 'exporting' ? 'exporting' : null;
+    let clips = [], log = [];
+    if (base !== 'empty') { clips = this.baseClips(); log = this.editLog(); }
+    if (base === 'ai') { log = log.concat(this.aiLog('Yes, cut it. Also tighten the setup and the outro.')); clips = this.applyAi(clips); }
+    return { base, dialog, clips, log, sel: base === 'ai' ? 4 : base === 'empty' ? null : 3, t: base === 'ai' ? 541.2 : 301.42,
+      playing: false, speed: 1, zoom: 1, kf: true, sil: true, sc: true, snap: true,
+      aiOpen: this.props.aiPanelOpen !== false, mcp: this.props.mcpConnected !== false,
+      mode: 'copy', fmt: 'MP4', merge: true, chapters: true, tracks: true,
+      vN: base === 'empty' ? 1 : 2, aN: base === 'empty' ? 1 : 3, off: {}, xsel: null, items: base === 'empty' ? [] : this.baseItems(),
+      prog: dialog === 'exporting' ? 0.42 : 0, loop: dialog === 'exporting', draft: '', dragId: null, overId: null, dropHover: false };
+  }
+
+  componentDidMount() {
+    window.addEventListener('keydown', this.onKey);
+    if (this.state.dialog === 'exporting') this.startExport();
+    this.scrollLog();
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this.onKey); clearInterval(this.xt); clearInterval(this.pt); }
+  componentDidUpdate(pp) {
+    pp = pp || this.props;
+    if (pp.screen !== this.props.screen) {
+      clearInterval(this.pt); clearInterval(this.xt);
+      this.setState(this.fresh(this.props.screen || 'editing'), () => { if (this.state.dialog === 'exporting') this.startExport(); });
+      return;
+    }
+    if (pp.mcpConnected !== this.props.mcpConnected) this.setState({ mcp: this.props.mcpConnected !== false });
+    if (pp.aiPanelOpen !== this.props.aiPanelOpen) this.setState({ aiOpen: this.props.aiPanelOpen !== false });
+    const ll = this.state.log.length, ao = this.state.aiOpen;
+    if (ll !== this._pl || ao !== this._pa) { this._pl = ll; this._pa = ao; this.scrollLog(); }
+  }
+  scrollLog() {
+    const go = () => { const el = this.logRef.current; if (el) el.scrollTop = el.scrollHeight; };
+    requestAnimationFrame(go); [60, 300, 900, 2000].forEach(d => setTimeout(go, d));
+  }
+
+  onKey = e => {
+    if (!this.hover) return;
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName || '')) return;
+    const s = this.state, k = e.key, mod = e.metaKey || e.ctrlKey;
+    if (s.dialog) {
+      if (k === 'Escape' && s.dialog === 'export') this.setState({ dialog: null });
+      if (k === 'Enter' && s.dialog === 'export') { e.preventDefault(); this.doExport(); }
+      return;
+    }
+    if (mod && k.toLowerCase() === 'o') { e.preventDefault(); this.openFile(); return; }
+    if (s.base === 'empty') return;
+    if (mod && k.toLowerCase() === 'e') { e.preventDefault(); this.openExport(); return; }
+    if (mod) return;
+    if (k === ' ') { e.preventDefault(); this.togglePlay(); }
+    else if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); const d = (e.shiftKey ? 1 : 1 / 29.97) * (k === 'ArrowLeft' ? -1 : 1); this.setT(s.t + d); }
+    else if (k === 'i' || k === 'I') this.markIn();
+    else if (k === 'o' || k === 'O') this.markOut();
+    else if (k === 'Delete' || k === 'Backspace') { if (s.xsel != null) this.delItem(s.xsel); else this.del(s.sel); }
+    else if (k === 's' || k === 'S') this.split();
+  };
+
+  setT(t) { this.setState({ t: Math.min(this.DUR, Math.max(0, t)) }); }
+  nid(clips) { return clips.reduce((m, c) => Math.max(m, c.id), 0) + 1; }
+  patch(id, p) { this.setState(s => ({ clips: s.clips.map(c => c.id === id ? { ...c, ...p } : c) })); }
+  del(id) {
+    if (id == null) return;
+    this.setState(s => { const i = s.clips.findIndex(c => c.id === id); if (i < 0) return null; const clips = s.clips.filter(c => c.id !== id); const nx = clips[Math.min(i, clips.length - 1)]; return { clips, sel: nx ? nx.id : null }; });
+  }
+  reorder(targetId) {
+    this.setState(s => {
+      const from = s.dragId; if (from == null || from === targetId) return { dragId: null, overId: null };
+      const arr = s.clips.slice(); const fi = arr.findIndex(c => c.id === from); const oti = arr.findIndex(c => c.id === targetId);
+      const m = arr.splice(fi, 1)[0]; arr.splice(oti, 0, m);
+      return { clips: arr, dragId: null, overId: null };
+    });
+  }
+  markIn = () => this.setState(s => {
+    const c = s.clips.find(x => x.id === s.sel);
+    if (c && s.t < c.e - 0.2) return { clips: s.clips.map(x => x === c ? { ...x, s: s.t } : x) };
+    const id = this.nid(s.clips);
+    return { clips: s.clips.concat({ id, label: 'Clip ' + id, s: s.t, e: Math.min(this.DUR, s.t + 10), on: true }), sel: id };
+  });
+  markOut = () => this.setState(s => {
+    const c = s.clips.find(x => x.id === s.sel);
+    if (c && s.t > c.s + 0.2) return { clips: s.clips.map(x => x === c ? { ...x, e: s.t } : x) };
+    return null;
+  });
+  split = () => this.setState(s => {
+    const c = s.clips.find(x => x.id === s.sel && s.t > x.s + 0.2 && s.t < x.e - 0.2) || s.clips.find(x => s.t > x.s + 0.2 && s.t < x.e - 0.2);
+    if (!c) return null;
+    const id = this.nid(s.clips); const i = s.clips.indexOf(c); const arr = s.clips.slice();
+    arr.splice(i, 1, { ...c, e: s.t }, { ...c, id, label: c.label + ' (b)', s: s.t });
+    return { clips: arr, sel: id };
+  });
+  snapT(t) {
+    const th = 1.2 / this.state.zoom; let best = t, bd = th;
+    for (const k of this.D.kf) { const d = Math.abs(k - t); if (d < bd) { bd = d; best = k; } }
+    return best;
+  }
+  startHandle(e, id, edge) {
+    e.stopPropagation(); e.preventDefault();
+    const el = this.trackRef.current; if (!el) return;
+    const move = ev => {
+      const r = el.getBoundingClientRect(); let t = (ev.clientX - r.left) / r.width * this.DUR;
+      if (this.state.snap) t = this.snapT(t);
+      this.setState(s => {
+        let nt = t;
+        const clips = s.clips.map(c => { if (c.id !== id) return c; if (edge === 's') { nt = Math.max(0, Math.min(t, c.e - 0.5)); return { ...c, s: nt }; } nt = Math.min(this.DUR, Math.max(t, c.s + 0.5)); return { ...c, e: nt }; });
+        return { clips, t: nt };
+      });
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+  storyScrub = e => {
+    const el = this.storyRef.current; if (!el) return;
+    const calc = ev => { const r = el.getBoundingClientRect(); const s = this.state; const span = this.span(s); const T = (ev.clientX - r.left) / r.width * span; let cum = 0; for (const c of s.clips) { const d = c.e - c.s; if (T <= cum + d) return { t: c.s + Math.max(0, T - cum), sel: c.id, xsel: null }; cum += d; } const l = s.clips[s.clips.length - 1]; return l ? { t: l.e, sel: l.id, xsel: null } : null; };
+    const apply = ev => { const v = calc(ev); if (v) this.setState(v); };
+    apply(e);
+    const up = () => { window.removeEventListener('pointermove', apply); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', apply); window.addEventListener('pointerup', up);
+  };
+  storyHandle(e, id, edge) {
+    e.stopPropagation(); e.preventDefault();
+    const el = this.storyRef.current; const c0 = this.state.clips.find(c => c.id === id); if (!el || !c0) return;
+    const spp = this.span(this.state) / el.getBoundingClientRect().width; const x0 = e.clientX;
+    this.setState({ sel: id, xsel: null });
+    const move = ev => {
+      let v = (edge === 's' ? c0.s : c0.e) + (ev.clientX - x0) * spp; if (this.state.snap) v = this.snapT(v);
+      v = edge === 's' ? Math.max(0, Math.min(v, c0.e - 0.5)) : Math.min(this.DUR, Math.max(v, c0.s + 0.5));
+      this.setState(s => ({ t: v, clips: s.clips.map(c => c.id !== id ? c : edge === 's' ? { ...c, s: v } : { ...c, e: v }) }));
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  }
+  scrubDown = e => {
+    const el = this.trackRef.current; if (!el) return;
+    const calc = ev => { const r = el.getBoundingClientRect(); return Math.min(this.DUR, Math.max(0, (ev.clientX - r.left) / r.width * this.DUR)); };
+    const t = calc(e); const hit = this.state.clips.find(c => t >= c.s && t <= c.e);
+    this.setState({ t, sel: hit ? hit.id : this.state.sel });
+    const move = ev => this.setState({ t: calc(ev) });
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+  togglePlay = () => {
+    if (this.state.playing) { clearInterval(this.pt); this.setState({ playing: false }); return; }
+    this.setState({ playing: true });
+    clearInterval(this.pt);
+    this.pt = setInterval(() => this.setState(s => { const t = s.t + 0.04 * s.speed; if (t >= this.DUR) { clearInterval(this.pt); return { t: this.DUR, playing: false }; } return { t }; }), 40);
+  };
+  openFile = () => { clearInterval(this.pt); clearInterval(this.xt); this.setState({ ...this.fresh('editing'), mcp: this.state.mcp, aiOpen: this.state.aiOpen }); };
+  openExport = () => { if (this.state.base !== 'empty') this.setState({ dialog: 'export' }); };
+  doExport = () => { this.setState({ dialog: 'exporting', prog: 0, loop: false }); this.startExport(); };
+  startExport() {
+    clearInterval(this.xt); this.loopAt = 0;
+    this.xt = setInterval(() => this.setState(s => {
+      if (s.dialog !== 'exporting') return null;
+      let p = s.prog + 0.1 / 9;
+      if (p >= 1) {
+        p = 1;
+        if (s.loop) { if (!this.loopAt) this.loopAt = Date.now(); if (Date.now() - this.loopAt > 3000) { this.loopAt = 0; return { prog: 0.05 }; } }
+        else { clearInterval(this.xt); }
+      }
+      return p === s.prog ? null : { prog: p };
+    }), 100);
+  }
+  undo(id) {
+    this.setState(s => {
+      const a = s.log.find(x => x.id === id); if (!a || !a.op) return null;
+      const op = a.op, key = a.undone ? 'to' : 'from'; let clips = s.clips;
+      if (op.type === 'patch') clips = clips.map(c => { const ch = op.changes.find(x => x.id === c.id); return ch ? { ...c, ...ch[key] } : c; });
+      else if (op.type === 'add') {
+        if (!a.undone) { op.saved = clips.filter(c => op.ids.includes(c.id)); clips = clips.filter(c => !op.ids.includes(c.id)); }
+        else clips = (op.saved || []).concat(clips.filter(c => !op.ids.includes(c.id)));
+      }
+      return { clips, log: s.log.map(x => x.id === id ? { ...x, undone: !x.undone } : x) };
+    });
+  }
+  send = () => {
+    const s = this.state; const text = s.draft.trim();
+    if (!text || !s.mcp || s.base === 'empty') return;
+    if (s.base === 'editing') this.setState({ base: 'ai', log: s.log.concat(this.aiLog(text)), clips: this.applyAi(s.clips), draft: '' });
+    else { const n = Date.now(); this.setState({ log: s.log.concat([{ id: 'u' + n, kind: 'user', text }, { id: 'c' + n, kind: 'claude', text: 'Got it. I will pick that up once the current edit finishes.' }]), draft: '' }); }
+  };
+
+  renderVals() {
+    const s = this.state, D = this.D, pct = D.pct, DUR = this.DUR;
+    const A = '#60CDFF', V = 'oklch(0.74 0.13 290)';
+    const isEmpty = s.base === 'empty', hasFile = !isEmpty;
+    const changed = new Set(), working = new Set(); let delta = 0, nChanges = 0;
+    s.log.forEach(a => {
+      if (a.kind === 'act' && a.changed && !a.undone) { (a.ids || []).forEach(i => changed.add(i)); delta += a.delta || 0; nChanges++; }
+      if (a.kind === 'live') (a.ids || []).forEach(i => working.add(i));
+    });
+    const aiBusy = s.base === 'ai' && working.size > 0;
+    const on = s.clips.filter(c => c.on);
+    const total = on.reduce((m, c) => m + c.e - c.s, 0);
+
+    const clips = s.clips.map((c, i) => {
+      const sel = c.id === s.sel, wk = working.has(c.id), ai = changed.has(c.id) || wk, over = s.overId === c.id && s.dragId !== c.id;
+      return {
+        key: c.id, n: i + 1, label: c.label, start: this.ts(c.s), end: this.ts(c.e), dur: this.dur(c.e - c.s), on: c.on, sel, ai,
+        aiTag: wk ? 'Claude editing' : 'Edited', left: pct(c.s), width: pct(c.e - c.s),
+        rowBg: ai ? 'oklch(0.74 0.13 290 / 0.08)' : sel ? 'rgba(96,205,255,0.09)' : over ? '#2a2a2a' : 'transparent',
+        rowBorder: ai ? (sel ? 'oklch(0.74 0.13 290 / 0.8)' : 'oklch(0.74 0.13 290 / 0.4)') : sel ? 'rgba(96,205,255,0.5)' : over ? '#4c4c4c' : 'transparent',
+        rowOpacity: s.dragId === c.id ? 0.4 : 1,
+        numBg: ai ? V : sel ? A : '#2e2e2e', numCol: ai ? '#140f22' : sel ? '#000000' : '#c5c5c5',
+        textCol: c.on ? '#ffffff' : '#8a8a8a', durCol: c.on ? '#e2e2e2' : '#686868', durDeco: c.on ? 'none' : 'line-through',
+        chkBorder: c.on ? '#60CDFF' : '#5c5c5c', chkBg: c.on ? '#60CDFF' : 'transparent',
+        segFill: !c.on ? 'rgba(255,255,255,0.02)' : ai ? 'oklch(0.74 0.13 290 / 0.16)' : sel ? 'rgba(96,205,255,0.16)' : 'rgba(96,205,255,0.07)',
+        segBorder: !c.on ? '#686868' : ai ? V : sel ? A : 'rgba(96,205,255,0.55)',
+        segStyle: c.on ? 'solid' : 'dashed', segBW: c.on && (sel || ai) ? '2px' : '1px',
+        labBg: !c.on ? '#2e2e2e' : ai ? V : sel ? A : 'rgba(96,205,255,0.28)',
+        labCol: !c.on ? '#949494' : ai ? '#140f22' : sel ? '#000000' : '#d6f3ff',
+        handleBg: ai ? V : A, z: sel ? 4 : ai ? 3 : 2,
+        scan: wk ? React.createElement('div', { style: { position: 'absolute', top: 18, bottom: 0, left: 0, width: '30%', background: 'linear-gradient(90deg, transparent, oklch(0.74 0.13 290 / 0.4), transparent)', animation: 'cl-scan 1.6s linear infinite' } }) : null,
+        select: () => this.setState({ sel: c.id, t: s.t >= c.s && s.t <= c.e ? s.t : c.s }),
+        toggle: e => { e.stopPropagation(); this.patch(c.id, { on: !c.on }); },
+        remove: e => { e.stopPropagation(); this.del(c.id); },
+        dragStart: e => { e.dataTransfer.effectAllowed = 'move'; this.setState({ dragId: c.id }); },
+        dragOver: e => { e.preventDefault(); if (this.state.overId !== c.id) this.setState({ overId: c.id }); },
+        drop: e => { e.preventDefault(); this.reorder(c.id); },
+        dragEnd: () => this.setState({ dragId: null, overId: null }),
+        inDown: e => this.startHandle(e, c.id, 's'), outDown: e => this.startHandle(e, c.id, 'e')
+      };
+    });
+
+    const cur = s.clips.find(c => s.t >= c.s && s.t <= c.e);
+    const curI = cur ? s.clips.indexOf(cur) : -1;
+    const iv = s.zoom < 1.6 ? 60 : s.zoom < 3 ? 30 : 15;
+    const majors = []; for (let t = 0; t <= DUR; t += iv) majors.push({ left: pct(t), label: Math.floor(t / 60) + ':' + this.pad(t % 60) });
+    const N = Math.round(12 * s.zoom); const thumbs = [];
+    for (let i = 0; i < N; i++) thumbs.push({ bg: this.tone((i + 0.5) / N * DUR, 0, ((i * 37) % 7 - 3) * 0.008) });
+
+    const seqTotal = s.clips.reduce((m, c) => m + c.e - c.s, 0);
+    const span = this.span(s);
+    const sp = t => (t / span * 100).toFixed(3) + '%';
+    const innerPx = 1300 * s.zoom * span / 540;
+    const amps = D.amps, NA = amps.length;
+    let cum = 0; const starts = {};
+    const story = s.clips.map((c, i) => {
+      const d = c.e - c.s, px = d / span * innerPx, sel = c.id === s.sel, wk = working.has(c.id), ai = changed.has(c.id) || wk;
+      starts[c.id] = cum;
+      const nT = Math.max(1, Math.round(px / 96)); const thumbs = [];
+      for (let k = 0; k < nT; k++) thumbs.push({ bg: this.tone(c.s + (k + 0.5) / nT * d, 0, ((k * 37 + c.id * 13) % 7 - 3) * 0.008) });
+      const a0 = Math.floor(c.s / DUR * NA), a1 = Math.max(a0 + 1, Math.ceil(c.e / DUR * NA));
+      const nb = Math.max(4, Math.floor(px / 4)); const bars = [];
+      for (let k = 0; k < nb; k++) { const j0 = a0 + Math.floor(k * (a1 - a0) / nb), j1 = Math.max(j0 + 1, a0 + Math.floor((k + 1) * (a1 - a0) / nb)); let m = 0; for (let j = j0; j < j1 && j < NA; j++) m = Math.max(m, amps[j]); bars.push({ h: (m * 100).toFixed(1) + '%' }); }
+      const within = t => ((t - c.s) / d * 100).toFixed(3) + '%';
+      const v = { ...clips[i], left: sp(cum), width: sp(d), dur: this.dur(d), thumbs, bars,
+        kfs: D.kf.filter(k => k > c.s && k < c.e).map(k => ({ left: within(k) })),
+        scn: D.scenes.filter(k => k > c.s && k < c.e).map(k => ({ left: within(k) })),
+        sils: D.silence.filter(z => z[1] > c.s && z[0] < c.e).map(z => { const a = Math.max(z[0], c.s), b = Math.min(z[1], c.e); return { left: within(a), width: ((b - a) / d * 100).toFixed(3) + '%' }; }),
+        opacity: c.on ? 1 : 0.45, vOp: s.off.V1 ? 0.35 : 1, aOp: s.off.A1 ? 0.35 : 1,
+        hdBg: !c.on ? '#2e2e2e' : ai ? V : sel ? A : '#34474f', hdCol: !c.on ? '#8a8a8a' : ai ? '#140f22' : sel ? '#000000' : '#dff4fd',
+        auBg: c.on ? '#1a262b' : '#222222', barCol: c.on ? '#7fa9ba' : '#555555',
+        ring: ai ? V : sel ? A : 'rgba(255,255,255,0.10)', ringW: sel || ai ? '2px' : '1px', handleBg: ai ? V : A,
+        pick: e => { const r = e.currentTarget.getBoundingClientRect(); const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); this.setState({ sel: c.id, xsel: null, t: c.s + f * d }); },
+        inDown: e => this.storyHandle(e, c.id, 's'), outDown: e => this.storyHandle(e, c.id, 'e') };
+      cum += d; return v;
+    });
+    const siv = s.zoom < 1.6 ? 30 : s.zoom < 3 ? 15 : 5;
+    const smaj = []; for (let t = 0; t <= span; t += siv) smaj.push({ left: sp(t), label: Math.floor(t / 60) + ':' + this.pad(t % 60) });
+    const VH = 44, AH = 34, G = 6, off = s.off || {};
+    const rows = []; let y = 24;
+    const mkRow = (kind, n, hgt, top) => {
+      const id = (kind === 'v' ? 'V' : 'A') + n, isOff = !!off[id], extra = n > 1;
+      return { key: id, name: id, kind, n, _y: top, _h: hgt, top: top + 'px', h: hgt + 'px',
+        vOn: kind === 'v' && !isOff, vOff: kind === 'v' && isOff, aOn: kind === 'a' && !isOff, aOff: kind === 'a' && isOff,
+        nameCol: isOff ? '#6e6e6e' : '#d6d6d6', iconCol: isOff ? '#6e6e6e' : '#c5c5c5',
+        toggleTip: kind === 'v' ? (isOff ? 'Show track' : 'Hide track') : (isOff ? 'Unmute track' : 'Mute track'),
+        toggle: () => this.setState(st => ({ off: { ...st.off, [id]: !st.off[id] } })),
+        canRemove: extra, remove: () => this.removeTrack(kind, n),
+        emptyHint: extra && hasFile && !s.items.some(it => it.kind === kind && it.track === n),
+        dbl: extra && hasFile ? ev => this.addItemAt(ev, kind, n) : undefined, laneTip: extra && hasFile ? 'Double-click to add media' : '' };
+    };
+    for (let n = s.vN; n >= 2; n--) { rows.push(mkRow('v', n, VH, y)); y += VH + G; }
+    const mainY = y; rows.push(mkRow('v', 1, VH, y)); y += VH + 2; rows.push(mkRow('a', 1, AH, y)); y += AH + G;
+    for (let n = 2; n <= s.aN; n++) { rows.push(mkRow('a', n, AH, y)); y += AH + G; }
+    this._rows = rows;
+    const rowBy = {}; rows.forEach(r => { rowBy[r.key] = r; });
+    const xitems = s.items.map(it => {
+      const r = rowBy[(it.kind === 'v' ? 'V' : 'A') + it.track]; if (!r) return null;
+      const px = it.len / span * innerPx, sel = s.xsel === it.id, isV = it.kind === 'v';
+      const thumbs = [], bars = [];
+      if (isV) { const nT = Math.max(1, Math.round(px / 90)); for (let k = 0; k < nT; k++) thumbs.push({ bg: this.tone((it.id * 131 + k * 29) % DUR, 0.03, ((k * 37 + it.id) % 7 - 3) * 0.008) }); }
+      else { const nb = Math.min(400, Math.max(4, Math.floor(px / 4))); for (let k = 0; k < nb; k++) { const v = 0.3 + 0.6 * Math.abs(Math.sin(it.id * 1.7 + k * 0.41) * Math.cos(it.id * 0.3 + k * 0.13)); bars.push({ h: (v * 100).toFixed(1) + '%' }); } }
+      return { key: it.id, isV, isA: !isV, label: it.label, dur: this.dur(it.len), top: r.top, h: r.h,
+        left: sp(it.at), width: sp(it.len), opacity: off[r.key] ? 0.35 : 1, z: sel ? 7 : 5, thumbs, bars,
+        bg: isV ? '#262626' : '#1a262b', barCol: '#7fa9ba',
+        hdBg: sel ? A : isV ? '#34474f' : 'rgba(0,0,0,0.5)', hdCol: sel ? '#000000' : '#dff4fd',
+        ring: sel ? A : 'rgba(255,255,255,0.10)', ringW: sel ? '2px' : '1px',
+        down: e => this.xDown(e, it.id) };
+    }).filter(Boolean);
+    const TV = { rows, xitems, tlH: (y - G + 4) + 'px', mainTop: mainY + 'px', mainH: (VH + 2 + AH) + 'px',
+      addV: () => this.addTrack('v'), addA: () => this.addTrack('a') };
+    const SV = { ...TV, story, storyRef: this.storyRef, storyScrub: this.storyScrub,
+      storyPhOn: !!cur, storyPh: cur ? sp(starts[cur.id] + s.t - cur.s) : '0%',
+      endLeft: sp(seqTotal), endText: this.dur(total),
+      majors: smaj, minorSize: (siv / 6 / span * 100).toFixed(4) + '%', innerW: (s.zoom * 100 * span / 540).toFixed(1) + '%',
+      srcSegs: s.clips.map(c => ({ key: c.id, left: pct(c.s), width: pct(c.e - c.s), bg: !c.on ? 'rgba(255,255,255,0.14)' : (changed.has(c.id) || working.has(c.id)) ? V : c.id === s.sel ? A : 'rgba(96,205,255,0.38)' })),
+      srcPh: pct(s.t) };
+    const pulse = c => React.createElement('span', { style: { width: 7, height: 7, flex: 'none', borderRadius: '50%', background: c, display: 'inline-block', animation: 'cl-pulse 1.2s ease-in-out infinite' } });
+
+    const log = s.log.map(a => {
+      const ch = a.changed && !a.undone;
+      return { key: a.id, isUser: a.kind === 'user', isClaude: a.kind === 'claude', isAct: a.kind === 'act', isLive: a.kind === 'live',
+        text: a.text, meta: a.meta, canUndo: a.kind === 'act' && !!a.op, undoLabel: a.undone ? 'Redo' : 'Undo',
+        bg: ch ? 'oklch(0.74 0.13 290 / 0.09)' : '#262626', border: ch ? 'oklch(0.74 0.13 290 / 0.35)' : '#303030',
+        dot: ch ? V : a.undone ? '#4c4c4c' : '#6e6e6e', textCol: a.undone ? '#8a8a8a' : '#e4e4e4', deco: a.undone ? 'line-through' : 'none',
+        undo: () => this.undo(a.id),
+        scan: a.kind === 'live' ? React.createElement('div', { style: { position: 'absolute', top: 0, bottom: 0, left: 0, width: '30%', background: V, borderRadius: 1, animation: 'cl-scan 1.4s ease-in-out infinite' } }) : null };
+    });
+
+    const toggles = [
+      { k: 'kf', label: 'Keyframes', count: String(D.kf.length), swatch: 'rgba(255,255,255,0.55)' },
+      { k: 'sil', label: 'Silence', count: String(D.silence.length), swatch: 'repeating-linear-gradient(135deg, #a6a6a6 0 1px, transparent 1px 3px)' },
+      { k: 'sc', label: 'Scenes', count: String(D.scenes.length), swatch: '#b0b0b0' }
+    ].map(g => ({ ...g, border: s[g.k] ? '#484848' : '#2e2e2e', bg: s[g.k] ? '#2d2d2d' : 'transparent', col: s[g.k] ? '#e4e4e4' : '#8a8a8a', click: () => this.setState({ [g.k]: !s[g.k] }) }));
+
+    const sf = { copy: 62, smart: 18, encode: 1.4 }[s.mode];
+    const ext = s.fmt.toLowerCase();
+    const outPath = s.merge ? `C:\\Users\\You\\Videos\\Exports\\launch-keynote-cut.${ext}` : `C:\\Users\\You\\Videos\\Exports\\launch-keynote-{n}-{label}.${ext}`;
+    const T = total / sf, gb = total * (s.mode === 'encode' ? 14 : 22) / 8 / 1000;
+    const secs = x => x < 60 ? Math.max(1, Math.ceil(x)) + ' s' : Math.round(x / 60) + ' min';
+    const modeTitle = { copy: 'Lossless copy', smart: 'Smart cut', encode: 'Re-encode' }[s.mode];
+    const modes = [
+      { k: 'copy', title: 'Lossless copy', tag: 'Fastest', desc: 'Stream copy, no re-encoding. Cut points snap to the nearest keyframe.' },
+      { k: 'smart', title: 'Smart cut', tag: 'Frame-accurate', desc: 'Re-encodes only the frames around each cut and copies everything else.' },
+      { k: 'encode', title: 'Re-encode', tag: 'Slowest', desc: 'Full transcode with the codec and quality you choose.' }
+    ].map(m => { const sel = s.mode === m.k; return { ...m, key: m.k, border: sel ? 'rgba(96,205,255,0.6)' : '#3c3c3c', bg: sel ? 'rgba(96,205,255,0.06)' : 'transparent', ring: sel ? '4px solid ' + A : '1.5px solid #5c5c5c', pick: () => this.setState({ mode: m.k }) }; });
+    const seg = (sel, label, pick) => ({ key: label, label, bg: sel ? '#484848' : 'transparent', col: sel ? '#ffffff' : '#a6a6a6', pick });
+    const fmts = ['MP4', 'MOV', 'MKV'].map(f => seg(s.fmt === f, f, () => this.setState({ fmt: f })));
+    const outs = [seg(s.merge, 'Merge into one file', () => this.setState({ merge: true })), seg(!s.merge, 'Separate files', () => this.setState({ merge: false }))];
+    const cb = (k, label, dis) => ({ key: k, label, on: s[k], border: s[k] ? '#60CDFF' : '#5c5c5c', bg: s[k] ? '#60CDFF' : 'transparent', opacity: dis ? 0.4 : 1, click: () => { if (!dis) this.setState({ [k]: !s[k] }); } });
+    const opts = [cb('chapters', 'Add chapter markers from clip labels', !s.merge), cb('tracks', 'Keep all audio and subtitle tracks')];
+
+    const p = s.prog; const w = s.merge ? 0.92 : 1; let acc = 0;
+    const slug = t => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const xrows = on.map((c, i) => {
+      const cw = total ? (c.e - c.s) / total * w : 0; const loc = cw ? Math.min(1, Math.max(0, (p - acc) / cw)) : 1; acc += cw;
+      return { key: c.id, name: s.merge ? `${i + 1} · ${c.label}` : `launch-keynote-${i + 1}-${slug(c.label)}.${ext}`, loc };
+    });
+    if (s.merge) xrows.push({ key: 'merge', name: `Merge into launch-keynote-cut.${ext}`, loc: Math.min(1, Math.max(0, (p - 0.92) / 0.08)) });
+    xrows.forEach(r => { r.isDone = r.loc >= 1; r.isActive = r.loc > 0 && r.loc < 1; r.isQueued = r.loc <= 0; r.status = r.isDone ? 'done' : r.isActive ? Math.round(r.loc * 100) + '%' : 'queued'; r.col = r.isQueued ? '#8a8a8a' : '#e4e4e4'; r.bg = r.isActive ? 'rgba(96,205,255,0.06)' : 'transparent'; });
+    let ctr = xrows.findIndex(r => !r.isDone); if (ctr < 0) ctr = xrows.length - 1;
+    xrows.forEach((r, i) => {
+      const d = i - ctr;
+      const c0 = d === 0; r.h = c0 ? '66px' : '32px'; r.px = c0 ? '16px' : '12px'; r.gap = c0 ? '10px' : '0px'; r.fs = c0 ? '14px' : '12px';
+      r.bg = c0 ? '#333333' : 'transparent'; r.bd = c0 ? '#454545' : 'transparent'; r.op = d < 0 ? 0.6 : 1; r.barH = c0 ? '4px' : '0px';
+      r.fw = d === 0 ? 600 : 400; r.stCol = d === 0 ? '#60CDFF' : '#8a8a8a';
+      r.barOp = d === 0 ? 1 : 0; r.locW = (r.loc * 100).toFixed(1) + '%';
+    });
+    const isDone = p >= 1;
+
+    return {
+      enter: () => { this.hover = true; }, leave: () => { this.hover = false; },
+      isEmpty, hasFile, aiBusy, pulseDot: pulse(V), amberDot: pulse(A),
+      openFile: this.openFile, openExport: this.openExport,
+      isExporting: s.dialog === 'exporting', notExporting: s.dialog !== 'exporting',
+      pctBig: Math.floor(p * 100) + '%', progW: (p * 100).toFixed(1) + '%',
+      dropOver: e => { e.preventDefault(); if (!s.dropHover) this.setState({ dropHover: true }); },
+      dropLeave: () => this.setState({ dropHover: false }),
+      dropFile: e => { e.preventDefault(); this.openFile(); },
+      dropBorder: s.dropHover ? A : '#484848', dropBg: s.dropHover ? 'rgba(96,205,255,0.05)' : 'transparent',
+      frameBg: this.tone(s.t, 0.12), frameNo: this.tc(s.t) + '  ·  f ' + Math.round(s.t * 29.97),
+      inClip: !!cur, curN: curI + 1, curLabel: cur ? cur.label : '', curDot: cur && (changed.has(cur.id) || working.has(cur.id)) ? V : A,
+      speedText: s.speed + '×',
+      ctlOpacity: isEmpty ? 0.35 : 1, ctlPE: isEmpty ? 'none' : 'auto',
+      tcNow: this.tc(s.t), tcDur: this.tc(DUR),
+      markIn: this.markIn, markOut: this.markOut,
+      jumpIn: () => { const c = s.clips.find(x => x.id === s.sel); if (c) this.setT(c.s); },
+      jumpOut: () => { const c = s.clips.find(x => x.id === s.sel); if (c) this.setT(c.e); },
+      stepBack: () => this.setT(s.t - 1 / 29.97), stepFwd: () => this.setT(s.t + 1 / 29.97),
+      togglePlay: this.togglePlay, playing: s.playing, notPlaying: !s.playing,
+      cycleSpeed: () => { const L = [0.5, 1, 1.5, 2]; this.setState({ speed: L[(L.indexOf(s.speed) + 1) % L.length] }); },
+      clipCount: String(s.clips.length), noClips: s.clips.length === 0, clips,
+      clipSummary: `${on.length} of ${s.clips.length} clips`, totalText: this.dur(total),
+      hasDelta: delta !== 0, deltaText: (delta < 0 ? '−' : '+') + Math.abs(delta).toFixed(2) + ' s by Claude',
+      aiFlex: s.aiOpen ? '0 0 250px' : '0 0 auto', aiOpen: s.aiOpen, aiChevron: s.aiOpen ? 'none' : 'rotate(-90deg)',
+      toggleAi: () => this.setState({ aiOpen: !s.aiOpen }),
+      toggleMcp: e => { e.stopPropagation(); this.setState({ mcp: !s.mcp }); },
+      mcpText: s.mcp ? 'Connected' : 'Disconnected', mcpDot: s.mcp ? 'oklch(0.78 0.14 150)' : 'oklch(0.68 0.17 25)', mcpCol: s.mcp ? '#d6d6d6' : '#ffffff',
+      mcpOff: !s.mcp, changeCount: String(nChanges),
+      undoAll: () => s.log.filter(a => a.changed && !a.undone).forEach(a => this.undo(a.id)),
+      stopAi: () => this.setState({ log: s.log.filter(a => a.kind !== 'live').concat({ id: 'c' + Date.now(), kind: 'claude', text: 'Stopped. Clip 4 is unchanged.' }) }),
+      aiIntro: isEmpty && s.log.length === 0, log, logRef: this.logRef,
+      draft: s.draft, onDraft: e => this.setState({ draft: e.target.value }),
+      onDraftKey: e => { if (e.key === 'Enter') this.send(); },
+      composerOff: !s.mcp || isEmpty, composerOpacity: !s.mcp || isEmpty ? 0.45 : 1,
+      sendBg: s.draft.trim() && s.mcp && hasFile ? '#ffffff' : '#4c4c4c', send: this.send,
+      zoom: s.zoom, zoomText: s.zoom.toFixed(1) + '×',
+      onZoom: e => this.setState({ zoom: parseFloat(e.target.value) }),
+      zoomIn: () => this.setState({ zoom: Math.min(6, s.zoom + 0.5) }), zoomOut: () => this.setState({ zoom: Math.max(1, s.zoom - 0.5) }),
+      toggles, toggleSnap: () => this.setState({ snap: !s.snap }),
+      snapBorder: s.snap ? '#484848' : '#2e2e2e', snapBg: s.snap ? '#2d2d2d' : 'transparent', snapCol: s.snap ? '#e4e4e4' : '#8a8a8a',
+      split: this.split, delSel: () => { if (s.xsel != null) this.delItem(s.xsel); else this.del(s.sel); },
+      trackRef: this.trackRef, scrubDown: this.scrubDown, innerW: (s.zoom * 100).toFixed(1) + '%',
+      minorSize: (iv / 6 / DUR * 100).toFixed(4) + '%', majors, thumbs, bars: D.bars,
+      silOn: s.sil, sils: D.sils, kfOn: s.kf, kfs: D.kfs, scOn: s.sc, scenes: D.sceneView, ph: pct(s.t),
+      statusRight: isEmpty ? 'ffmpeg 7.1 · ready' : `${modeTitle.toLowerCase()} · ${s.snap ? 'snap on' : 'snap off'} · autosaved`,
+      showDialog: !!s.dialog, isConfig: s.dialog === 'export',
+      closeDialog: () => { clearInterval(this.xt); this.setState({ dialog: null, prog: 0 }); }, doExport: this.doExport,
+      exportSummary: `${on.length} clips · ${this.dur(total)} · from keynote_final_4k.mp4`,
+      modes, fmts, outs, opts, isEncode: s.mode === 'encode', outPath,
+      estimate: `≈ ${gb.toFixed(2)} GB · about ${secs(T)}`,
+      fileCount: s.merge ? '1 file' : on.length + ' files',
+      exportTitle: isDone ? 'Export complete' : 'Exporting…',
+      exportStats: `elapsed ${this.mmss(p * T)} · ${isDone ? 'done' : '~' + this.mmss((1 - p) * T) + ' left'} · ${sf}× realtime`,
+      xrows, isDone, notDone: !isDone,
+      exportFoot: `${modeTitle} · ${s.fmt} · ${s.merge ? 'merged' : 'separate files'}`,
+      ...SV
+    };
+  }
+}
+</script>
+</body>
+</html>
