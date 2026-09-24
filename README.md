@@ -5,12 +5,14 @@ You mark segments on a timeline of the whole source file, arrange them, and expo
 or as separate files. Cuts are lossless by default (stream copy, no re-encoding); re-encoding is optional.
 
 It is inspired by [LosslessCut](https://github.com/mifi/lossless-cut). Every edit is a command in a UI-independent
-core, so an AI assistant (Claude via MCP) can later edit the same timeline through the same operations.
+core, and Claude can edit the same timeline through the same operations over MCP: its edits show up in the
+editor as they happen, each one undoable.
 
-> **Status:** Phase 1 is feature-complete and being tested on Windows. Windows only for now; the code is kept
-> cross-platform so macOS and Linux can follow. Opening videos, playback (libmpv: frame-exact seeking and stepping, speed, volume, per-track
-> mute), the timeline (thumbnails, waveforms, keyframes), editing with undo/redo, project files and export
-> (lossless or re-encoded, merged or separate) work.
+> **Status:** Phase 1 is feature-complete and being tested on Windows; Phase 2 has started with Claude editing
+> over MCP. Windows only for now; the code is kept cross-platform so macOS and Linux can follow. Opening videos,
+> playback (libmpv: frame-exact seeking and stepping, speed, volume, per-track mute), the timeline (thumbnails,
+> waveforms, keyframes), editing with undo/redo, project files, export (lossless or re-encoded, merged or
+> separate) and Claude's edits through MCP work.
 
 ## Phase 1 scope
 
@@ -24,7 +26,38 @@ core, so an AI assistant (Claude via MCP) can later edit the same timeline throu
   progress and cancel.
 - Projects saved as `.ourcut.json`. Undo/redo for every edit.
 
-Not in Phase 1: the MCP server, transcription and smart cut. The UI already has places for them.
+## Phase 2
+
+- **Claude via MCP** (done): Claude reads the project and edits the timeline — add, trim, split, exclude,
+  reorder and rename clips, several edits as one undo step, revert any earlier edit, move the playhead, open
+  videos and save the project. See [Connecting Claude](#connecting-claude).
+- **Silence and scene detection** (next): markers on the timeline that Claude can cut along.
+
+Not yet: transcription and smart cut. The UI already has places for them.
+
+## Connecting Claude
+
+OurCut is an MCP server: `OurCut.exe mcp` speaks MCP over stdio and forwards Claude's tool calls to the editor,
+starting OurCut when Claude first uses it. **Settings → MCP server** shows the exact command for your install
+with Copy buttons:
+
+- **Claude Code**: `claude mcp add --scope user ourcut -- "C:\path\to\OurCut.exe" mcp`
+- **Claude Desktop**: add this to `%APPDATA%\Claude\claude_desktop_config.json` (Settings → Developer → Edit Config)
+  and restart Claude Desktop:
+
+  ```json
+  {
+    "mcpServers": {
+      "ourcut": { "command": "C:\\path\\to\\OurCut.exe", "args": ["mcp"] }
+    }
+  }
+  ```
+
+Then ask Claude something like "open my latest recording in OurCut, keep 0:30–4:10 and 12:00–15:45 as Intro
+and Demo, and start each on a keyframe". Claude does not see or hear the video yet; silence and scene detection
+and later transcription give it that. The badge in the title bar shows the connection (MCP · waiting for Claude / Claude connected /
+Claude editing), and every edit Claude makes appears in the Claude panel with its own Undo. Only your own user
+account can connect to the editor.
 
 ## Keyboard shortcuts
 
@@ -96,9 +129,10 @@ Avalonia's build tooling sends anonymous build telemetry. Set `AVALONIA_TELEMETR
 ```
 src/OurCut.App      Avalonia UI: views and view models (CommunityToolkit.Mvvm)
 src/OurCut.Core     Project model, timeline and edit commands with undo/redo. No UI references.
+src/OurCut.Mcp      MCP server (the editor tools) and the stdio bridge Claude starts. No UI references.
 src/OurCut.Media    libmpv playback; ffprobe/ffmpeg: probing, keyframes, export (FFMpegCore), thumbnails,
                     waveforms, cache (SkiaSharp)
-tests/              xUnit tests for Core, Media and headless UI tests for App
+tests/              xUnit tests for Core, Media, Mcp and headless UI tests for App
 scripts/            fetch-deps.ps1 and the pinned dependency manifest
 design/             The Claude Design export the UI is built from
 ```

@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="..\OurCut.Core\OurCut.Core.csproj" />
     <ProjectReference Include="..\OurCut.Media\OurCut.Media.csproj" />
+    <ProjectReference Include="..\OurCut.Mcp\OurCut.Mcp.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />

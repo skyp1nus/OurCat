@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -49,9 +50,9 @@ public sealed partial class TranscriptionModelViewModel(SettingsViewModel owner,
 }
 
 /// <summary>
-/// The settings dialog. Only Transcription is designed; the other sections are listed but empty.
-/// Choices are saved as soon as they change. Transcription itself comes after Phase 1, so outside
-/// demo mode the model table only reports which models are in the models folder.
+/// The settings dialog: Transcription (as designed) and MCP server (how to connect Claude); the other
+/// sections are listed but empty. Choices are saved as soon as they change. Transcription itself comes
+/// later, so outside demo mode the model table only reports which models are in the models folder.
 /// </summary>
 public sealed partial class SettingsViewModel : ViewModelBase
 {
@@ -78,13 +79,42 @@ public sealed partial class SettingsViewModel : ViewModelBase
     {
         _editor = editor;
         Models = [.. Catalog.Select(m => new TranscriptionModelViewModel(this, m.Id, m.Engine, m.Size))];
+        SectionOptions = [.. Sections.Select(name => new ChoiceOption(name, () => Section = name))];
         EngineOptions = [.. Engines.Select(e => new ChoiceOption(e, () => Engine = e))];
         DeviceOptions = [.. Devices.Select(d => new ChoiceOption(d, () => Device = d))];
         Load(AppSettings.Default);
+        OnSectionChanged(Section);
+        var (command, args) = EditorLauncher.McpCommand();
+        McpCommand = command;
+        McpArgs = args;
     }
 
     /// <summary>Where settings are saved; null keeps them in memory (demo mode and tests).</summary>
     public AppSettingsStore? Store { get; set; }
+
+    /// <summary>Claude's connection, for the MCP server section.</summary>
+    public ClaudePanelViewModel Claude => _editor.Claude;
+
+    /// <summary>Puts text on the clipboard; provided by the window.</summary>
+    public Func<string, Task>? CopyText { get; set; }
+
+    public IReadOnlyList<ChoiceOption> SectionOptions { get; }
+
+    /// <summary>The section shown on the right.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTranscription), nameof(IsMcp), nameof(IsEmptySection), nameof(SectionNote))]
+    public partial string Section { get; set; } = "Transcription";
+
+    public bool IsTranscription => Section == "Transcription";
+    public bool IsMcp => Section == "MCP server";
+    public bool IsEmptySection => !IsTranscription && !IsMcp;
+
+    public string SectionNote => Section switch
+    {
+        "Transcription" => "Runs locally. Claude uses the transcript to find silences, quotes and filler words.",
+        "MCP server" => "Lets Claude read and edit the timeline. Every edit shows up in the Claude panel and can be undone.",
+        _ => "Nothing to set here yet.",
+    };
 
     public ObservableCollection<TranscriptionModelViewModel> Models { get; }
     public IReadOnlyList<ChoiceOption> EngineOptions { get; }
@@ -194,6 +224,49 @@ public sealed partial class SettingsViewModel : ViewModelBase
     public AppSettings ToSettings() =>
         new(new TranscriptionSettings(Engine, Model?.Value ?? "best", Device, Language,
             ModelsFolder == AppSettingsStore.DefaultModelsFolder ? null : ModelsFolder));
+
+    // ---- MCP server ----------------------------------------------------------------------
+
+    /// <summary>The program Claude starts (this OurCut) and its arguments.</summary>
+    public string McpCommand { get; }
+    public IReadOnlyList<string> McpArgs { get; }
+
+    /// <summary>Adds OurCut to Claude Code, for every project.</summary>
+    public string ClaudeCodeCommand => "claude mcp add --scope user ourcut -- " + string.Join(' ', McpArgs.Prepend(McpCommand).Select(Quote));
+
+    /// <summary>The entry for Claude Desktop's claude_desktop_config.json.</summary>
+    public string ClaudeDesktopConfig =>
+        JsonSerializer.Serialize(new { mcpServers = new { ourcut = new { command = McpCommand, args = McpArgs } } }, IndentedJson);
+
+    /// <summary>Where Claude Desktop keeps its settings on this system.</summary>
+    public static string ClaudeDesktopConfigPath =>
+        OperatingSystem.IsWindows() ? @"%APPDATA%\Claude\claude_desktop_config.json"
+        : OperatingSystem.IsMacOS() ? "~/Library/Application Support/Claude/claude_desktop_config.json"
+        : "~/.config/Claude/claude_desktop_config.json";
+
+    // Relaxed escaping keeps non-ASCII paths readable (no \uXXXX); the text is only pasted into a JSON file.
+    private static readonly JsonSerializerOptions IndentedJson = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    private static string Quote(string arg) =>
+        arg.Length > 0 && !arg.Any(ch => char.IsWhiteSpace(ch) || ch is '"' or '\'' or '&' or '(' or ')' or ';') ? arg
+        : OperatingSystem.IsWindows() ? '"' + arg + '"'
+        : "'" + arg.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
+
+    [RelayCommand]
+    private Task CopyClaudeCode() => CopyText?.Invoke(ClaudeCodeCommand) ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task CopyClaudeDesktop() => CopyText?.Invoke(ClaudeDesktopConfig) ?? Task.CompletedTask;
+
+    partial void OnSectionChanged(string value)
+    {
+        foreach (var o in SectionOptions)
+            o.IsSelected = o.Label == value;
+    }
 
     [RelayCommand]
     public void Open()

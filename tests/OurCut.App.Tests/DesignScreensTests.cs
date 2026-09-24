@@ -40,6 +40,25 @@ public class DesignScreensTests
     }
 }
 
+public class SettingsScreensTests
+{
+    [AvaloniaFact]
+    public void The_MCP_server_section_renders()
+    {
+        var editor = App.CreateEditor(DesignScreen.Settings);
+        editor.Settings.SectionOptions.Single(o => o.Label == "MCP server").PickCommand.Execute(null);
+        var window = new MainWindow { DataContext = editor, Width = 1440, Height = 900 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+        using var frame = window.CaptureRenderedFrame();
+        Assert.NotNull(frame);
+        frame!.Save(Path.Combine(Screenshots.Directory, "settings-mcp.png"), new PngBitmapEncoderOptions());
+        window.Close();
+    }
+}
+
 public class TimelineZoomTests
 {
     [AvaloniaFact]

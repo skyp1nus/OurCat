@@ -182,3 +182,24 @@ public class EditorSessionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new History(0));
     }
 }
+
+public class HistoryIdTests
+{
+    [Fact]
+    public void Entries_get_increasing_ids_that_survive_undo_and_merging()
+    {
+        var session = new EditorSession(Sample.Project);
+        var a = session.Execute(new RenameClipCommand(1, "A"))!;
+        var b = session.Execute(new SetClipRangeCommand(2, 118, 190), mergeKey: "drag")!;
+        var b2 = session.Execute(new SetClipRangeCommand(2, 117, 190), mergeKey: "drag")!;
+        session.Undo();
+        var c = session.Execute(new RenameClipCommand(1, "C"))!;
+
+        Assert.Equal(1, a.Id);
+        Assert.Equal(2, b.Id);
+        Assert.Equal(b.Id, b2.Id);
+        Assert.Equal(3, c.Id);
+        Assert.Same(a, session.History.Find(1));
+        Assert.Null(session.History.Find(2));
+    }
+}

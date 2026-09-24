@@ -38,6 +38,8 @@ public sealed partial class EditorViewModel : ViewModelBase
     private bool _playerHasFile;
     private int _playerGeneration;
     private bool _timeFromPlayer;
+    private string? _openError;
+    private string? _openedPath;
 
     public EditorViewModel()
     {
@@ -57,7 +59,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         {
             if (e.PropertyName == nameof(ClaudePanelViewModel.IsBusy))
                 OnPropertyChanged(nameof(IsClaudeBusy));
-            if (e.PropertyName is nameof(ClaudePanelViewModel.IsBusy) or nameof(ClaudePanelViewModel.IsConnected))
+            if (e.PropertyName is nameof(ClaudePanelViewModel.McpText))
                 OnPropertyChanged(nameof(McpText));
         };
         Export.PropertyChanged += (_, e) =>
@@ -126,15 +128,20 @@ public sealed partial class EditorViewModel : ViewModelBase
     /// </summary>
     public bool IsDemo { get; set; }
 
-    /// <summary>Switches from the scripted demo to a normal project: no MCP connection, history in the Claude panel.</summary>
+    /// <summary>
+    /// Starts a new project's history in the Claude panel. Leaving the scripted demo also drops its
+    /// sample recent files and its pretend MCP connection (demo runs have no MCP server).
+    /// </summary>
     public void LeaveDemo()
     {
         if (IsDemo)
+        {
             RecentFiles.Clear();
+            Claude.IsConnected = false;
+        }
         IsDemo = false;
         Claude.Log.Clear();
         _historyItems.Clear();
-        Claude.IsConnected = false;
     }
 
     // ---- File ----------------------------------------------------------------------------
@@ -165,10 +172,11 @@ public sealed partial class EditorViewModel : ViewModelBase
     {
         if (!ReferenceEquals(sender, Media) || Media is not { } media)
             return;
-        if (!ReferenceEquals(_appliedKeyframes, media.Keyframes))
+        var keyframes = media.Keyframes;
+        if (!ReferenceEquals(_appliedKeyframes, keyframes))
         {
-            _appliedKeyframes = media.Keyframes;
-            Session.Keyframes = media.Keyframes;
+            _appliedKeyframes = keyframes;
+            Session.Keyframes = keyframes;
         }
         if (media.AnalysisError is { } error && !_previewErrorShown)
         {
@@ -346,7 +354,7 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     public bool IsClaudeBusy => Claude.IsBusy;
 
-    /// <summary>The MCP badge: "MCP · Claude connected", "MCP · Claude editing" or "MCP · not running".</summary>
+    /// <summary>The MCP badge: "MCP · Claude connected", "MCP · Claude editing", "MCP · waiting for Claude" or "MCP · not running".</summary>
     public string McpText => Claude.McpText;
 
     /// <summary>Export needs an open file and at least one included clip.</summary>
@@ -421,8 +429,11 @@ public sealed partial class EditorViewModel : ViewModelBase
         ProjectPath = projectPath;
         IsDirty = false;
         LastSaveWasAuto = false;
-        Session.Keyframes = media.Keyframes;
-        _appliedKeyframes = media.Keyframes;
+        // Read once: the analysis may publish the keyframes between two reads, and the second would then
+        // look already applied to OnPreviewChanged.
+        var keyframes = media.Keyframes;
+        Session.Keyframes = keyframes;
+        _appliedKeyframes = keyframes;
         Session.Load(project);
         Media = media;
         Claude.HasMedia = true;
@@ -604,6 +615,7 @@ public sealed partial class EditorViewModel : ViewModelBase
             return;
         LeaveDemo();
         LoadProject(new Project(Path.GetFileNameWithoutExtension(path), media.Source, []), media.Preview, media.Summary);
+        _openedPath = path;
         Remember(path, media.Source.Duration);
     }
 
@@ -617,12 +629,12 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
         catch (Exception e) when (e is ProjectFileException or IOException or UnauthorizedAccessException)
         {
-            ShowMessage("Could not open the project: " + e.Message);
+            OpenFailed("Could not open the project: " + e.Message);
             return;
         }
         if (project.Source is null)
         {
-            ShowMessage("The project has no source video.");
+            OpenFailed("The project has no source video.");
             return;
         }
         var media = await OpenSourceAsync(project.Source.Path).ConfigureAwait(true);
@@ -631,7 +643,23 @@ public sealed partial class EditorViewModel : ViewModelBase
         LeaveDemo();
         // The probe is the truth about the file (it may have been re-encoded since); the clips are kept.
         LoadProject(project with { Source = media.Source }, media.Preview, media.Summary, path);
+        _openedPath = path;
         Remember(path, media.Source.Duration);
+    }
+
+    /// <summary>Opens a video or project for Claude (MCP). Returns why it failed, or null.</summary>
+    public async Task<string?> OpenForClaudeAsync(string path)
+    {
+        _openError = null;
+        _openedPath = null;
+        await OpenPath(path).ConfigureAwait(true);
+        return _openError ?? (_openedPath == path ? null : "Opening was cancelled: another file was opened meanwhile.");
+    }
+
+    private void OpenFailed(string message)
+    {
+        _openError = message;
+        ShowMessage(message);
     }
 
     /// <summary>Probes a video. A newer open cancels an older one still probing.</summary>
@@ -639,7 +667,7 @@ public sealed partial class EditorViewModel : ViewModelBase
     {
         if (MediaOpener is null)
         {
-            ShowMessage("Opening videos is not available.");
+            OpenFailed("Opening videos is not available.");
             return null;
         }
         if (_openCts is not null)
@@ -662,12 +690,12 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
         catch (FileNotFoundException)
         {
-            ShowMessage($"{name} was not found. It may have been moved or deleted.");
+            OpenFailed($"{name} was not found. It may have been moved or deleted.");
             return null;
         }
         catch (Exception e) when (e is MediaToolException or IOException or UnauthorizedAccessException)
         {
-            ShowMessage($"Could not open {name}: {e.Message}");
+            OpenFailed($"Could not open {name}: {e.Message}");
             return null;
         }
         finally
@@ -723,7 +751,8 @@ public sealed partial class EditorViewModel : ViewModelBase
             await SaveToAsync(path, auto: false).ConfigureAwait(true);
     }
 
-    public async Task SaveToAsync(string path, bool auto)
+    /// <summary>Saves the project to <paramref name="path"/>. Returns why it failed (also shown in the status bar), or null.</summary>
+    public async Task<string?> SaveToAsync(string path, bool auto)
     {
         var project = Session.Project;
         try
@@ -732,11 +761,39 @@ public sealed partial class EditorViewModel : ViewModelBase
             ProjectPath = path;
             IsDirty = !ReferenceEquals(project, Session.Project);
             LastSaveWasAuto = auto;
+            return null;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            ShowMessage("Could not save the project: " + e.Message);
+            string message = "Could not save the project: " + e.Message;
+            ShowMessage(message);
+            return message;
         }
+    }
+
+    /// <summary>Saves for Claude (MCP): to <paramref name="path"/>, or where the project was saved before.</summary>
+    public Task<string?> SaveForClaudeAsync(string? path)
+    {
+        if (!HasFile)
+            return Task.FromResult<string?>("No video is open.");
+        if (path is null)
+        {
+            return ProjectPath is { } saved
+                ? SaveToAsync(saved, auto: false)
+                : Task.FromResult<string?>("The project has not been saved yet; give a path ending in " + ProjectFile.Extension + ".");
+        }
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Task.FromResult<string?>($"“{path}” is not a valid path.");
+        }
+        if (!full.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult<string?>("Project files end in " + ProjectFile.Extension + ".");
+        return SaveToAsync(full, auto: false);
     }
 
     /// <summary>How long after the last edit a saved project is written again.</summary>

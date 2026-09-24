@@ -17,8 +17,8 @@
           <TextBlock Grid.Column="2" Text="via MCP" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="8,0,0,0"
                      VerticalAlignment="Center" />
           <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-            <c:PulseDot Width="6" Height="6" Fill="{StaticResource TextBrush}" IsVisible="{Binding IsBusy}" VerticalAlignment="Center" />
-            <TextBlock Name="StatusLine" Text="{Binding StatusLine}" FontSize="11" Classes.busy="{Binding IsBusy}" VerticalAlignment="Center" />
+            <c:PulseDot Width="6" Height="6" Fill="{StaticResource TextBrush}" IsVisible="{Binding IsWorking}" VerticalAlignment="Center" />
+            <TextBlock Name="StatusLine" Text="{Binding StatusLine}" FontSize="11" Classes.busy="{Binding IsWorking}" VerticalAlignment="Center" />
           </StackPanel>
         </Grid>
       </Border>

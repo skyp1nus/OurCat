@@ -15,6 +15,9 @@ public sealed record HistoryEntry(
     /// <summary>Change in output duration caused by this edit, in seconds.</summary>
     public double OutputDelta => After.OutputDuration - Before.OutputDuration;
 
+    /// <summary>Stable number of this edit in its session (1, 2, …), e.g. for an MCP client to refer to it.</summary>
+    public long Id { get; init; }
+
     /// <summary>Clips added or changed by this edit (not removed ones).</summary>
     public IReadOnlyList<int> ChangedClipIds =>
         [.. After.Clips.Where(c => Before.Find(c.Id) is not { } old || old != c).Select(c => c.Id)];
@@ -27,6 +30,7 @@ public sealed record HistoryEntry(
 public sealed class History
 {
     private readonly List<HistoryEntry> _entries = [];
+    private long _lastId;
 
     public History(int capacity = 1000)
     {
@@ -49,6 +53,9 @@ public sealed class History
 
     public bool IsApplied(HistoryEntry entry) => _entries.IndexOf(entry) is var i && i >= 0 && i < Position;
 
+    /// <summary>The entry with <see cref="HistoryEntry.Id"/> <paramref name="id"/>, if it is still in the history.</summary>
+    public HistoryEntry? Find(long id) => _entries.FirstOrDefault(e => e.Id == id);
+
     /// <summary>
     /// Records an edit. If <paramref name="entry"/> has the same merge key as the last applied entry
     /// (e.g. successive steps of one drag), the two become a single undo step.
@@ -60,11 +67,12 @@ public sealed class History
 
         if (entry.MergeKey is not null && NextUndo is { } last && last.MergeKey == entry.MergeKey)
         {
-            var merged = entry with { Before = last.Before };
+            var merged = entry with { Before = last.Before, Id = last.Id };
             _entries[Position - 1] = merged;
             return merged;
         }
 
+        entry = entry with { Id = ++_lastId };
         _entries.Add(entry);
         if (_entries.Count > Capacity)
             _entries.RemoveAt(0);

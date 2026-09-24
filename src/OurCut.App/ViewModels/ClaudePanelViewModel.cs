@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OurCut.Core.Editing;
@@ -124,22 +125,42 @@ public sealed partial class ClaudeLogItemViewModel : ViewModelBase
 }
 
 /// <summary>
-/// The collapsible Claude panel: a log of Claude's timeline edits, each with its own undo.
-/// The MCP server is not part of Phase 1, so outside demo mode it shows as not running and the
-/// log lists the project's edit history instead. Claude is talked to through its own MCP client,
+/// The collapsible Claude panel: the project's edit history, with Claude's edits (made through the
+/// MCP server) highlighted, each with its own undo. Claude is talked to through its own MCP client,
 /// so the panel has no message box.
 /// </summary>
 public sealed partial class ClaudePanelViewModel : ViewModelBase
 {
+    /// <summary>How long after its last tool call Claude counts as editing.</summary>
+    public static TimeSpan ActiveFor { get; set; } = TimeSpan.FromSeconds(3);
+
+    private DispatcherTimer? _activeTimer;
+
     public ObservableCollection<ClaudeLogItemViewModel> Log { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusLine))]
     public partial bool IsOpen { get; set; } = true;
 
+    /// <summary>Claude (its MCP client, through <c>OurCut mcp</c>) is connected to the editor.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsComposerEnabled), nameof(McpText))]
     public partial bool IsConnected { get; set; }
+
+    /// <summary>The editor's MCP server is waiting for connections (every run but the demo).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(McpText))]
+    public partial bool IsListening { get; set; }
+
+    /// <summary>Another OurCut window has the MCP server; this one gets it when that one closes.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(McpText))]
+    public partial bool IsServedElsewhere { get; set; }
+
+    /// <summary>Claude used a tool in the last <see cref="ActiveFor"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(McpText), nameof(StatusLine), nameof(IsWorking))]
+    public partial bool IsActive { get; set; }
 
     /// <summary>A media file is open (Claude needs one to edit).</summary>
     [ObservableProperty]
@@ -150,9 +171,13 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(CanSend))]
     public partial string Draft { get; set; } = "";
 
+    /// <summary>Work in progress is shown in the log (the demo's scripted cards).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusLine), nameof(McpText))]
+    [NotifyPropertyChangedFor(nameof(StatusLine), nameof(McpText), nameof(IsWorking))]
     public partial bool IsBusy { get; set; }
+
+    /// <summary>Claude is editing right now: the header's pulsing dot.</summary>
+    public bool IsWorking => IsBusy || IsActive;
 
     [ObservableProperty]
     public partial int ChangeCount { get; set; }
@@ -166,10 +191,13 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
     public bool HasNoCards => !Log.Any(a => a.IsCard);
 
     /// <summary>The MCP badge in the title bar.</summary>
-    public string McpText => !IsConnected ? "MCP · not running" : IsBusy ? "MCP · Claude editing" : "MCP · Claude connected";
+    public string McpText => IsConnected ? (IsWorking ? "MCP · Claude editing" : "MCP · Claude connected")
+        : IsListening ? "MCP · waiting for Claude"
+        : IsServedElsewhere ? "MCP · in another window"
+        : "MCP · not running";
 
     /// <summary>Right side of the panel header: "Editing timeline", "Idle · 4 actions", "Waiting for a video".</summary>
-    public string StatusLine => IsBusy ? "Editing timeline"
+    public string StatusLine => IsWorking ? "Editing timeline"
         : !HasMedia ? "Waiting for a video"
         : IsOpen ? "Idle"
         : $"Idle · {Log.Count(a => a.IsAction && !a.IsUndone)} actions";
@@ -198,6 +226,19 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
         IsBusy = Log.Any(a => a.IsLive);
         OnPropertyChanged(nameof(StatusLine));
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Claude just used a tool: shows it as editing for a moment.</summary>
+    public void NoteActivity()
+    {
+        IsActive = true;
+        _activeTimer ??= new DispatcherTimer(ActiveFor, DispatcherPriority.Background, (_, _) =>
+        {
+            IsActive = false;
+            _activeTimer?.Stop();
+        });
+        _activeTimer.Stop();
+        _activeTimer.Start();
     }
 
     /// <summary>Moves the clock of every card to <paramref name="now"/> ("18 min ago").</summary>
