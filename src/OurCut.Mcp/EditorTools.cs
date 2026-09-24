@@ -50,6 +50,25 @@ public sealed record HistoryItem(long Id, string Description, [property: Descrip
 
 public sealed record VideoFile(string Path, string Name, long SizeBytes, string Modified);
 
+public sealed record SilenceInfo(double Start, double End, double Duration,
+    [property: Description("Start–end as MM:SS.mmm, as the editor shows it.")] string Range);
+
+public sealed record SilencesResult(
+    IReadOnlyList<SilenceInfo> Silences,
+    int Count,
+    [property: Description("Total silence, in seconds.")] double Total,
+    [property: Description("Peak level (dBFS) below which audio counted as silent.")] double ThresholdDb,
+    [property: Description("Level of the quietest 5 % of the audio: roughly the background noise.")] double NoiseFloorDb,
+    [property: Description("False while the audio is still being analysed; the silences found so far are listed.")] bool Complete,
+    string? Note);
+
+public sealed record ScenesResult(
+    [property: Description("Seconds on the source timeline where a new scene starts.")] IReadOnlyList<double> Changes,
+    int Count,
+    double Threshold,
+    [property: Description("False while detection is still running; the changes found so far are listed.")] bool Complete,
+    string? Note);
+
 /// <summary>One step of <c>edit_timeline</c>.</summary>
 public sealed record EditOperation(
     [property: Description("add, remove, trim, split, include, exclude, move or rename.")] string Action,
@@ -77,6 +96,10 @@ public sealed class EditorTools(IEditorHost host)
         Start with get_project. Times are seconds (decimals allowed). Clip ids are stable; positions are
         1-based output positions. Lossless export starts each clip at the keyframe at or before its start;
         use find_keyframes when exact starts matter.
+
+        You cannot see or hear the video, but find_silences shows where the speaker pauses and
+        find_scene_changes where the picture changes (a cut, a new slide or window); both are analysed in
+        the background after a video is opened. cut_silences removes pauses in one step.
 
         Everything you change appears in OurCut's Claude panel, highlighted, and the user can undo it. For
         several related changes use edit_timeline with a short description, so they form one undo step.
@@ -152,6 +175,48 @@ public sealed class EditorTools(IEditorHost host)
             .Select(f => new VideoFile(f.FullName, f.Name, f.Length, f.LastWriteTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)))];
     }
 
+    [McpServerTool(Name = "find_silences", Title = "Find silences", ReadOnly = true, Idempotent = true)]
+    [Description("Pauses where every audio track (or the given tracks) stays quiet. The level follows the recording's " +
+                 "background noise unless you give one. cut_silences removes them.")]
+    public Task<SilencesResult> FindSilences(
+        [Description("Shortest pause, in seconds (default 1).")] double minDuration = 1.0,
+        [Description("Peak level in dBFS that counts as silent, e.g. -40; automatic if omitted.")] double? thresholdDb = null,
+        [Description("Audio track numbers (as in get_project) that must be quiet; all if omitted.")] IReadOnlyList<int>? tracks = null,
+        [Description("Only pauses that end after this time, in seconds.")] double? start = null,
+        [Description("Only pauses that begin before this time, in seconds.")] double? end = null) =>
+        host.RunAsync(ctx =>
+        {
+            var report = Silences(ctx, minDuration, thresholdDb, tracks);
+            var ranges = report.Ranges.Where(r => r.End > (start ?? double.MinValue) && r.Start < (end ?? double.MaxValue)).ToList();
+            const int Max = 500;
+            string? note = !report.IsComplete ? "The audio is still being analysed" + (ctx.AnalysisStatus is { } a ? $" ({a})" : "") + "; call again for the rest."
+                : ranges.Count > Max ? $"Only the first {Max} are listed; narrow the range or raise minDuration."
+                : ranges.Count == 0 ? $"No pauses of {minDuration:0.##} s or more below {report.ThresholdDb:0.#} dBFS." : null;
+            return Task.FromResult(new SilencesResult(
+                [.. ranges.Take(Max).Select(r => new SilenceInfo(Round(r.Start), Round(r.End), Round(r.End - r.Start), RangeText(r.Start, r.End)))],
+                ranges.Count, Round(ranges.Sum(r => r.End - r.Start)), report.ThresholdDb, report.NoiseFloorDb, report.IsComplete, note));
+        });
+
+    [McpServerTool(Name = "find_scene_changes", Title = "Find scene changes", ReadOnly = true, Idempotent = true)]
+    [Description("Times where the picture changes abruptly: a camera cut, a new slide, switching windows. Steady motion " +
+                 "(panning, scrolling) does not count.")]
+    public Task<ScenesResult> FindSceneChanges(
+        [Description("Sensitivity on ffmpeg scdet's 0–100 scale (default 10); lower finds more and subtler changes.")] double threshold = 10,
+        [Description("Only changes at or after this time, in seconds.")] double? start = null,
+        [Description("Only changes before this time, in seconds.")] double? end = null) =>
+        host.RunAsync(ctx =>
+        {
+            RequireFile(ctx);
+            if (threshold is <= 0 or > 100)
+                throw new McpException("The threshold goes from 0 (exclusive) to 100.");
+            var report = ctx.FindSceneChanges(threshold) ?? throw new McpException("This file has no video.");
+            var times = report.Times.Where(t => t >= (start ?? double.MinValue) && t < (end ?? double.MaxValue)).Select(Round).ToList();
+            string? note = !report.IsComplete
+                ? $"Scene detection is {Math.Floor(report.Progress * 100):0}% done; call again for the rest."
+                : times.Count == 0 ? "No scene changes at this sensitivity; a lower threshold finds subtler ones." : null;
+            return Task.FromResult(new ScenesResult(times, times.Count, threshold, report.IsComplete, note));
+        });
+
     // ---- Editing -------------------------------------------------------------------------
 
     [McpServerTool(Name = "add_segment", Title = "Keep a range")]
@@ -203,6 +268,51 @@ public sealed class EditorTools(IEditorHost host)
                 throw new EditException("No operations given.");
             return new BatchCommand("edit_timeline", string.IsNullOrWhiteSpace(description) ? $"{operations.Count} edits" : description.Trim(),
                 [.. operations.Select(ToCommand)]);
+        });
+
+    [McpServerTool(Name = "cut_silences", Title = "Cut out silences")]
+    [Description("Cuts pauses out of the included clips (or the given clips) as one undo step, keeping a little of each " +
+                 "pause so speech does not sound clipped. With no clips yet, it first keeps the whole video. Lossless export " +
+                 "starts each clip at the keyframe before it, so many short clips are best exported with re-encoding.")]
+    public Task<EditResult> CutSilences(
+        [Description("Shortest pause to cut, in seconds (default 1).")] double minDuration = 1.0,
+        [Description("Peak level in dBFS that counts as silent; automatic if omitted (see find_silences).")] double? thresholdDb = null,
+        [Description("Seconds of each pause to keep on both sides (default 0.15).")] double padding = 0.15,
+        [Description("Clip ids to cut; every included clip if omitted.")] IReadOnlyList<int>? clips = null,
+        [Description("Audio track numbers that must be quiet; all if omitted.")] IReadOnlyList<int>? tracks = null) =>
+        host.RunAsync(ctx =>
+        {
+            if (padding < 0)
+                throw new McpException("The padding cannot be negative.");
+            var report = Silences(ctx, minDuration, thresholdDb, tracks);
+            if (!report.IsComplete)
+                throw new McpException("The audio is still being analysed" + (ctx.AnalysisStatus is { } a ? $" ({a})" : "") + ". Try again shortly.");
+            var cuts = report.Ranges.Select(r => new TimeRange(r.Start + padding, r.End - padding))
+                .Where(r => r.End - r.Start >= 0.05).ToList();
+            var project = ctx.Session.Project;
+            var steps = new List<IEditCommand>();
+            if (clips is null && project.Clips.IsEmpty)
+                steps.Add(new AddClipCommand(0, project.SourceDuration, project.Name));
+            IReadOnlyList<TimeRange> targets = clips is not null
+                ? [.. clips.Select(id => project.Find(id) ?? throw new McpException($"Clip {id} does not exist.")).Select(c => new TimeRange(c.Start, c.End))]
+                : project.Clips.IsEmpty ? [new TimeRange(0, project.SourceDuration)]
+                : [.. project.IncludedClips.Select(c => new TimeRange(c.Start, c.End))];
+            var hit = cuts.Where(r => targets.Any(c => r.End > c.Start && r.Start < c.End)).ToList();
+            if (hit.Count == 0)
+            {
+                return Task.FromResult(new EditResult(null,
+                    $"No pauses of {minDuration:0.##} s or more below {report.ThresholdDb:0.#} dBFS in those clips; nothing changed.",
+                    Clips(project), Round(project.OutputDuration)));
+            }
+            string description = $"Removed {hit.Count} silence{(hit.Count == 1 ? "" : "s")}";
+            steps.Add(new CutRangesCommand(hit, clips, "cut_silences", description));
+            IEditCommand command = steps.Count == 1 ? steps[0] : new BatchCommand("cut_silences", description, steps);
+            var entry = Guard(() => ctx.Session.Execute(command, EditOrigin.Assistant));
+            var result = Result(ctx, entry);
+            return Task.FromResult(result with
+            {
+                Result = $"{description}: {Round(project.OutputDuration - ctx.Session.Project.OutputDuration)} s shorter.",
+            });
         });
 
     [McpServerTool(Name = "revert_action", Title = "Revert an edit")]
@@ -331,6 +441,21 @@ public sealed class EditorTools(IEditorHost host)
             throw new McpException($"“{path}” is not a full path; give the whole path, e.g. from list_videos.");
     }
 
+    private static SilenceReport Silences(IEditorContext ctx, double minDuration, double? thresholdDb, IReadOnlyList<int>? tracks)
+    {
+        RequireFile(ctx);
+        if (minDuration is < 0.05 or > 3600)
+            throw new McpException("minDuration must be between 0.05 and 3600 seconds.");
+        if (thresholdDb is < -90 or > 0)
+            throw new McpException("thresholdDb must be between -90 and 0 dBFS.");
+        int trackCount = ctx.Session.Project.Source?.AudioTracks.Length ?? 0;
+        if (tracks is not null && tracks.Any(t => t < 1 || t > trackCount))
+            throw new McpException($"There is no audio track {tracks.First(t => t < 1 || t > trackCount)}; the tracks are 1–{trackCount}.");
+        return ctx.FindSilences(minDuration, thresholdDb, tracks?.Select(t => t - 1).ToList()) ?? throw new McpException("This file has no audio.");
+    }
+
+    private static string RangeText(double start, double end) => $"{TimeFormat.MinutesSeconds(start)}–{TimeFormat.MinutesSeconds(end)}";
+
     private static IEditCommand ToCommand(EditOperation op)
     {
         int Clip() => op.Clip ?? throw new EditException($"“{op.Action}” needs a clip id.");
@@ -368,7 +493,7 @@ public sealed class EditorTools(IEditorHost host)
 
     private static List<ClipInfo> Clips(Project project) =>
         [.. project.Clips.Select((c, i) => new ClipInfo(c.Id, i + 1, c.Label, Round(c.Start), Round(c.End), Round(c.Duration), c.IsIncluded,
-            $"{TimeFormat.MinutesSeconds(c.Start)}–{TimeFormat.MinutesSeconds(c.End)}"))];
+            RangeText(c.Start, c.End)))];
 
     private static double Round(double seconds) => Math.Round(seconds, 3);
 

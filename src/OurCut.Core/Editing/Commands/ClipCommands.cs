@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using OurCut.Core.Model;
 using OurCut.Core.Time;
 
@@ -157,5 +158,88 @@ public sealed record BatchCommand(string Name, string Description, IReadOnlyList
         foreach (var command in Commands)
             project = command.Apply(project);
         return project;
+    }
+}
+
+/// <summary>
+/// Cuts source ranges (e.g. silences) out of clips: a clip overlapping a range is trimmed or split around it,
+/// and removed when nothing of it is left. The first remaining part keeps the clip's id and label; the others
+/// get new ids and "(2)", "(3)"… labels and follow it in the output. Parts shorter than
+/// <see cref="EditRules.MinClipDuration"/> are dropped.
+/// </summary>
+/// <param name="ClipIds">Clips to cut; every included clip if null.</param>
+/// <param name="Name">Command name shown in the history, e.g. <c>cut_silences</c>.</param>
+/// <param name="Description">What the edit did, e.g. "Removed 12 silences"; counted from the ranges if null.</param>
+public sealed record CutRangesCommand(IReadOnlyList<TimeRange> Ranges, IReadOnlyList<int>? ClipIds = null, string Name = "cut_ranges",
+    string? Description = null) : IEditCommand
+{
+    public string Describe(Project before)
+    {
+        if (Description is { } description)
+            return description;
+        double removed = before.OutputDuration - Apply(before).OutputDuration;
+        return $"Cut {Ranges.Count} range{(Ranges.Count == 1 ? "" : "s")} ({TimeFormat.ShortDuration(removed)})";
+    }
+
+    public Project Apply(Project project)
+    {
+        if (Ranges.Any(r => !double.IsFinite(r.Start) || !double.IsFinite(r.End)))
+            throw new EditException("Range times must be finite numbers.");
+        var ranges = Merge(Ranges);
+        var targets = ClipIds is null
+            ? project.IncludedClips.Select(c => c.Id).ToHashSet()
+            : ClipIds.Select(id => project.Get(id).Id).ToHashSet();
+        int nextId = project.NextClipId;
+        bool changed = false;
+        var clips = ImmutableList.CreateBuilder<Clip>();
+        foreach (var clip in project.Clips)
+        {
+            if (!targets.Contains(clip.Id) || !ranges.Any(r => r.End > clip.Start && r.Start < clip.End))
+            {
+                clips.Add(clip);
+                continue;
+            }
+            changed = true;
+            var parts = Remaining(clip, ranges);
+            for (int i = 0; i < parts.Count; i++)
+            {
+                clips.Add(i == 0
+                    ? clip with { Start = parts[i].Start, End = parts[i].End }
+                    : new Clip(nextId++, $"{clip.Label} ({i + 1})", parts[i].Start, parts[i].End, clip.IsIncluded));
+            }
+        }
+        return changed ? project with { Clips = clips.ToImmutable() } : project;
+    }
+
+    /// <summary>Sorted ranges with overlapping ones joined.</summary>
+    private static List<TimeRange> Merge(IEnumerable<TimeRange> ranges)
+    {
+        var merged = new List<TimeRange>();
+        foreach (var r in ranges.Where(r => r.End > r.Start).OrderBy(r => r.Start))
+        {
+            if (merged.Count > 0 && r.Start <= merged[^1].End)
+                merged[^1] = merged[^1] with { End = Math.Max(merged[^1].End, r.End) };
+            else
+                merged.Add(r);
+        }
+        return merged;
+    }
+
+    /// <summary>The parts of <paramref name="clip"/> outside every range, long enough to keep.</summary>
+    private static List<TimeRange> Remaining(Clip clip, List<TimeRange> ranges)
+    {
+        var parts = new List<TimeRange>();
+        double from = clip.Start;
+        foreach (var r in ranges)
+        {
+            if (r.End <= from || r.Start >= clip.End)
+                continue;
+            if (r.Start > from)
+                parts.Add(new TimeRange(from, r.Start));
+            from = Math.Max(from, r.End);
+        }
+        if (clip.End > from)
+            parts.Add(new TimeRange(from, clip.End));
+        return [.. parts.Where(p => p.Duration >= EditRules.MinClipDuration - EditRules.Epsilon)];
     }
 }

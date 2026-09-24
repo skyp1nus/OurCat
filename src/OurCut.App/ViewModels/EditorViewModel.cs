@@ -149,6 +149,7 @@ public sealed partial class EditorViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasFile), nameof(IsEmpty), nameof(Duration), nameof(DurationText),
         nameof(SourceLengthText), nameof(StatusRight), nameof(FrameText), nameof(HasSilenceData), nameof(HasSceneData),
+        nameof(SilenceTip), nameof(ScenesTip),
         nameof(TransportDurationText), nameof(VideoAspect), nameof(HasPlayback))]
     public partial IMediaPreview? Media { get; set; }
 
@@ -178,6 +179,8 @@ public sealed partial class EditorViewModel : ViewModelBase
             _appliedKeyframes = keyframes;
             Session.Keyframes = keyframes;
         }
+        foreach (string name in (string[])[nameof(HasSilenceData), nameof(HasSceneData), nameof(SilenceTip), nameof(ScenesTip)])
+            OnPropertyChanged(name);
         if (media.AnalysisError is { } error && !_previewErrorShown)
         {
             _previewErrorShown = true;
@@ -295,9 +298,20 @@ public sealed partial class EditorViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool ShowScenes { get; set; } = true;
 
-    /// <summary>Silence and scene detection do not exist yet; only the demo sample has these markers.</summary>
+    /// <summary>Silences and scene changes found so far (the toolbar chips are off without any).</summary>
     public bool HasSilenceData => Media?.Silences.Count > 0;
     public bool HasSceneData => Media?.SceneChanges.Count > 0;
+
+    public string SilenceTip => Media is not { } media ? "Silence bands"
+        : media.Silences.Count is > 0 and var n ? $"Silence bands: {n} pause{(n == 1 ? "" : "s")} of a second or more"
+        : !media.SilencesComplete ? "Looking for silences…"
+        : media.AudioStreamCount == 0 ? "No audio in this file" : "No pauses of a second or more in this file";
+
+    public string ScenesTip => Media is not { } media ? "Scene changes"
+        : media.SceneChanges.Count is > 0 and var n
+            ? $"Scene changes: {n}" + (media.ScenesComplete ? "" : " so far")
+        : !media.ScenesComplete ? "Detecting scene changes…"
+        : "No scene changes found";
 
     /// <summary>The selected clip in the timeline toolbar: "Clip 3  00:04:22.080 → 00:06:05.520  ·  1:43.440".</summary>
     public string SelectionInfo => SelectedClip is { } c

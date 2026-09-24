@@ -24,8 +24,9 @@ internal sealed class FakeEditor : IEditorHost, IEditorContext, IDisposable
     public int? SelectedClipId { get; set; }
     public bool IsPlaying { get; set; }
     public IReadOnlyList<double> Keyframes { get; set; } = [0, 2, 4, 9.5, 10, 12, 99, 100, 102];
-    public IReadOnlyList<TimeRange> Silences { get; set; } = [];
-    public IReadOnlyList<double> SceneChanges { get; set; } = [];
+    public SilenceReport? Silences { get; set; } = new([new(50, 52.5), new(120, 124), new(150, 150.8), new(330, 340)], -48, -60, true);
+    public SceneReport? Scenes { get; set; } = new([20, 105.5, 180, 420], true, 1);
+    public List<(double MinDuration, double? ThresholdDb, IReadOnlyList<int>? Streams)> SilenceQueries { get; } = [];
     public string? AnalysisStatus { get; set; }
     public List<string> Opened { get; } = [];
     public int Calls { get; private set; }
@@ -57,6 +58,16 @@ internal sealed class FakeEditor : IEditorHost, IEditorContext, IDisposable
     }
 
     public void Dispose() => _gate.Dispose();
+
+    /// <summary>Filters <see cref="Silences"/> by length, like the real detector.</summary>
+    public SilenceReport? FindSilences(double minDuration, double? thresholdDb, IReadOnlyList<int>? streams)
+    {
+        SilenceQueries.Add((minDuration, thresholdDb, streams));
+        return Silences is { } s ? s with { Ranges = [.. s.Ranges.Where(r => r.Duration >= minDuration)], ThresholdDb = thresholdDb ?? s.ThresholdDb } : null;
+    }
+
+    public SceneReport? FindSceneChanges(double threshold) =>
+        Scenes is { } s ? s with { Times = threshold > 20 ? [.. s.Times.Take(1)] : s.Times } : null;
 
     public void Seek(double time) => Playhead = time;
     public void SelectClip(int? clipId) => SelectedClipId = clipId;
@@ -136,9 +147,9 @@ public class McpToolListTests
 {
     private static readonly string[] Expected =
     [
-        "add_segment", "edit_timeline", "find_keyframes", "get_history", "get_project", "list_videos", "move_segment", "open_file",
-        "redo", "remove_segment", "revert_action", "save_project", "seek", "set_included", "set_label", "set_playing",
-        "split_segment", "trim_segment", "undo",
+        "add_segment", "cut_silences", "edit_timeline", "find_keyframes", "find_scene_changes", "find_silences", "get_history",
+        "get_project", "list_videos", "move_segment", "open_file", "redo", "remove_segment", "revert_action", "save_project", "seek",
+        "set_included", "set_label", "set_playing", "split_segment", "trim_segment", "undo",
     ];
 
     [Fact]
@@ -446,6 +457,106 @@ public class McpEditingTests
         for (int i = 0; i < 250 && !condition(); i++)
             await Task.Delay(20, TestContext.Current.CancellationToken);
         Assert.True(condition());
+    }
+}
+
+/// <summary>Silences and scene changes: finding them, and cutting pauses out.</summary>
+public class McpAnalysisTests
+{
+    private static readonly int[] SecondTrack = [2], ThirdTrack = [3];
+    [Fact]
+    public async Task Find_silences_lists_pauses_of_at_least_the_minimum_length()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var found = (await c.Client.Call("find_silences")).Json();
+        Assert.Equal(3, found.GetProperty("count").GetInt32());
+        Assert.Equal(16.5, found.GetProperty("total").GetDouble());
+        Assert.Equal(-48, found.GetProperty("thresholdDb").GetDouble());
+        Assert.Equal(-60, found.GetProperty("noiseFloorDb").GetDouble());
+        Assert.True(found.GetProperty("complete").GetBoolean());
+        var first = found.GetProperty("silences")[0];
+        Assert.Equal((50, 52.5, 2.5, "00:50.000–00:52.500"),
+            (first.GetProperty("start").GetDouble(), first.GetProperty("end").GetDouble(), first.GetProperty("duration").GetDouble(),
+                first.GetProperty("range").GetString()));
+
+        var shorter = (await c.Client.Call("find_silences", new { minDuration = 0.5, thresholdDb = -35, tracks = SecondTrack, start = 100, end = 200 })).Json();
+        Assert.Equal([120.0, 150.0], shorter.GetProperty("silences").EnumerateArray().Select(x => x.GetProperty("start").GetDouble()));
+        Assert.Equal((0.5, (double?)-35), (editor.SilenceQueries[^1].MinDuration, editor.SilenceQueries[^1].ThresholdDb));
+        Assert.Equal([1], editor.SilenceQueries[^1].Streams!);
+
+        Assert.Contains("no audio track 3", (await c.Client.Call("find_silences", new { tracks = ThirdTrack })).Text(), StringComparison.Ordinal);
+        editor.Silences = null;
+        Assert.Contains("no audio", (await c.Client.Call("find_silences")).Text(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Find_scene_changes_reports_progress_while_detection_runs()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var all = (await c.Client.Call("find_scene_changes")).Json();
+        Assert.Equal([20, 105.5, 180, 420], all.GetProperty("changes").EnumerateArray().Select(x => x.GetDouble()));
+        Assert.Equal(10, all.GetProperty("threshold").GetDouble());
+        var some = (await c.Client.Call("find_scene_changes", new { threshold = 30, start = 0, end = 100 })).Json();
+        Assert.Equal([20.0], some.GetProperty("changes").EnumerateArray().Select(x => x.GetDouble()));
+
+        editor.Scenes = new SceneReport([20], false, 0.25);
+        var partial = (await c.Client.Call("find_scene_changes")).Json();
+        Assert.False(partial.GetProperty("complete").GetBoolean());
+        Assert.Contains("25% done", partial.GetProperty("note").GetString(), StringComparison.Ordinal);
+        Assert.True((await c.Client.Call("find_scene_changes", new { threshold = 0 })).IsError);
+    }
+
+    [Fact]
+    public async Task Cut_silences_cuts_pauses_out_of_included_clips_as_one_edit()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        // 120–124 is inside Demo (100–200); 330–340 is inside the excluded Q&A; 50–52.5 is in no clip.
+        var cut = (await c.Client.Call("cut_silences")).Json();
+
+        Assert.Equal("Removed 1 silence: 3.7 s shorter.", cut.GetProperty("result").GetString());
+        var clips = cut.GetProperty("clips").EnumerateArray()
+            .Select(x => (x.GetProperty("label").GetString(), x.GetProperty("start").GetDouble(), x.GetProperty("end").GetDouble())).ToList();
+        Assert.Equal([("Intro", 10, 40), ("Demo", 100, 120.15), ("Demo (2)", 123.85, 200), ("Q&A", 300, 360)], clips);
+        var entry = Assert.Single(editor.Session.History.Entries);
+        Assert.Equal((EditOrigin.Assistant, "Removed 1 silence", "cut_silences"), (entry.Origin, entry.Description, entry.Command.Name));
+
+        var again = (await c.Client.Call("cut_silences", new { minDuration = 5 })).Json();
+        Assert.Contains("nothing changed", again.GetProperty("result").GetString(), StringComparison.Ordinal);
+        Assert.False(again.TryGetProperty("action", out _));
+    }
+
+    [Fact]
+    public async Task Cut_silences_without_clips_keeps_the_whole_video_first()
+    {
+        var editor = new FakeEditor();
+        editor.Open(FakeEditor.Sample with { Clips = [] });
+        await using var c = await Connection.OpenAsync(editor);
+
+        var cut = (await c.Client.Call("cut_silences", new { padding = 0 })).Json();
+
+        Assert.Equal([(0.0, 50.0), (52.5, 120.0), (124.0, 330.0), (340.0, 600.0)], cut.GetProperty("clips").EnumerateArray()
+            .Select(x => (x.GetProperty("start").GetDouble(), x.GetProperty("end").GetDouble())));
+        Assert.Equal("keynote (4)", cut.GetProperty("clips")[3].GetProperty("label").GetString());
+        Assert.Single(editor.Session.History.Entries);
+    }
+
+    [Fact]
+    public async Task Cut_silences_waits_for_the_audio_analysis()
+    {
+        var editor = new FakeEditor { AnalysisStatus = "analysing 40%" };
+        editor.Silences = editor.Silences! with { IsComplete = false };
+        await using var c = await Connection.OpenAsync(editor);
+
+        var result = await c.Client.Call("cut_silences");
+        Assert.True(result.IsError);
+        Assert.Contains("analysing 40%", result.Text(), StringComparison.Ordinal);
+        Assert.Empty(editor.Session.History.Entries);
     }
 }
 

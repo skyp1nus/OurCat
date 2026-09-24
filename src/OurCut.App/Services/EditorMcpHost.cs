@@ -1,7 +1,6 @@
 using Avalonia.Threading;
 using OurCut.App.ViewModels;
 using OurCut.Core.Editing;
-using OurCut.Core.Model;
 using OurCut.Mcp;
 
 namespace OurCut.App.Services;
@@ -29,8 +28,16 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
     public int? SelectedClipId => editor.SelectedClip?.Id;
     public bool IsPlaying => editor.IsPlaying;
     public IReadOnlyList<double> Keyframes => editor.Media?.Keyframes ?? [];
-    public IReadOnlyList<TimeRange> Silences => editor.Media?.Silences ?? [];
-    public IReadOnlyList<double> SceneChanges => editor.Media?.SceneChanges ?? [];
+
+    public SilenceReport? FindSilences(double minDuration, double? thresholdDb, IReadOnlyList<int>? streams) =>
+        editor.Media?.FindSilences(minDuration, thresholdDb, streams) is { } found
+            ? new SilenceReport(found.Ranges, found.ThresholdDb, found.NoiseFloorDb, found.IsComplete)
+            : null;
+
+    public SceneReport? FindSceneChanges(double threshold) =>
+        editor.Media?.FindSceneChanges(threshold) is { } found
+            ? new SceneReport(found.Changes, found.IsComplete, found.Progress)
+            : null;
     public string? AnalysisStatus => editor.Media?.Activity;
 
     public void Seek(double time) => editor.SetTime(time);

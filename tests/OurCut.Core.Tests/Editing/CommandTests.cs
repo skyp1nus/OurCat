@@ -134,3 +134,74 @@ public class CommandTests
         Assert.Equal(6, P.Clips.Count);
     }
 }
+
+public class CutRangesCommandTests
+{
+    private static readonly Project P = Sample.Project;
+
+    [Fact]
+    public void Cutting_ranges_trims_and_splits_the_clips_they_touch()
+    {
+        // Clip 1 is 12.04–45.32: a pause at 20–22 splits it, one at 44–50 trims its end.
+        // Clip 2 (118.6–190.12) starts inside a pause; clip 3 is untouched.
+        var command = new CutRangesCommand([new(20, 22), new(44, 50), new(110, 120)]);
+
+        var after = command.Apply(P);
+
+        Assert.Equal(
+        [
+            new Clip(1, "Intro", 12.04, 20), new Clip(7, "Intro (2)", 22, 44), new Clip(2, "Setup", 120, 190.12),
+            new Clip(3, "Demo — import", 242.88, 404.0),
+        ], after.Clips.Take(4));
+        Assert.Equal(P.Clips.Count + 1, after.Clips.Count);
+        Assert.Equal(P.OutputDuration - 2 - 1.32 - 1.4, after.OutputDuration, 6);
+        Assert.Equal("Cut 3 ranges (4.720 s)", command.Describe(P));
+    }
+
+    [Fact]
+    public void Excluded_clips_are_left_alone_unless_named()
+    {
+        var pause = new TimeRange(650, 660);
+        Assert.Same(P, new CutRangesCommand([pause]).Apply(P));
+
+        var after = new CutRangesCommand([pause], ClipIds: [6], Name: "cut_silences", Description: "Removed 1 silence").Apply(P);
+        Assert.Equal([new Clip(6, "Q&A", 640, 650, false), new Clip(7, "Q&A (2)", 660, 728.4, false)],
+            after.Clips.Where(c => !c.IsIncluded));
+    }
+
+    [Fact]
+    public void A_clip_inside_a_range_is_removed_and_slivers_are_dropped()
+    {
+        // Covers clip 1 completely; leaves 0.1 s of clip 2, which is too short to keep.
+        var after = new CutRangesCommand([new(10, 50), new(118.5, 190.02)]).Apply(P);
+        Assert.Null(after.Find(1));
+        Assert.Null(after.Find(2));
+        Assert.Equal(P.Clips.Count - 2, after.Clips.Count);
+    }
+
+    [Fact]
+    public void Overlapping_ranges_are_joined_and_bad_input_is_refused()
+    {
+        var after = new CutRangesCommand([new(30, 35), new(20, 32), new(40, 38)]).Apply(P);
+        Assert.Equal([new Clip(1, "Intro", 12.04, 20), new Clip(7, "Intro (2)", 35, 45.32)], after.Clips.Take(2));
+        Assert.Throws<EditException>(() => new CutRangesCommand([new(double.NaN, 3)]).Apply(P));
+        Assert.Throws<EditException>(() => new CutRangesCommand([new(1, 3)], ClipIds: [99]).Apply(P));
+    }
+
+    [Fact]
+    public void It_is_one_undoable_edit_that_can_be_reverted()
+    {
+        var session = new EditorSession();
+        session.Load(P);
+        var entry = session.Execute(new CutRangesCommand([new(20, 22)], Name: "cut_silences", Description: "Removed 1 silence"),
+            EditOrigin.Assistant)!;
+        Assert.Equal("Removed 1 silence", entry.Description);
+        Assert.Equal([1, 7], entry.ChangedClipIds.Order());
+
+        session.Revert(entry);
+        Assert.Equal(P.Clips, session.Project.Clips);
+        session.Undo();
+        session.Undo();
+        Assert.Same(P, session.Project);
+    }
+}

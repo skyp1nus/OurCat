@@ -8,11 +8,11 @@ It is inspired by [LosslessCut](https://github.com/mifi/lossless-cut). Every edi
 core, and Claude can edit the same timeline through the same operations over MCP: its edits show up in the
 editor as they happen, each one undoable.
 
-> **Status:** Phase 1 is feature-complete and being tested on Windows; Phase 2 has started with Claude editing
-> over MCP. Windows only for now; the code is kept cross-platform so macOS and Linux can follow. Opening videos,
+> **Status:** Phase 1 is feature-complete and being tested on Windows; Phase 2 adds Claude editing over MCP and
+> silence and scene detection. Windows only for now; the code is kept cross-platform so macOS and Linux can follow. Opening videos,
 > playback (libmpv: frame-exact seeking and stepping, speed, volume, per-track mute), the timeline (thumbnails,
 > waveforms, keyframes), editing with undo/redo, project files, export (lossless or re-encoded, merged or
-> separate) and Claude's edits through MCP work.
+> separate), silence and scene detection and Claude's edits through MCP work.
 
 ## Phase 1 scope
 
@@ -31,7 +31,10 @@ editor as they happen, each one undoable.
 - **Claude via MCP** (done): Claude reads the project and edits the timeline — add, trim, split, exclude,
   reorder and rename clips, several edits as one undo step, revert any earlier edit, move the playhead, open
   videos and save the project. See [Connecting Claude](#connecting-claude).
-- **Silence and scene detection** (next): markers on the timeline that Claude can cut along.
+- **Silence and scene detection** (done): pauses (from the waveform, at a level that follows the recording's
+  background noise) show as hatched bands on the audio lanes, scene changes (a cut, a new slide or window) as
+  markers on the ruler. Scene detection decodes the video once in the background and is cached. Claude can
+  query both at any sensitivity and cut out the pauses in one undoable step.
 
 Not yet: transcription and smart cut. The UI already has places for them.
 
@@ -53,9 +56,9 @@ with Copy buttons:
   }
   ```
 
-Then ask Claude something like "open my latest recording in OurCut, keep 0:30–4:10 and 12:00–15:45 as Intro
-and Demo, and start each on a keyframe". Claude does not see or hear the video yet; silence and scene detection
-and later transcription give it that. The badge in the title bar shows the connection (MCP · waiting for Claude / Claude connected /
+Then ask Claude something like "open my latest recording in OurCut, cut out the pauses longer than a second
+and split it into chapters at the scene changes". Claude does not see or hear the video itself: it works from
+the silences, scene changes and keyframes OurCut finds (transcription comes later). The badge in the title bar shows the connection (MCP · waiting for Claude / Claude connected /
 Claude editing), and every edit Claude makes appears in the Claude panel with its own Undo. Only your own user
 account can connect to the editor.
 

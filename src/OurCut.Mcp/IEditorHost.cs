@@ -36,11 +36,14 @@ public interface IEditorContext
     /// <summary>Keyframe times of the source, sorted (empty until scanned).</summary>
     IReadOnlyList<double> Keyframes { get; }
 
-    /// <summary>Silent source ranges, sorted (empty until analysed).</summary>
-    IReadOnlyList<TimeRange> Silences { get; }
+    /// <summary>Stretches where every chosen audio track stays quiet; null when the video has no audio.</summary>
+    /// <param name="minDuration">Shortest silence, in seconds.</param>
+    /// <param name="thresholdDb">Peak level (dBFS) that counts as silent; automatic (from the noise floor) if null.</param>
+    /// <param name="streams">Audio streams (0-based) that must all be quiet; all if null.</param>
+    SilenceReport? FindSilences(double minDuration, double? thresholdDb, IReadOnlyList<int>? streams);
 
-    /// <summary>Scene change times, sorted (empty until analysed).</summary>
-    IReadOnlyList<double> SceneChanges { get; }
+    /// <summary>Scene changes at a sensitivity (ffmpeg <c>scdet</c> scale); null when there is no video.</summary>
+    SceneReport? FindSceneChanges(double threshold);
 
     /// <summary>What is still being analysed, e.g. "analysing 45%"; null when done.</summary>
     string? AnalysisStatus { get; }
@@ -59,3 +62,14 @@ public interface IEditorContext
     /// <summary>Saves the project (to <paramref name="path"/> if given). Returns why it failed, or null.</summary>
     Task<string?> SaveAsync(string? path);
 }
+
+/// <summary>Silences found in the source's audio.</summary>
+/// <param name="ThresholdDb">Peak level (dBFS) below which audio counted as silent.</param>
+/// <param name="NoiseFloorDb">Level of the quietest 5 % of the audio: roughly the background noise.</param>
+/// <param name="IsComplete">False while the audio is still being analysed.</param>
+public sealed record SilenceReport(IReadOnlyList<TimeRange> Ranges, double ThresholdDb, double NoiseFloorDb, bool IsComplete);
+
+/// <summary>Scene changes found in the source's video.</summary>
+/// <param name="IsComplete">False while detection is still running; <paramref name="Times"/> covers the part scanned.</param>
+/// <param name="Progress">Part of the video scanned, 0..1.</param>
+public sealed record SceneReport(IReadOnlyList<double> Times, bool IsComplete, double Progress);

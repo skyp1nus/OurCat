@@ -1,13 +1,14 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using OurCut.Media.Analysis;
 using OurCut.Media.Previews;
 using SkiaSharp;
 
 namespace OurCut.Media.Caching;
 
 /// <summary>
-/// On-disk cache of per-file analysis results (keyframes, waveform, thumbnails), keyed by path, size
+/// On-disk cache of per-file analysis results (keyframes, waveform, thumbnails, scene scores), keyed by path, size
 /// and modification time so a changed file is analysed again. Entries are best effort: any read
 /// error is treated as a miss.
 /// </summary>
@@ -103,6 +104,42 @@ public sealed class MediaCache
             }
         }
         WriteAtomic(Path.Combine(dir, "waveform.bin"), ms.ToArray());
+    });
+
+    // ---- Scene scores --------------------------------------------------------------------
+
+    public SceneScores? LoadSceneScores(string mediaPath) => Try(() =>
+    {
+        string? dir = DirFor(mediaPath, create: false);
+        string file = dir is null ? "" : Path.Combine(dir, "scenes.bin");
+        if (!File.Exists(file))
+            return null;
+        using var reader = new BinaryReader(File.OpenRead(file));
+        double rate = reader.ReadDouble();
+        int capacity = reader.ReadInt32(), filled = reader.ReadInt32();
+        var scores = new float[capacity];
+        byte[] raw = reader.ReadBytes(capacity * sizeof(float));
+        if (raw.Length != capacity * sizeof(float))
+            return null;
+        Buffer.BlockCopy(raw, 0, scores, 0, raw.Length);
+        return new SceneScores(rate, scores, filled) { IsComplete = true };
+    });
+
+    public void SaveSceneScores(string mediaPath, SceneScores scores) => TryDo(() =>
+    {
+        if (!scores.IsComplete || DirFor(mediaPath, create: true) is not { } dir)
+            return;
+        using var ms = new MemoryStream();
+        using (var writer = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(scores.Rate);
+            writer.Write(scores.Capacity);
+            writer.Write(scores.Filled);
+            var raw = new byte[scores.Capacity * sizeof(float)];
+            Buffer.BlockCopy(scores.RawScores, 0, raw, 0, raw.Length);
+            writer.Write(raw);
+        }
+        WriteAtomic(Path.Combine(dir, "scenes.bin"), ms.ToArray());
     });
 
     // ---- Thumbnails ----------------------------------------------------------------------

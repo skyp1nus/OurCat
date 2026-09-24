@@ -36,6 +36,7 @@ The session is not thread-safe. The MCP server runs every tool call on the UI th
 | `RenameClipCommand` | `set_label` | Renames a clip |
 | `BatchCommand` | any | Several commands as one undo step |
 | `RevertEditCommand` | `revert_action` | Reverts one earlier edit and keeps the edits made after it |
+| `CutRangesCommand` | `cut_silences` | Cuts source ranges (pauses) out of the clips they touch, splitting them |
 
 `EditorSession` wraps these with UI-friendly helpers (`Trim` clamps and snaps to keyframes, `KeepRange`
 inserts by source position, `Split` returns the new clip).
@@ -116,6 +117,26 @@ again. `VideoView` shows the video (OpenGL first, software if OpenGL is not ther
 until its first frame the thumbnail preview underneath shows through. Without libmpv, or for the design's
 sample, playback is simulated over the thumbnails.
 
+## Silence and scene detection
+
+Both live in `OurCut.Media.Analysis` and keep their raw measurements, so a different sensitivity is instant.
+
+- **Silences** (`SilenceDetector`) come from the waveform the timeline already has: 10 ms peak buckets per audio
+  track, like ffmpeg's `silencedetect` but without decoding the audio again. A stretch counts as silent when every
+  chosen track stays under the level for at least the minimum length (1 s on the timeline). The default level is
+  12 dB over the noise floor (the level of the quietest 5 % of the audio), kept between −55 and −35 dBFS, so a
+  noisy microphone still has pauses and quiet music is not taken for one.
+- **Scene changes** (`SceneDetector`) need the whole video decoded, so they run after the rest of the analysis
+  (status bar: "detecting scenes 34%"), with half the CPU cores. ffmpeg shrinks every frame (at the video's own
+  rate, up to 60 fps, timed from the file start like keyframes) to 64×36 grey and pipes it out; each frame is
+  scored against the one before as ffmpeg's `scdet` does: the mean difference, but no more than its jump from the
+  previous frame's, so steady motion (scrolling, panning) scores low and a cut scores high. The per-frame scores
+  are cached (`scenes.bin`); changes are the frames at or over the threshold (10 by default, `scdet`'s), with
+  changes less than 0.5 s apart counted once.
+- `CutRangesCommand` (Core) cuts source ranges out of clips: it trims or splits every clip a range touches and
+  drops leftovers shorter than the minimum clip length. `cut_silences` uses it (after keeping the whole video if
+  there are no clips yet), so removing every pause is one undo step.
+
 ## MCP server
 
 Claude edits the open project through MCP tools (`OurCut.Mcp.EditorTools`). There are two processes:
@@ -145,6 +166,9 @@ Claude ──stdio──> OurCut.exe mcp (McpBridge) ──named pipe──> Our
 | `get_project` | Source, playhead, selection and clips in output order |
 | `get_history` | Recent edits (user's and Claude's) with ids for `revert_action` |
 | `find_keyframes` | Keyframe times in a range (lossless cuts start on them) |
+| `find_silences` | Pauses at a minimum length and level (automatic by default), on all or some audio tracks |
+| `find_scene_changes` | Scene changes at a sensitivity; what is found so far while detection runs |
+| `cut_silences` | Cuts the pauses out of the included (or given) clips as one undo step, keeping some padding |
 | `list_videos` | Video files in a folder, newest first |
 | `add_segment`, `remove_segment`, `trim_segment`, `split_segment`, `set_included`, `move_segment`, `set_label` | One edit each (the commands above) |
 | `edit_timeline` | Several edits as one undo step, all or nothing |
@@ -163,8 +187,6 @@ Results are JSON; times are seconds, rounded to milliseconds, with `MM:SS.mmm` r
   Settings → Transcription (engine, model, device, language, models folder) is saved to
   `%LOCALAPPDATA%\OurCut\settings.json`; outside demo mode the model table only reports which models are in the
   models folder, and downloads come with transcription.
-- **Silence and scene detection**: `IMediaPreview.Silences` and `SceneChanges` feed the timeline's marker layers.
-  They are empty for real files for now (only the demo sample has them), so those toolbar chips are disabled.
 
 ## Project file (`.ourcut.json`)
 
