@@ -35,7 +35,7 @@
               </StackPanel>
             </Button>
             <Button Classes="chip" Classes.on="{Binding ShowSilences}" Height="24" Padding="8,0" IsEnabled="{Binding HasSilenceData}"
-                    ToolTip.Tip="Silence bands (silence detection is coming soon)" ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="{Binding SilenceTip}" ToolTip.ShowOnDisabled="True"
                     Command="{Binding ToggleSilencesCommand}">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <Border Classes="swatch" ClipToBounds="True">
@@ -45,7 +45,7 @@
               </StackPanel>
             </Button>
             <Button Classes="chip" Classes.on="{Binding ShowScenes}" Height="24" Padding="8,0" IsEnabled="{Binding HasSceneData}"
-                    ToolTip.Tip="Scene changes (scene detection is coming soon)" ToolTip.ShowOnDisabled="True"
+                    ToolTip.Tip="{Binding ScenesTip}" ToolTip.ShowOnDisabled="True"
                     Command="{Binding ToggleScenesCommand}">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <Border Classes="swatch" Background="#9D9E9F" />

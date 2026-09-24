@@ -119,6 +119,52 @@ public sealed class RealMediaTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Silences_and_scene_changes_appear_on_the_timeline_and_Claude_can_cut_the_pauses()
+    {
+        // Cuts at 3, 6 and 9 s with steady motion in between; a tone with pauses at 2–4 s and 7–8.5 s.
+        _ = await SampleAsync();
+        string video = Path.Combine(_dir, "talk.mp4");
+        const string Graph =
+            "testsrc2=size=320x180:rate=30:duration=3[v0];smptehdbars=size=320x180:rate=30:duration=3[v1];" +
+            "mandelbrot=size=320x180:rate=30,trim=duration=3[v2];testsrc=size=320x180:rate=30:duration=3[v3];" +
+            "[v0][v1][v2][v3]concat=n=4:v=1:a=0,format=yuv420p[v];" +
+            "sine=frequency=440:duration=2[a0];aevalsrc=0:d=2[a1];sine=frequency=440:duration=3[a2];aevalsrc=0:d=1.5[a3];" +
+            "sine=frequency=440:duration=3.5[a4];[a0][a1][a2][a3][a4]concat=n=5:v=0:a=1[a]";
+        await Task.Run(() => ToolProcess.RunAsync("ffmpeg",
+        [
+            "-v", "error", "-filter_complex", Graph, "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast",
+            "-g", "30", "-c:a", "aac", "-y", video,
+        ], null, Ct), Ct);
+
+        var (editor, window) = await OpenAsync(video);
+        await PumpUntil(() => editor.HasSceneData && editor.HasSilenceData);
+
+        Assert.Equal("Silence bands: 2 pauses of a second or more", editor.SilenceTip);
+        Assert.Equal("Scene changes: 3", editor.ScenesTip);
+        var silences = editor.Media!.Silences;
+        Assert.Equal([2.0, 7.0], silences.Select(r => Math.Round(r.Start)));
+        Assert.Equal([3.0, 6.0, 9.0], editor.Media.SceneChanges.Select(t => Math.Round(t, 1)));
+
+        // Claude's view of the same analysis, and its cut: the whole video minus the pauses, as one edit.
+        var tools = new OurCut.Mcp.EditorTools(new EditorMcpHost(editor));
+        var scenes = await tools.FindSceneChanges(threshold: 20);
+        Assert.Equal(3, scenes.Count);
+        var cut = await tools.CutSilences(padding: 0.1);
+        Assert.Equal(3, editor.Clips.Count);
+        Assert.StartsWith("Removed 2 silences", cut.Result, StringComparison.Ordinal);
+        Assert.True(editor.Clips.All(c => c.IsAiChanged));
+        // 3.5 s of pauses, less 0.1 s kept at each of their four edges.
+        Assert.InRange(editor.OutputDuration, editor.Duration - 3.1 - 0.2, editor.Duration - 3.1 + 0.2);
+
+        editor.ZoomLevel = 0;
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        Dispatcher.UIThread.RunJobs();
+        using var frame = window.CaptureRenderedFrame();
+        frame!.Save(Path.Combine(Screenshots.Directory, "silences-scenes.png"), new PngBitmapEncoderOptions());
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public async Task A_second_open_reads_the_analysis_from_the_cache()
     {
         string video = await SampleAsync();

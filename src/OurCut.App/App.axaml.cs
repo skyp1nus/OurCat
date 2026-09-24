@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
 using OurCut.App.Demo;
 using OurCut.App.Services;
@@ -23,17 +24,26 @@ public partial class App : Application
             var player = MpvPlaybackEngine.TryCreate(out string? playbackError);
             var editor = CreateEditor(demo, new FfmpegMediaOpener(new MediaCache()),
                 demo is null ? new RecentFilesStore(RecentFilesStore.DefaultFile) : null, player, playbackError);
-            // The window (and with it the video view's renderer) closes first; then the player core.
-            desktop.Exit += (_, _) => player?.Dispose();
+            EditorMcpServer? mcp = null;
             if (demo is null)
             {
                 var settings = new AppSettingsStore(AppSettingsStore.DefaultFile);
                 editor.Settings.Load(settings.Load());
                 editor.Settings.Store = settings;
+                // Claude connects through "OurCut mcp" (Settings → MCP server).
+                mcp = new EditorMcpServer(editor);
+                mcp.Start();
             }
+            // The window (and with it the video view's renderer) closes first; then Claude's connection and the player core.
+            desktop.Exit += (_, _) =>
+            {
+                mcp?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
+                player?.Dispose();
+            };
             CrashLog.Install(editor.ShowMessage);
             var window = new MainWindow { DataContext = editor };
             editor.Dialogs = new StorageFileDialogs(window);
+            editor.Settings.CopyText = text => window.Clipboard?.SetTextAsync(text) ?? Task.CompletedTask;
             desktop.MainWindow = window;
             if (ParseFileArgument(args) is { } file)
                 _ = editor.OpenPath(file);

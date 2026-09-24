@@ -1,12 +1,12 @@
 # Architecture
 
-OurCut has three layers. Only the App knows about Avalonia; Core has no dependencies at all, so the same
-editing operations can be driven by the UI today and by an MCP server (Claude) later.
+OurCut has four parts. Only the App knows about Avalonia; Core has no dependencies at all, so the same
+editing operations are driven by the UI and by Claude through the MCP server.
 
 ```
 OurCut.App    Avalonia views and view models ──┐
-                                                ├──> OurCut.Core   project model, commands, undo/redo, .ourcut.json
-OurCut.Media  libmpv, ffprobe/ffmpeg, previews ─┘
+OurCut.Media  libmpv, ffprobe/ffmpeg, previews ─┼──> OurCut.Core   project model, commands, undo/redo, .ourcut.json
+OurCut.Mcp    MCP tools, pipe server, bridge ───┘
 ```
 
 ## Core
@@ -21,9 +21,9 @@ OurCut.Media  libmpv, ffprobe/ffmpeg, previews ─┘
   undo step. `Changed` fires after every edit, undo, redo and load.
 - **Files**: `ProjectFile` reads and writes `.ourcut.json` (see below).
 
-The session is not thread-safe. A future MCP server must marshal its calls to the UI thread.
+The session is not thread-safe. The MCP server runs every tool call on the UI thread (see below).
 
-### Commands (future MCP tools)
+### Commands (and their MCP tools)
 
 | Command | `Name` | What it does |
 | --- | --- | --- |
@@ -36,6 +36,7 @@ The session is not thread-safe. A future MCP server must marshal its calls to th
 | `RenameClipCommand` | `set_label` | Renames a clip |
 | `BatchCommand` | any | Several commands as one undo step |
 | `RevertEditCommand` | `revert_action` | Reverts one earlier edit and keeps the edits made after it |
+| `CutRangesCommand` | `cut_silences` | Cuts source ranges (pauses) out of the clips they touch, splitting them |
 
 `EditorSession` wraps these with UI-friendly helpers (`Trim` clamps and snaps to keyframes, `KeepRange`
 inserts by source position, `Split` returns the new clip).
@@ -116,12 +117,69 @@ again. `VideoView` shows the video (OpenGL first, software if OpenGL is not ther
 until its first frame the thumbnail preview underneath shows through. Without libmpv, or for the design's
 sample, playback is simulated over the thumbnails.
 
-## Extension points
+## Silence and scene detection
 
-- **MCP server**: call `EditorSession.Execute` with `EditOrigin.Assistant`. The Claude panel logs each edit as a
-  card with its own Undo (`EditorSession.Revert`), the clips of the latest assistant edit get a pulsing blue ring on
-  the timeline, and the title bar badge shows the connection. Until the server exists the badge reads
-  "MCP · not running" and the panel lists the project's edit history.
+Both live in `OurCut.Media.Analysis` and keep their raw measurements, so a different sensitivity is instant.
+
+- **Silences** (`SilenceDetector`) come from the waveform the timeline already has: 10 ms peak buckets per audio
+  track, like ffmpeg's `silencedetect` but without decoding the audio again. A stretch counts as silent when every
+  chosen track stays under the level for at least the minimum length (1 s on the timeline). The default level is
+  12 dB over the noise floor (the level of the quietest 5 % of the audio), kept between −55 and −35 dBFS, so a
+  noisy microphone still has pauses and quiet music is not taken for one.
+- **Scene changes** (`SceneDetector`) need the whole video decoded, so they run after the rest of the analysis
+  (status bar: "detecting scenes 34%"), with half the CPU cores. ffmpeg shrinks every frame (at the video's own
+  rate, up to 60 fps, timed from the file start like keyframes) to 64×36 grey and pipes it out; each frame is
+  scored against the one before as ffmpeg's `scdet` does: the mean difference, but no more than its jump from the
+  previous frame's, so steady motion (scrolling, panning) scores low and a cut scores high. The per-frame scores
+  are cached (`scenes.bin`); changes are the frames at or over the threshold (10 by default, `scdet`'s), with
+  changes less than 0.5 s apart counted once.
+- `CutRangesCommand` (Core) cuts source ranges out of clips: it trims or splits every clip a range touches and
+  drops leftovers shorter than the minimum clip length. `cut_silences` uses it (after keeping the whole video if
+  there are no clips yet), so removing every pause is one undo step.
+
+## MCP server
+
+Claude edits the open project through MCP tools (`OurCut.Mcp.EditorTools`). There are two processes:
+
+```
+Claude ──stdio──> OurCut.exe mcp (McpBridge) ──named pipe──> OurCut editor (McpPipeServer → EditorMcpHost → UI thread)
+```
+
+- **The bridge** is what Claude starts (`OurCut.exe mcp`; `Program.Main` never starts Avalonia in this mode). It
+  lists the tools itself, from the same `EditorTools` definitions, so Claude Desktop can start its MCP servers at
+  launch without OurCut popping up. The first tool call connects to the editor's pipe, starting the editor
+  (`EditorLauncher`) if it is not running, and every call is forwarded as is. If the editor was closed since,
+  the next call starts it again.
+- **The pipe server** runs in the editor (not in `--demo` runs). The pipe is `ourcut-mcp-<user>`, created with
+  `PipeOptions.CurrentUserOnly`, so only the same user account can connect. One editor serves it: the one that
+  holds `<temp>/ourcut-mcp-<user>.lock` (released by the system when that editor exits, even if it crashes). A
+  second window shows "MCP · in another window" and takes over when the first one closes. On Windows the first pipe
+  instance is also created with `FirstPipeInstance`.
+- **The host** (`EditorMcpHost` in the App) runs each tool call on the UI thread, where the session and the view
+  models live, so a tool call never lands in the middle of a user edit. Edits go through `EditorSession.Execute`
+  with `EditOrigin.Assistant`: the Claude panel shows each one as a highlighted card with its own Undo
+  (`EditorSession.Revert`), the clips of the latest one get a pulsing blue ring on the timeline, and the title bar
+  badge shows "MCP · Claude editing" for a few seconds after each call.
+
+| Tool | Does |
+| --- | --- |
+| `get_project` | Source, playhead, selection and clips in output order |
+| `get_history` | Recent edits (user's and Claude's) with ids for `revert_action` |
+| `find_keyframes` | Keyframe times in a range (lossless cuts start on them) |
+| `find_silences` | Pauses at a minimum length and level (automatic by default), on all or some audio tracks |
+| `find_scene_changes` | Scene changes at a sensitivity; what is found so far while detection runs |
+| `cut_silences` | Cuts the pauses out of the included (or given) clips as one undo step, keeping some padding |
+| `list_videos` | Video files in a folder, newest first |
+| `add_segment`, `remove_segment`, `trim_segment`, `split_segment`, `set_included`, `move_segment`, `set_label` | One edit each (the commands above) |
+| `edit_timeline` | Several edits as one undo step, all or nothing |
+| `revert_action`, `undo`, `redo` | Take edits back |
+| `seek`, `set_playing` | Show a frame or play |
+| `open_file`, `save_project` | Open a video or project; save as `.ourcut.json` (full paths only) |
+
+A refused edit (`EditException`, e.g. "Clip 7 does not exist") goes back to Claude as a tool error it can act on.
+Results are JSON; times are seconds, rounded to milliseconds, with `MM:SS.mmm` ranges for talking to the user.
+
+## Extension points
 - **Smart cut**: `CutMode.SmartCut` exists in the export settings; the planner rejects it for now. It becomes
   a third kind of plan (re-encode the GOP around each cut, copy the rest, concat). The dialog lists it as not
   yet available.
@@ -129,8 +187,6 @@ sample, playback is simulated over the thumbnails.
   Settings → Transcription (engine, model, device, language, models folder) is saved to
   `%LOCALAPPDATA%\OurCut\settings.json`; outside demo mode the model table only reports which models are in the
   models folder, and downloads come with transcription.
-- **Silence and scene detection**: `IMediaPreview.Silences` and `SceneChanges` feed the timeline's marker layers.
-  They are empty for real files for now (only the demo sample has them), so those toolbar chips are disabled.
 
 ## Project file (`.ourcut.json`)
 

@@ -4,6 +4,8 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using OurCut.Core.Model;
+using OurCut.Media.Analysis;
 using OurCut.Media.Caching;
 using OurCut.Media.Previews;
 using OurCut.Media.Probing;
@@ -14,7 +16,8 @@ namespace OurCut.App.Services;
 /// <summary>
 /// Preview of a real media file. Keyframes, the waveform and thumbnails are read from the cache or
 /// extracted with ffmpeg/ffprobe in the background, all three at once, and appear on the timeline
-/// as they arrive; the editor is usable immediately.
+/// as they arrive; the editor is usable immediately. Silences come from the waveform. Scene detection
+/// decodes the whole video, so it runs last.
 /// </summary>
 public sealed class MediaPreview : IMediaPreview, IDisposable
 {
@@ -35,7 +38,11 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     private double _keyframeProgress;
     private volatile bool _thumbnailsDone;
     private volatile bool _analysing;
+    private volatile bool _detectingScenes;
     private volatile string? _error;
+    private SceneScores? _scenes;
+    private (int Filled, bool Complete, SilenceAnalysis Result)? _silences;
+    private (int Filled, SceneAnalysis Result)? _sceneChanges;
     private int _changePending;
     private bool _disposed;
 
@@ -99,7 +106,62 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
         }
     }
 
-    public string? Activity => _analysing ? $"analysing {Math.Floor(Progress * 100):0}%" : null;
+    public string? Activity =>
+        _analysing ? $"analysing {Math.Floor(Progress * 100):0}%"
+        : _detectingScenes ? $"detecting scenes {Math.Floor((Volatile.Read(ref _scenes)?.Progress ?? 0) * 100):0}%"
+        : null;
+
+    /// <summary>Silences as the timeline shows them: every track quiet for a second or more, at the automatic level.</summary>
+    public IReadOnlyList<TimeRange> Silences => SilenceAnalysis.Ranges;
+
+    /// <summary>Scene changes at the default sensitivity, as far as the video has been scanned.</summary>
+    public IReadOnlyList<double> SceneChanges => SceneAnalysis.Changes;
+
+    public bool SilencesComplete => Info.Audio.Length == 0 || Waveform.IsComplete || Analysis.IsCompleted;
+
+    public bool ScenesComplete => Info.Video is null || Volatile.Read(ref _scenes) is { IsComplete: true } || Analysis.IsCompleted;
+
+    /// <summary>The timeline's silences, recomputed only when more of the waveform has been decoded.</summary>
+    private SilenceAnalysis SilenceAnalysis
+    {
+        get
+        {
+            if (Info.Audio.Length == 0)
+                return OurCut.Media.Analysis.SilenceAnalysis.None;
+            int filled = Waveform.Filled;
+            bool complete = Waveform.IsComplete;
+            if (_silences is { } cached && cached.Filled == filled && cached.Complete == complete)
+                return cached.Result;
+            var result = SilenceDetector.Find(Waveform);
+            _silences = (filled, complete, result);
+            return result;
+        }
+    }
+
+    private SceneAnalysis SceneAnalysis
+    {
+        get
+        {
+            if (Volatile.Read(ref _scenes) is not { } scores)
+                return new SceneAnalysis([], SceneDetector.DefaultThreshold, Info.Video is null, 0);
+            int filled = scores.Filled;
+            if (_sceneChanges is { } cached && cached.Filled == filled && cached.Result.IsComplete == scores.IsComplete)
+                return cached.Result;
+            var result = scores.Analyse();
+            _sceneChanges = (filled, result);
+            return result;
+        }
+    }
+
+    /// <summary>Silences with other settings (for Claude); null when the file has no audio.</summary>
+    public SilenceAnalysis? FindSilences(double minDuration, double? thresholdDb, IReadOnlyList<int>? streams) =>
+        Info.Audio.Length == 0 ? null : SilenceDetector.Find(Waveform, minDuration, thresholdDb, streams);
+
+    /// <summary>Scene changes at another sensitivity (for Claude); null when the file has no video.</summary>
+    public SceneAnalysis? FindSceneChanges(double threshold) =>
+        Info.Video is null ? null
+        : Volatile.Read(ref _scenes) is { } scores ? scores.Analyse(threshold)
+        : new SceneAnalysis([], threshold, false, 0);
 
     public event EventHandler? Changed;
 
@@ -117,17 +179,43 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     {
         try
         {
-            await Task.WhenAll(
-                Guard(() => ScanKeyframesAsync(ct)),
-                Guard(() => ExtractWaveformAsync(ct)),
-                Guard(() => ExtractThumbnailsAsync(ct))).ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(
+                    Guard(() => ScanKeyframesAsync(ct)),
+                    Guard(() => ExtractWaveformAsync(ct)),
+                    Guard(() => ExtractThumbnailsAsync(ct))).ConfigureAwait(false);
+            }
+            finally
+            {
+                _keyframesReady.TrySetResult(Keyframes);
+                _analysing = false;
+                NotifyChanged();
+            }
+            await Guard(() => DetectScenesAsync(ct)).ConfigureAwait(false);
         }
         finally
         {
-            _keyframesReady.TrySetResult(Keyframes);
-            _analysing = false;
+            _detectingScenes = false;
             NotifyChanged();
         }
+    }
+
+    private async Task DetectScenesAsync(CancellationToken ct)
+    {
+        if (Info.Video is null || ct.IsCancellationRequested)
+            return;
+        if (_cache?.LoadSceneScores(Info.Path) is { } cached)
+        {
+            Volatile.Write(ref _scenes, cached);
+            return;
+        }
+        var scores = SceneDetector.Create(Info);
+        Volatile.Write(ref _scenes, scores);
+        _detectingScenes = true;
+        NotifyChanged();
+        await SceneDetector.DetectAsync(Info, scores, NotifyChanged, ct).ConfigureAwait(false);
+        _cache?.SaveSceneScores(Info.Path, scores);
     }
 
     /// <summary>One failing part (say a broken audio stream) does not stop the others.</summary>

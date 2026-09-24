@@ -1,0 +1,656 @@
+using System.IO.Pipes;
+using System.Text.Json;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using OurCut.Core.Editing;
+using OurCut.Core.Model;
+
+namespace OurCut.Mcp.Tests;
+
+/// <summary>An editor without UI: a real <see cref="EditorSession"/> plus the view state the tools touch.</summary>
+internal sealed class FakeEditor : IEditorHost, IEditorContext, IDisposable
+{
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
+    public static Project Sample { get; } = new("keynote",
+        new SourceMedia("/videos/keynote.mp4", 600, 30, [new AudioTrack(1, "Mic"), new AudioTrack(2, "Music")]),
+        [new Clip(1, "Intro", 10, 40), new Clip(2, "Demo", 100, 200), new Clip(3, "Q&A", 300, 360, IsIncluded: false)]);
+
+    public EditorSession Session { get; } = new();
+    public bool HasFile { get; set; }
+    public string? SourceSummary => HasFile ? "keynote.mp4 · 1080p · 30 fps" : null;
+    public string? ProjectPath { get; set; }
+    public double Playhead { get; set; }
+    public int? SelectedClipId { get; set; }
+    public bool IsPlaying { get; set; }
+    public IReadOnlyList<double> Keyframes { get; set; } = [0, 2, 4, 9.5, 10, 12, 99, 100, 102];
+    public SilenceReport? Silences { get; set; } = new([new(50, 52.5), new(120, 124), new(150, 150.8), new(330, 340)], -48, -60, true);
+    public SceneReport? Scenes { get; set; } = new([20, 105.5, 180, 420], true, 1);
+    public List<(double MinDuration, double? ThresholdDb, IReadOnlyList<int>? Streams)> SilenceQueries { get; } = [];
+    public string? AnalysisStatus { get; set; }
+    public List<string> Opened { get; } = [];
+    public int Calls { get; private set; }
+
+    public FakeEditor(bool withFile = true)
+    {
+        if (withFile)
+            Open(Sample);
+    }
+
+    public void Open(Project project)
+    {
+        Session.Load(project);
+        HasFile = true;
+    }
+
+    public async Task<T> RunAsync<T>(Func<IEditorContext, Task<T>> action)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            Calls++;
+            return await action(this);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public void Dispose() => _gate.Dispose();
+
+    /// <summary>Filters <see cref="Silences"/> by length, like the real detector.</summary>
+    public SilenceReport? FindSilences(double minDuration, double? thresholdDb, IReadOnlyList<int>? streams)
+    {
+        SilenceQueries.Add((minDuration, thresholdDb, streams));
+        return Silences is { } s ? s with { Ranges = [.. s.Ranges.Where(r => r.Duration >= minDuration)], ThresholdDb = thresholdDb ?? s.ThresholdDb } : null;
+    }
+
+    public SceneReport? FindSceneChanges(double threshold) =>
+        Scenes is { } s ? s with { Times = threshold > 20 ? [.. s.Times.Take(1)] : s.Times } : null;
+
+    public void Seek(double time) => Playhead = time;
+    public void SelectClip(int? clipId) => SelectedClipId = clipId;
+    public void SetPlaying(bool playing) => IsPlaying = playing;
+
+    public Task<string?> OpenAsync(string path)
+    {
+        Opened.Add(path);
+        if (path.EndsWith(".broken", StringComparison.Ordinal))
+            return Task.FromResult<string?>("ffprobe could not read the file.");
+        Open(Sample with { Name = Path.GetFileNameWithoutExtension(path), Clips = [] });
+        return Task.FromResult<string?>(null);
+    }
+
+    public Task<string?> SaveAsync(string? path)
+    {
+        ProjectPath = path ?? ProjectPath;
+        return Task.FromResult<string?>(null);
+    }
+}
+
+/// <summary>Starts the editor's pipe server and connects an MCP client to it, like the bridge does.</summary>
+internal sealed class Connection : IAsyncDisposable
+{
+    private readonly McpPipeServer _server;
+    private readonly NamedPipeClientStream _pipe;
+
+    private Connection(McpPipeServer server, NamedPipeClientStream pipe, McpClient client)
+    {
+        _server = server;
+        _pipe = pipe;
+        Client = client;
+    }
+
+    public McpClient Client { get; }
+
+    public static string NewPipeName() => "ourcut-test-" + Guid.NewGuid().ToString("N")[..12];
+
+    public static async Task<Connection> OpenAsync(IEditorHost host)
+    {
+        var server = new McpPipeServer(host, NewPipeName());
+        server.Start();
+        var pipe = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        await pipe.ConnectAsync(5000, TestContext.Current.CancellationToken);
+        var client = await McpClient.CreateAsync(new StreamClientTransport(pipe, pipe), cancellationToken: TestContext.Current.CancellationToken);
+        return new Connection(server, pipe, client);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await Client.DisposeAsync();
+        await _pipe.DisposeAsync();
+        await _server.DisposeAsync();
+    }
+}
+
+internal static class Calls
+{
+    public static async Task<CallToolResult> Call(this McpClient client, string tool, object? args = null)
+    {
+        var dict = args is null
+            ? new Dictionary<string, object?>()
+            : JsonSerializer.SerializeToElement(args).EnumerateObject().ToDictionary(p => p.Name, p => (object?)p.Value);
+        return await client.CallToolAsync(tool, dict, cancellationToken: TestContext.Current.CancellationToken);
+    }
+
+    public static string Text(this CallToolResult result) => string.Concat(result.Content.OfType<TextContentBlock>().Select(t => t.Text));
+
+    public static JsonElement Json(this CallToolResult result)
+    {
+        Assert.True(result.IsError is not true, result.Text());
+        return JsonDocument.Parse(result.Text()).RootElement;
+    }
+}
+
+public class McpToolListTests
+{
+    private static readonly string[] Expected =
+    [
+        "add_segment", "cut_silences", "edit_timeline", "find_keyframes", "find_scene_changes", "find_silences", "get_history",
+        "get_project", "list_videos", "move_segment", "open_file", "redo", "remove_segment", "revert_action", "save_project", "seek",
+        "set_included", "set_label", "set_playing", "split_segment", "trim_segment", "undo",
+    ];
+
+    [Fact]
+    public async Task The_editor_serves_every_tool_with_annotations()
+    {
+        await using var c = await Connection.OpenAsync(new FakeEditor());
+        var tools = await c.Client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(Expected, tools.Select(t => t.Name).Order());
+        var getProject = tools.Single(t => t.Name == "get_project").ProtocolTool;
+        Assert.True(getProject.Annotations?.ReadOnlyHint);
+        var remove = tools.Single(t => t.Name == "remove_segment").ProtocolTool;
+        Assert.True(remove.Annotations?.DestructiveHint);
+        var add = tools.Single(t => t.Name == "add_segment").ProtocolTool;
+        Assert.Equal(["end", "start"], add.InputSchema.GetProperty("required").EnumerateArray().Select(e => e.GetString()).Order());
+        Assert.Contains("OurCut", c.Client.ServerInstructions, StringComparison.Ordinal);
+    }
+}
+
+public class McpEditingTests
+{
+    [Fact]
+    public async Task Get_project_lists_the_source_and_clips_in_output_order()
+    {
+        var editor = new FakeEditor { Playhead = 12.5, SelectedClipId = 2 };
+        await using var c = await Connection.OpenAsync(editor);
+
+        var p = (await c.Client.Call("get_project")).Json();
+
+        Assert.Equal("keynote", p.GetProperty("name").GetString());
+        Assert.Equal(600, p.GetProperty("source").GetProperty("duration").GetDouble());
+        Assert.Equal(["Mic", "Music"], p.GetProperty("source").GetProperty("audioTracks").EnumerateArray().Select(t => t.GetProperty("label").GetString()));
+        Assert.Equal(130, p.GetProperty("outputDuration").GetDouble());
+        Assert.Equal(12.5, p.GetProperty("playhead").GetDouble());
+        Assert.Equal(2, p.GetProperty("selectedClip").GetInt32());
+        var clips = p.GetProperty("clips").EnumerateArray().ToList();
+        Assert.Equal([1, 2, 3], clips.Select(x => x.GetProperty("id").GetInt32()));
+        Assert.False(clips[2].GetProperty("included").GetBoolean());
+        Assert.Equal("00:10.000–00:40.000", clips[0].GetProperty("range").GetString());
+    }
+
+    [Fact]
+    public async Task Edits_are_made_as_claude_and_can_be_undone_by_id()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var added = (await c.Client.Call("add_segment", new { start = 400, end = 420.5, label = "Outro", position = 1 })).Json();
+        Assert.Equal(4, added.GetProperty("clips")[0].GetProperty("id").GetInt32());
+        Assert.Equal(150.5, added.GetProperty("outputDuration").GetDouble());
+        long action = added.GetProperty("action").GetInt64();
+
+        var entry = Assert.Single(editor.Session.History.Entries);
+        Assert.Equal(EditOrigin.Assistant, entry.Origin);
+        Assert.Equal(action, entry.Id);
+
+        (await c.Client.Call("trim_segment", new { clip = 2, end = 150 })).Json();
+        Assert.Equal((100.0, 150.0), (editor.Session.Project.Get(2).Start, editor.Session.Project.Get(2).End));
+
+        var reverted = (await c.Client.Call("revert_action", new { action })).Json();
+        Assert.StartsWith("Reverted", reverted.GetProperty("result").GetString(), StringComparison.Ordinal);
+        Assert.Null(editor.Session.Project.Find(4));
+        Assert.Equal(150, editor.Session.Project.Get(2).End);
+    }
+
+    [Fact]
+    public async Task Invalid_edits_come_back_as_tool_errors_claude_can_read()
+    {
+        await using var c = await Connection.OpenAsync(new FakeEditor());
+
+        var missing = await c.Client.Call("remove_segment", new { clip = 99 });
+        Assert.True(missing.IsError);
+        Assert.Contains("Clip 99 does not exist", missing.Text(), StringComparison.Ordinal);
+
+        var backwards = await c.Client.Call("add_segment", new { start = 50, end = 20 });
+        Assert.True(backwards.IsError);
+    }
+
+    [Fact]
+    public async Task Edit_timeline_is_one_undo_step_with_claudes_description()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var result = (await c.Client.Call("edit_timeline", new
+        {
+            description = "Kept the two demos",
+            operations = new object[]
+            {
+                new { action = "add", start = 220, end = 250, label = "Demo 2" },
+                new { action = "exclude", clip = 1 },
+                new { action = "rename", clip = 2, label = "Demo 1" },
+                new { action = "trim", clip = 2, start = 99 },
+            },
+        })).Json();
+
+        var entry = Assert.Single(editor.Session.History.Entries);
+        Assert.Equal("Kept the two demos", entry.Description);
+        Assert.Equal(EditOrigin.Assistant, entry.Origin);
+        var p = editor.Session.Project;
+        Assert.False(p.Get(1).IsIncluded);
+        Assert.Equal(("Demo 1", 99.0), (p.Get(2).Label, p.Get(2).Start));
+        Assert.Equal("Demo 2", p.Get(4).Label);
+        Assert.Equal(131, result.GetProperty("outputDuration").GetDouble());
+    }
+
+    [Fact]
+    public async Task A_failing_batch_changes_nothing()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var result = await c.Client.Call("edit_timeline", new
+        {
+            description = "Half done",
+            operations = new object[] { new { action = "exclude", clip = 1 }, new { action = "explode", clip = 2 } },
+        });
+
+        Assert.True(result.IsError);
+        Assert.Contains("explode", result.Text(), StringComparison.Ordinal);
+        Assert.Empty(editor.Session.History.Entries);
+        Assert.True(editor.Session.Project.Get(1).IsIncluded);
+    }
+
+    [Fact]
+    public async Task Undo_redo_and_history()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+        editor.Session.Execute(new OurCut.Core.Editing.Commands.RenameClipCommand(1, "Opening"));
+        (await c.Client.Call("set_included", new { clip = 2, included = false })).Json();
+
+        var history = (await c.Client.Call("get_history")).Json().EnumerateArray().ToList();
+        Assert.Equal(["claude", "user"], history.Select(h => h.GetProperty("by").GetString()));
+
+        Assert.Contains("Undid", (await c.Client.Call("undo")).Json().GetProperty("result").GetString(), StringComparison.Ordinal);
+        Assert.True(editor.Session.Project.Get(2).IsIncluded);
+        (await c.Client.Call("redo")).Json();
+        Assert.False(editor.Session.Project.Get(2).IsIncluded);
+        Assert.True((await c.Client.Call("redo")).IsError);
+    }
+
+    [Fact]
+    public async Task Seek_can_select_a_clip_and_go_to_its_start()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        Assert.Contains("00:01:40.000", (await c.Client.Call("seek", new { clip = 2 })).Text(), StringComparison.Ordinal);
+        Assert.Equal((100.0, 2), (editor.Playhead, editor.SelectedClipId));
+        (await c.Client.Call("seek", new { time = 1000 })).Text();
+        Assert.Equal(600, editor.Playhead);
+        (await c.Client.Call("set_playing", new { playing = true })).Text();
+        Assert.True(editor.IsPlaying);
+    }
+
+    [Fact]
+    public async Task Keyframes_are_listed_for_a_range()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+        Assert.Equal([9.5, 10, 12], (await c.Client.Call("find_keyframes", new { start = 5, end = 20 })).Json().EnumerateArray()
+            .Select(e => e.GetDouble()));
+
+        editor.Keyframes = [];
+        editor.AnalysisStatus = "analysing 40%";
+        var pending = await c.Client.Call("find_keyframes", new { start = 0, end = 10 });
+        Assert.True(pending.IsError);
+        Assert.Contains("analysing 40%", pending.Text(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Without_a_video_edits_explain_how_to_open_one()
+    {
+        var editor = new FakeEditor(withFile: false);
+        await using var c = await Connection.OpenAsync(editor);
+
+        Assert.Equal(JsonValueKind.Null, (await c.Client.Call("get_project")).Json().TryGetProperty("source", out var s) ? s.ValueKind : JsonValueKind.Null);
+        var result = await c.Client.Call("add_segment", new { start = 1, end = 2 });
+        Assert.True(result.IsError);
+        Assert.Contains("open_file", result.Text(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Open_file_opens_videos_and_reports_failures()
+    {
+        string dir = Directory.CreateTempSubdirectory("ourcut-mcp").FullName;
+        try
+        {
+            string video = Path.Combine(dir, "talk.mp4"), broken = Path.Combine(dir, "bad.broken");
+            await File.WriteAllTextAsync(video, "", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(broken, "", TestContext.Current.CancellationToken);
+            var editor = new FakeEditor(withFile: false);
+            await using var c = await Connection.OpenAsync(editor);
+
+            Assert.Equal("talk", (await c.Client.Call("open_file", new { path = video })).Json().GetProperty("name").GetString());
+            var failed = await c.Client.Call("open_file", new { path = broken });
+            Assert.True(failed.IsError);
+            Assert.Contains("ffprobe", failed.Text(), StringComparison.Ordinal);
+            Assert.True((await c.Client.Call("open_file", new { path = Path.Combine(dir, "missing.mp4") })).IsError);
+            Assert.Contains("full path", (await c.Client.Call("open_file", new { path = "talk.mp4" })).Text(), StringComparison.Ordinal);
+            Assert.Equal([video, broken], editor.Opened);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task List_videos_finds_the_newest_first()
+    {
+        string dir = Directory.CreateTempSubdirectory("ourcut-videos").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(dir, "2026"));
+            string old = Path.Combine(dir, "old.mov"), recent = Path.Combine(dir, "2026", "new.MP4");
+            await File.WriteAllTextAsync(old, "x", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(recent, "xy", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(dir, "notes.txt"), "", TestContext.Current.CancellationToken);
+            File.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddDays(-3));
+            await using var c = await Connection.OpenAsync(new FakeEditor());
+
+            var files = (await c.Client.Call("list_videos", new { folder = dir })).Json().EnumerateArray().ToList();
+
+            Assert.Equal([recent, old], files.Select(f => f.GetProperty("path").GetString()));
+            Assert.Equal(2, files[0].GetProperty("sizeBytes").GetInt64());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task Save_needs_a_full_path_the_first_time()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+        string path = Path.Combine(Path.GetTempPath(), "a.ourcut.json");
+        Assert.True((await c.Client.Call("save_project")).IsError);
+        Assert.True((await c.Client.Call("save_project", new { path = "a.ourcut.json" })).IsError);
+        Assert.Contains(path, (await c.Client.Call("save_project", new { path })).Text(), StringComparison.Ordinal);
+        Assert.Contains(path, (await c.Client.Call("save_project")).Text(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_server_counts_its_sessions()
+    {
+        var server = new McpPipeServer(new FakeEditor(), Connection.NewPipeName());
+        server.Start();
+        await using (server)
+        {
+            await WaitUntil(() => server.IsListening);
+            int changes = 0;
+            server.StateChanged += (_, _) => Interlocked.Increment(ref changes);
+            var pipe = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            await pipe.ConnectAsync(5000, TestContext.Current.CancellationToken);
+            await WaitUntil(() => server.Sessions == 1);
+            await pipe.DisposeAsync();
+            await WaitUntil(() => server.Sessions == 0);
+            Assert.Equal(2, changes);
+        }
+        Assert.False(server.IsListening);
+    }
+
+    [Fact]
+    public async Task A_second_editor_waits_until_the_first_one_closes()
+    {
+        string name = Connection.NewPipeName();
+        var first = new McpPipeServer(new FakeEditor(), name);
+        first.Start();
+        await WaitUntil(() => first.IsListening);
+        await using var second = new McpPipeServer(new FakeEditor(), name) { RetryDelay = TimeSpan.FromMilliseconds(50) };
+        second.Start();
+        await WaitUntil(() => second.IsInUseElsewhere);
+        Assert.False(second.IsListening);
+
+        await first.DisposeAsync();
+        await WaitUntil(() => second.IsListening);
+        Assert.False(second.IsInUseElsewhere);
+    }
+
+    [Fact]
+    public async Task A_pipe_left_by_a_crashed_editor_is_taken_over()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows removes a pipe with its process.");
+        var server = new McpPipeServer(new FakeEditor(), Connection.NewPipeName());
+        // On Unix a pipe is a socket file, which stays behind when its editor is killed.
+        string socket = Path.Combine(Path.GetTempPath(), "CoreFxPipe_" + server.PipeName);
+        await File.WriteAllTextAsync(socket, "", TestContext.Current.CancellationToken);
+        server.Start();
+        await using (server)
+        {
+            await WaitUntil(() => server.IsListening);
+            await using var pipe = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            await pipe.ConnectAsync(5000, TestContext.Current.CancellationToken);
+            await WaitUntil(() => server.Sessions == 1);
+        }
+    }
+
+    internal static async Task WaitUntil(Func<bool> condition)
+    {
+        for (int i = 0; i < 250 && !condition(); i++)
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        Assert.True(condition());
+    }
+}
+
+/// <summary>Silences and scene changes: finding them, and cutting pauses out.</summary>
+public class McpAnalysisTests
+{
+    private static readonly int[] SecondTrack = [2], ThirdTrack = [3];
+    [Fact]
+    public async Task Find_silences_lists_pauses_of_at_least_the_minimum_length()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var found = (await c.Client.Call("find_silences")).Json();
+        Assert.Equal(3, found.GetProperty("count").GetInt32());
+        Assert.Equal(16.5, found.GetProperty("total").GetDouble());
+        Assert.Equal(-48, found.GetProperty("thresholdDb").GetDouble());
+        Assert.Equal(-60, found.GetProperty("noiseFloorDb").GetDouble());
+        Assert.True(found.GetProperty("complete").GetBoolean());
+        var first = found.GetProperty("silences")[0];
+        Assert.Equal((50, 52.5, 2.5, "00:50.000–00:52.500"),
+            (first.GetProperty("start").GetDouble(), first.GetProperty("end").GetDouble(), first.GetProperty("duration").GetDouble(),
+                first.GetProperty("range").GetString()));
+
+        var shorter = (await c.Client.Call("find_silences", new { minDuration = 0.5, thresholdDb = -35, tracks = SecondTrack, start = 100, end = 200 })).Json();
+        Assert.Equal([120.0, 150.0], shorter.GetProperty("silences").EnumerateArray().Select(x => x.GetProperty("start").GetDouble()));
+        Assert.Equal((0.5, (double?)-35), (editor.SilenceQueries[^1].MinDuration, editor.SilenceQueries[^1].ThresholdDb));
+        Assert.Equal([1], editor.SilenceQueries[^1].Streams!);
+
+        Assert.Contains("no audio track 3", (await c.Client.Call("find_silences", new { tracks = ThirdTrack })).Text(), StringComparison.Ordinal);
+        editor.Silences = null;
+        Assert.Contains("no audio", (await c.Client.Call("find_silences")).Text(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Find_scene_changes_reports_progress_while_detection_runs()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var all = (await c.Client.Call("find_scene_changes")).Json();
+        Assert.Equal([20, 105.5, 180, 420], all.GetProperty("changes").EnumerateArray().Select(x => x.GetDouble()));
+        Assert.Equal(10, all.GetProperty("threshold").GetDouble());
+        var some = (await c.Client.Call("find_scene_changes", new { threshold = 30, start = 0, end = 100 })).Json();
+        Assert.Equal([20.0], some.GetProperty("changes").EnumerateArray().Select(x => x.GetDouble()));
+
+        editor.Scenes = new SceneReport([20], false, 0.25);
+        var partial = (await c.Client.Call("find_scene_changes")).Json();
+        Assert.False(partial.GetProperty("complete").GetBoolean());
+        Assert.Contains("25% done", partial.GetProperty("note").GetString(), StringComparison.Ordinal);
+        Assert.True((await c.Client.Call("find_scene_changes", new { threshold = 0 })).IsError);
+    }
+
+    [Fact]
+    public async Task Cut_silences_cuts_pauses_out_of_included_clips_as_one_edit()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        // 120–124 is inside Demo (100–200); 330–340 is inside the excluded Q&A; 50–52.5 is in no clip.
+        var cut = (await c.Client.Call("cut_silences")).Json();
+
+        Assert.Equal("Removed 1 silence: 3.7 s shorter.", cut.GetProperty("result").GetString());
+        var clips = cut.GetProperty("clips").EnumerateArray()
+            .Select(x => (x.GetProperty("label").GetString(), x.GetProperty("start").GetDouble(), x.GetProperty("end").GetDouble())).ToList();
+        Assert.Equal([("Intro", 10, 40), ("Demo", 100, 120.15), ("Demo (2)", 123.85, 200), ("Q&A", 300, 360)], clips);
+        var entry = Assert.Single(editor.Session.History.Entries);
+        Assert.Equal((EditOrigin.Assistant, "Removed 1 silence", "cut_silences"), (entry.Origin, entry.Description, entry.Command.Name));
+
+        var again = (await c.Client.Call("cut_silences", new { minDuration = 5 })).Json();
+        Assert.Contains("nothing changed", again.GetProperty("result").GetString(), StringComparison.Ordinal);
+        Assert.False(again.TryGetProperty("action", out _));
+    }
+
+    [Fact]
+    public async Task Cut_silences_without_clips_keeps_the_whole_video_first()
+    {
+        var editor = new FakeEditor();
+        editor.Open(FakeEditor.Sample with { Clips = [] });
+        await using var c = await Connection.OpenAsync(editor);
+
+        var cut = (await c.Client.Call("cut_silences", new { padding = 0 })).Json();
+
+        Assert.Equal([(0.0, 50.0), (52.5, 120.0), (124.0, 330.0), (340.0, 600.0)], cut.GetProperty("clips").EnumerateArray()
+            .Select(x => (x.GetProperty("start").GetDouble(), x.GetProperty("end").GetDouble())));
+        Assert.Equal("keynote (4)", cut.GetProperty("clips")[3].GetProperty("label").GetString());
+        Assert.Single(editor.Session.History.Entries);
+    }
+
+    [Fact]
+    public async Task Cut_silences_waits_for_the_audio_analysis()
+    {
+        var editor = new FakeEditor { AnalysisStatus = "analysing 40%" };
+        editor.Silences = editor.Silences! with { IsComplete = false };
+        await using var c = await Connection.OpenAsync(editor);
+
+        var result = await c.Client.Call("cut_silences");
+        Assert.True(result.IsError);
+        Assert.Contains("analysing 40%", result.Text(), StringComparison.Ordinal);
+        Assert.Empty(editor.Session.History.Entries);
+    }
+}
+
+/// <summary>The stdio bridge Claude starts: lists tools without the editor, starts it on the first call.</summary>
+public class McpBridgeTests
+{
+    private sealed class BridgeRun : IAsyncDisposable
+    {
+        private readonly System.IO.Pipelines.Pipe _toBridge = new(), _fromBridge = new();
+        private readonly CancellationTokenSource _stop = new();
+        private readonly Task _running;
+
+        public BridgeRun(McpBridge bridge)
+        {
+            Bridge = bridge;
+            _running = bridge.RunAsync(_toBridge.Reader.AsStream(), _fromBridge.Writer.AsStream(), _stop.Token);
+        }
+
+        public McpBridge Bridge { get; }
+        public McpClient? Client { get; private set; }
+
+        public async Task<McpClient> ConnectAsync() => Client = await McpClient.CreateAsync(
+            new StreamClientTransport(_toBridge.Writer.AsStream(), _fromBridge.Reader.AsStream()),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Client is not null)
+                await Client.DisposeAsync();
+            await _stop.CancelAsync();
+            try
+            {
+                await _running;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            await Bridge.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Tools_are_listed_without_starting_the_editor_and_calls_start_it()
+    {
+        string pipeName = Connection.NewPipeName();
+        var editor = new FakeEditor();
+        McpPipeServer? server = null;
+        int launches = 0;
+        await using var run = new BridgeRun(new McpBridge(() =>
+        {
+            launches++;
+            server = new McpPipeServer(editor, pipeName);
+            server.Start();
+            return true;
+        }, pipeName, TimeSpan.FromSeconds(10)));
+        var client = await run.ConnectAsync();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(tools, t => t.Name == "edit_timeline");
+        Assert.Equal(0, launches);
+
+        var result = (await client.Call("set_label", new { clip = 1, label = "Hello" })).Json();
+        Assert.Equal(1, launches);
+        Assert.Equal("Hello", editor.Session.Project.Get(1).Label);
+        Assert.Equal("Hello", result.GetProperty("clips")[0].GetProperty("label").GetString());
+
+        // The editor is closed and opened again: the next call reconnects (starting it once more).
+        await server!.DisposeAsync();
+        var second = (await client.Call("get_project")).Json();
+        Assert.Equal("keynote", second.GetProperty("name").GetString());
+        Assert.Equal(2, launches);
+        await server.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task A_running_editor_is_used_without_launching()
+    {
+        string pipeName = Connection.NewPipeName();
+        await using var server = new McpPipeServer(new FakeEditor(), pipeName);
+        server.Start();
+        await using var run = new BridgeRun(new McpBridge(() => throw new InvalidOperationException("should not launch"), pipeName));
+        var client = await run.ConnectAsync();
+
+        Assert.Equal("keynote", (await client.Call("get_project")).Json().GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task An_editor_that_does_not_start_is_reported()
+    {
+        await using var run = new BridgeRun(new McpBridge(() => false, Connection.NewPipeName()));
+        var client = await run.ConnectAsync();
+
+        var result = await client.Call("get_project");
+        Assert.True(result.IsError);
+        Assert.Contains("could not be started", result.Text(), StringComparison.Ordinal);
+    }
+}

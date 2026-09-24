@@ -63,9 +63,10 @@
       </StackPanel>
 
       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
-        <!-- MCP status: green while Claude is connected. -->
+        <!-- MCP status: green while Claude is connected; a lighter dot while the server waits for it. -->
         <Border Name="McpBadge" Height="22" Padding="8,0" CornerRadius="5.26" BorderThickness="1" VerticalAlignment="Center"
-                Classes.on="{Binding Claude.IsConnected}">
+                Classes.on="{Binding Claude.IsConnected}" Classes.ready="{Binding Claude.IsListening}"
+                ToolTip.Tip="How to connect Claude: Settings → MCP server">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <Ellipse Name="McpDot" Width="5" Height="5" VerticalAlignment="Center" />
             <TextBlock Name="McpLabel" Text="{Binding McpText}" FontSize="10.5" FontWeight="Medium" LetterSpacing="0"
@@ -115,6 +116,9 @@
     </Style>
     <Style Selector="Border#McpBadge TextBlock#McpLabel">
       <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+    </Style>
+    <Style Selector="Border#McpBadge.ready Ellipse#McpDot">
+      <Setter Property="Fill" Value="{StaticResource Text4Brush}" />
     </Style>
     <Style Selector="Border#McpBadge.on">
       <Setter Property="BorderBrush" Value="#8C4ADE80" />

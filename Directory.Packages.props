@@ -18,6 +18,10 @@
     <PackageVersion Include="SkiaSharp" Version="3.119.4" />
     <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
   </ItemGroup>
+  <ItemGroup Label="MCP">
+    <!-- The official MCP C# SDK, core package only (no ASP.NET or hosting). -->
+    <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
+  </ItemGroup>
   <ItemGroup Label="Tests">
     <!-- Avalonia.Headless.XUnit 12.1 requires xUnit v3 3.x; 4.x breaks test discovery. -->
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
