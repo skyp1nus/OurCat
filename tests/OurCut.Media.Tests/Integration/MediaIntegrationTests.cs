@@ -272,7 +272,9 @@ public class MediaIntegrationTests(SampleMediaFixture media) : IClassFixture<Sam
 
         var ex = await Assert.ThrowsAsync<MediaToolException>(() => ExportRunner.RunAsync(plan, cancellationToken: Ct));
 
-        Assert.Contains("0:9", ex.Message, StringComparison.Ordinal);
+        // The explaining line, not ffmpeg's generic "Error opening output files" (its wording varies by version:
+        // 6.x names the map, "Stream map '0:9' …"; 9.x leaves it out).
+        Assert.Contains("matches no streams", ex.Message, StringComparison.Ordinal);
         Assert.Empty(Directory.GetFiles(folder));
     }
 
