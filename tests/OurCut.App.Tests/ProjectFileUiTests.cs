@@ -13,6 +13,7 @@ public class ProjectFileUiTests
         public Task<string?> PickMediaToOpenAsync() => Task.FromResult<string?>(null);
         public Task<string?> PickProjectToOpenAsync() => Task.FromResult<string?>(path);
         public Task<string?> PickProjectSavePathAsync(string suggestedFileName) => Task.FromResult<string?>(path);
+        public Task<string?> PickFolderAsync(string title, string? startFolder) => Task.FromResult<string?>(null);
     }
 
     [AvaloniaFact]
@@ -33,8 +34,8 @@ public class ProjectFileUiTests
             Assert.False(editor.IsDirty);
             Assert.EndsWith("saved", editor.StatusRight, StringComparison.Ordinal);
 
-            var other = App.CreateEditor(null);
-            await App.OpenProjectAsync(other, path);
+            var other = App.CreateEditor(null, new SampleOpener());
+            await other.OpenProjectFileAsync(path);
             Assert.Equal(editor.Clips.Select(c => (c.Id, c.Label, c.Start, c.End, c.IsIncluded)),
                 other.Clips.Select(c => (c.Id, c.Label, c.Start, c.End, c.IsIncluded)));
             Assert.Equal("launch-keynote — OurCut", other.WindowTitle);
@@ -86,8 +87,8 @@ public class ProjectFileUiTests
         {
             string path = Path.Combine(dir, "broken" + ProjectFile.Extension);
             await File.WriteAllTextAsync(path, "{ nope", TestContext.Current.CancellationToken);
-            var editor = App.CreateEditor(null);
-            await App.OpenProjectAsync(editor, path);
+            var editor = App.CreateEditor(null, new SampleOpener());
+            await editor.OpenProjectFileAsync(path);
             Assert.False(editor.HasFile);
             Assert.StartsWith("Could not open the project", editor.StatusMessage, StringComparison.Ordinal);
         }

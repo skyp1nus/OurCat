@@ -53,4 +53,18 @@ public sealed class StorageFileDialogs(TopLevel topLevel) : IFileDialogs
         }).ConfigureAwait(true);
         return file?.TryGetLocalPath();
     }
+
+    public async Task<string?> PickFolderAsync(string title, string? startFolder)
+    {
+        var start = startFolder is not null && Directory.Exists(startFolder)
+            ? await topLevel.StorageProvider.TryGetFolderFromPathAsync(startFolder).ConfigureAwait(true)
+            : null;
+        var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            SuggestedStartLocation = start,
+        }).ConfigureAwait(true);
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+    }
 }

@@ -39,6 +39,6 @@ public partial class MainWindow : Window
         Player.SetDropHover(false);
         var path = e.DataTransfer.TryGetFiles()?.Select(f => f.TryGetLocalPath()).FirstOrDefault(p => p is not null);
         if (path is not null && Editor is { } editor)
-            editor.OpenPath(path);
+            _ = editor.OpenPath(path);
     }
 }

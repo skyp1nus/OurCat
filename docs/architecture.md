@@ -39,12 +39,57 @@ The session is not thread-safe. A future MCP server must marshal its calls to th
 `EditorSession` wraps these with UI-friendly helpers (`Trim` clamps and snaps to keyframes, `KeepRange`
 inserts by source position, `Split` returns the new clip).
 
+## Media
+
+`OurCut.Media` runs ffprobe and ffmpeg as separate processes, always off the UI thread. Paths go through
+`ProcessStartInfo.ArgumentList` (or FFMpegCore's quoting), never through a shell.
+
+- **Probing** (`MediaProbe`): `ffprobe -show_format -show_streams` as JSON → `MediaInfo`: container family,
+  the first real video stream (cover art is skipped), audio streams with their titles (MP4 keeps track names in
+  the handler name), subtitles, rotation, B-frames. `ToSourceMedia()` gives Core's description.
+- **Keyframes** (`KeyframeScanner`): packet flags from ffprobe, no decoding. Times are relative to the file's
+  start time, like everything else in OurCut.
+- **Previews**: `WaveformExtractor` decodes every audio stream in one pass to 8 kHz mono and keeps one peak per
+  10 ms (`WaveformData`, drawn on a dB scale). `ThumbnailExtractor` decodes only keyframes
+  (`-skip_frame nokey`) to raw BGRA, at most about 300 per file. Both stream their results as they arrive.
+- **Cache** (`MediaCache`): keyframes, waveform and a JPEG thumbnail atlas per file in
+  `%LOCALAPPDATA%\OurCut\cache`, keyed by path, size and modification time.
+- **Export**: `ExportPlanner` turns the project and `ExportSettings` into an `ExportPlan` (every step, output
+  and temporary file decided up front, so it can be tested and shown); `FfmpegCommands` builds each step's
+  ffmpeg command with FFMpegCore; `ExportRunner` runs the steps with progress and cancellation.
+
+In the App, `FfmpegMediaOpener` probes a file and creates a `MediaPreview`, which runs the three analyses in
+parallel (or reads them from the cache) and raises `Changed` as results arrive; the timeline redraws, and the
+keyframes are handed to the editing session for snapping.
+
+### Lossless cuts
+
+With `-ss` before `-i` and `-c copy`, ffmpeg starts every stream at a keyframe. OurCut makes that explicit:
+`CutPlanner` moves each clip's in-point back to the keyframe at or before it (nothing is lost; a short lead-in
+is added) and computes the `-ss` value that makes ffmpeg land exactly on that keyframe. MP4/MOV seek by
+presentation time, so a value just after the keyframe works. Matroska and most other demuxers seek
+3/23 s earlier when the video has B-frames; the planner adds that back. Transport streams have no index, so
+their cut points are marked approximate.
+
+ffmpeg ends a stream copy by decode time, so with B-frames each clip comes out a few frames longer than planned.
+A merged lossless export cuts every clip to a temporary file and joins them with the concat demuxer; chapters are
+written afterwards from the real length of each cut, so they start exactly where their clip does.
+
+A re-encoded merge is one ffmpeg pass: each clip is its own frame-accurately seeked input, joined with the concat
+filter. Re-encoding one clip per file copies audio when asked, dropping packets before the in-point
+(`-copypriorss 0`).
+
+Output names: `{project}-cut.{ext}` when merged, `{project}-{n}-{label}.{ext}` otherwise; existing files are never
+overwritten (" (2)" is added) and an export never writes over its source. Temporary files
+(`.ourcut-tmp-*`) and any half-written output are removed on failure or cancel.
+
 ## Extension points
 
 - **MCP server**: call `EditorSession.Execute` with `EditOrigin.Assistant`. The UI already highlights assistant
   edits in violet and shows them in the Claude panel with undo.
-- **Smart cut**: the export pipeline (OurCut.Media) will choose a cut strategy per export mode; smart cut
-  becomes one more strategy. The dialog lists it as not yet available.
+- **Smart cut**: `CutMode.SmartCut` exists in the export settings; the planner rejects it for now. It becomes
+  a third kind of plan (re-encode the GOP around each cut, copy the rest, concat). The dialog lists it as not
+  yet available.
 - **Transcription**: a future source of labels and ranges for `AddClipCommand` / `RenameClipCommand`.
 
 ## Project file (`.ourcut.json`)

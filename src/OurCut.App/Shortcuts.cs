@@ -19,7 +19,7 @@ public static class Shortcuts
             }
             if (key == Key.Enter && export.IsConfiguring)
             {
-                export.Start();
+                export.StartCommand.Execute(null);
                 return true;
             }
             return false;

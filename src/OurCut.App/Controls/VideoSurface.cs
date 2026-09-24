@@ -6,8 +6,8 @@ using OurCut.App.Services;
 namespace OurCut.App.Controls;
 
 /// <summary>
-/// The player picture. Until libmpv playback is connected it shows the design's placeholder:
-/// the shaded frame for the current time with "source frame" and the timecode.
+/// The player picture. Until libmpv playback is connected it shows the nearest thumbnail of a real
+/// file, or for the design's sample the shaded placeholder with "source frame" and the timecode.
 /// </summary>
 public sealed class VideoSurface : Avalonia.Controls.Control
 {
@@ -25,6 +25,20 @@ public sealed class VideoSurface : Avalonia.Controls.Control
 
     static VideoSurface() => AffectsRender<VideoSurface>(MediaProperty, TimeProperty, CaptionProperty);
 
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == MediaProperty)
+        {
+            if (change.GetOldValue<IMediaPreview?>() is { } old)
+                old.Changed -= OnMediaChanged;
+            if (change.GetNewValue<IMediaPreview?>() is { } media)
+                media.Changed += OnMediaChanged;
+        }
+    }
+
+    private void OnMediaChanged(object? sender, EventArgs e) => InvalidateVisual();
+
     public IMediaPreview? Media { get => GetValue(MediaProperty); set => SetValue(MediaProperty, value); }
     public double Time { get => GetValue(TimeProperty); set => SetValue(TimeProperty, value); }
     public string? Caption { get => GetValue(CaptionProperty); set => SetValue(CaptionProperty, value); }
@@ -38,6 +52,8 @@ public sealed class VideoSurface : Avalonia.Controls.Control
             return;
         }
         Media.DrawFrame(context, rect, Time, FrameLook.Player, 0);
+        if (!Media.IsPlaceholder)
+            return;
         Hatch.Draw(context, rect, rect, HatchBrush, 12);
 
         var font = new Typeface(new FontFamily(FontSetup.Mono));

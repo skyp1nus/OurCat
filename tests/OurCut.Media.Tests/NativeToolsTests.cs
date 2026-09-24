@@ -1,3 +1,5 @@
+using OurCut.Media.Tools;
+
 namespace OurCut.Media.Tests;
 
 public class NativeToolsTests
@@ -42,4 +44,23 @@ public class NativeToolsVersionTests
     public async Task GetVersionAsync_returns_null_for_a_missing_tool() =>
         Assert.Null(await NativeTools.GetVersionAsync("ourcut-missing-" + Guid.NewGuid().ToString("N"),
             cancellationToken: TestContext.Current.CancellationToken));
+}
+
+public class MediaToolExceptionTests
+{
+    [Theory]
+    [InlineData("Stream map '0:9' matches no streams.\nTo ignore this, add a trailing '?' to the map.\n" +
+                "Failed to set value '0:9' for option 'map': Invalid argument\nError parsing options for output file x.mp4.\n" +
+                "Error opening output files: Invalid argument", "Stream map '0:9' matches no streams.")]
+    [InlineData("[in#0 @ 0x55dbed63adc0] Error opening input: No such file or directory\nError opening input file a.mp4.\n" +
+                "Error opening input files: No such file or directory", "Error opening input: No such file or directory")]
+    [InlineData("[vost#0:0 @ 0x5623f24c8340] Unknown encoder 'libx999'\n[vost#0:0 @ 0x5623f24c8340] Error selecting an encoder\n" +
+                "Error opening output file x.mp4.\nError opening output files: Encoder not found", "Unknown encoder 'libx999'")]
+    [InlineData("Conversion failed!", "Conversion failed!")]
+    public void Message_is_the_line_that_explains_the_error(string stderr, string expected) =>
+        Assert.Equal("ffmpeg failed: " + expected, new MediaToolException("ffmpeg", 1, stderr).Message);
+
+    [Fact]
+    public void Message_without_output_has_the_exit_code() =>
+        Assert.Equal("ffprobe failed with exit code 3.", new MediaToolException("ffprobe", 3, " \n").Message);
 }

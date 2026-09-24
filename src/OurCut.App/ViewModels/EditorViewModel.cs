@@ -5,11 +5,13 @@ using System.Globalization;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using OurCut.App.Demo;
 using OurCut.App.Services;
 using OurCut.Core.Editing;
 using OurCut.Core.Model;
 using OurCut.Core.Serialization;
 using OurCut.Core.Time;
+using OurCut.Media.Tools;
 
 namespace OurCut.App.ViewModels;
 
@@ -27,6 +29,9 @@ public sealed partial class EditorViewModel : ViewModelBase
     private DispatcherTimer? _messageTimer;
     private DispatcherTimer? _autosaveTimer;
     private DateTime _lastTick;
+    private CancellationTokenSource? _openCts;
+    private IReadOnlyList<double>? _appliedKeyframes;
+    private bool _previewErrorShown;
 
     public EditorViewModel()
     {
@@ -64,6 +69,12 @@ public sealed partial class EditorViewModel : ViewModelBase
     /// <summary>File dialogs, provided by the window.</summary>
     public IFileDialogs? Dialogs { get; set; }
 
+    /// <summary>Probes and analyses media files. Without one, videos cannot be opened.</summary>
+    public IMediaOpener? MediaOpener { get; set; }
+
+    /// <summary>Remembers recently opened files; null keeps no history (demo mode and tests).</summary>
+    public RecentFilesStore? RecentStore { get; set; }
+
     /// <summary>Raised whenever anything drawn on the timeline changes.</summary>
     public event EventHandler? TimelineChanged;
 
@@ -90,6 +101,37 @@ public sealed partial class EditorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasFile), nameof(IsEmpty), nameof(Duration), nameof(DurationText),
         nameof(SourceLengthText), nameof(StatusRight), nameof(FrameText))]
     public partial IMediaPreview? Media { get; set; }
+
+    partial void OnMediaChanged(IMediaPreview? oldValue, IMediaPreview? newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.Changed -= OnPreviewChanged;
+            (oldValue as IDisposable)?.Dispose();
+        }
+        if (newValue is not null)
+            newValue.Changed += OnPreviewChanged;
+        _previewErrorShown = false;
+    }
+
+    /// <summary>More thumbnails, waveform or keyframes arrived from the background analysis.</summary>
+    private void OnPreviewChanged(object? sender, EventArgs e)
+    {
+        if (!ReferenceEquals(sender, Media) || Media is not { } media)
+            return;
+        if (!ReferenceEquals(_appliedKeyframes, media.Keyframes))
+        {
+            _appliedKeyframes = media.Keyframes;
+            Session.Keyframes = media.Keyframes;
+        }
+        if (media.AnalysisError is { } error && !_previewErrorShown)
+        {
+            _previewErrorShown = true;
+            ShowMessage("Could not analyse the whole file: " + error);
+        }
+        OnPropertyChanged(nameof(StatusRight));
+        RaiseTimelineChanged();
+    }
 
     /// <summary>The timeline ruler is drawn for this duration even before a file is open (demo only).</summary>
     [ObservableProperty]
@@ -206,10 +248,19 @@ public sealed partial class EditorViewModel : ViewModelBase
         : IsDirty ? "unsaved changes"
         : LastSaveWasAuto ? "autosaved" : "saved";
 
+    /// <summary>The file being opened (probed), shown in the status bar.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusRight), nameof(IsOpening))]
+    public partial string? OpeningFile { get; set; }
+
+    public bool IsOpening => OpeningFile is not null;
+
     public string StatusRight => StatusMessage
-        ?? (HasFile
-            ? $"{Export.ModeTitle.ToLowerInvariant()} · snap {(SnapToKeyframes ? "on" : "off")} · {SaveStateText}"
-            : ToolStatus);
+        ?? (OpeningFile is not null ? $"opening {OpeningFile}…"
+            : HasFile
+                ? (Media?.Activity is { } activity ? activity + " · " : "")
+                  + $"{Export.ModeTitle.ToLowerInvariant()} · snap {(SnapToKeyframes ? "on" : "off")} · {SaveStateText}"
+                : ToolStatus);
 
     /// <summary>Source ranges not covered by any clip, in source order.</summary>
     public IReadOnlyList<TimeRange> ExcludedGaps() => HasFile ? Session.Project.UncoveredRanges() : [];
@@ -228,6 +279,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         IsDirty = false;
         LastSaveWasAuto = false;
         Session.Keyframes = media.Keyframes;
+        _appliedKeyframes = media.Keyframes;
         Session.Load(project);
         Media = media;
         Claude.HasMedia = true;
@@ -274,21 +326,14 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     // ---- File commands -------------------------------------------------------------------
 
-    /// <summary>Asks the app to open a media file: with a path (drag and drop) or by showing a dialog.</summary>
-    public event EventHandler<string?>? OpenRequested;
-
-    /// <summary>Asks the app to open a project file.</summary>
-    public event EventHandler<string>? OpenProjectRequested;
-
     [RelayCommand]
-    private void OpenFile() => OpenRequested?.Invoke(this, null);
-
-    public void OpenPath(string path)
+    private async Task OpenFile()
     {
-        if (path.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
-            OpenProjectRequested?.Invoke(this, path);
-        else
-            OpenRequested?.Invoke(this, path);
+        if (Dialogs is null)
+            return;
+        string? path = await Dialogs.PickMediaToOpenAsync().ConfigureAwait(true);
+        if (path is not null)
+            await OpenPath(path).ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -298,7 +343,127 @@ public sealed partial class EditorViewModel : ViewModelBase
             return;
         string? path = await Dialogs.PickProjectToOpenAsync().ConfigureAwait(true);
         if (path is not null)
-            OpenProjectRequested?.Invoke(this, path);
+            await OpenProjectFileAsync(path).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task OpenRecent(RecentFileViewModel? item)
+    {
+        if (item is null)
+            return;
+        // The design's recent entries have no file behind them; they open the sample project.
+        if (item.Path.Length == 0)
+            DemoScenario.OpenSample(this);
+        else
+            await OpenPath(item.Path).ConfigureAwait(true);
+    }
+
+    /// <summary>Opens a video, or a project when the path is a <c>.ourcut.json</c> file (drag and drop).</summary>
+    public Task OpenPath(string path) =>
+        path.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase) ? OpenProjectFileAsync(path) : OpenMediaAsync(path);
+
+    /// <summary>Opens a video as a new, empty project named after the file.</summary>
+    public async Task OpenMediaAsync(string path)
+    {
+        var media = await OpenSourceAsync(path).ConfigureAwait(true);
+        if (media is null)
+            return;
+        LeaveDemo();
+        LoadProject(new Project(Path.GetFileNameWithoutExtension(path), media.Source, []), media.Preview, media.Summary);
+        Remember(path, media.Source.Duration);
+    }
+
+    /// <summary>Opens a saved project and the video it edits.</summary>
+    public async Task OpenProjectFileAsync(string path)
+    {
+        Project project;
+        try
+        {
+            project = await ProjectFile.LoadAsync(path).ConfigureAwait(true);
+        }
+        catch (Exception e) when (e is ProjectFileException or IOException or UnauthorizedAccessException)
+        {
+            ShowMessage("Could not open the project: " + e.Message);
+            return;
+        }
+        if (project.Source is null)
+        {
+            ShowMessage("The project has no source video.");
+            return;
+        }
+        var media = await OpenSourceAsync(project.Source.Path).ConfigureAwait(true);
+        if (media is null)
+            return;
+        LeaveDemo();
+        // The probe is the truth about the file (it may have been re-encoded since); the clips are kept.
+        LoadProject(project with { Source = media.Source }, media.Preview, media.Summary, path);
+        Remember(path, media.Source.Duration);
+    }
+
+    /// <summary>Probes a video. A newer open cancels an older one still probing.</summary>
+    private async Task<OpenedMedia?> OpenSourceAsync(string path)
+    {
+        if (MediaOpener is null)
+        {
+            ShowMessage("Opening videos is not available.");
+            return null;
+        }
+        if (_openCts is not null)
+            await _openCts.CancelAsync().ConfigureAwait(true);
+        var cts = new CancellationTokenSource();
+        _openCts = cts;
+        string name = Path.GetFileName(path);
+        OpeningFile = name;
+        try
+        {
+            var media = await MediaOpener.OpenAsync(path, cts.Token).ConfigureAwait(true);
+            if (!cts.IsCancellationRequested)
+                return media;
+            (media.Preview as IDisposable)?.Dispose();
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (FileNotFoundException)
+        {
+            ShowMessage($"{name} was not found. It may have been moved or deleted.");
+            return null;
+        }
+        catch (Exception e) when (e is MediaToolException or IOException or UnauthorizedAccessException)
+        {
+            ShowMessage($"Could not open {name}: {e.Message}");
+            return null;
+        }
+        finally
+        {
+            if (ReferenceEquals(_openCts, cts))
+            {
+                _openCts = null;
+                OpeningFile = null;
+            }
+            cts.Dispose();
+        }
+    }
+
+    private void Remember(string path, double duration)
+    {
+        if (RecentStore is null)
+            return;
+        RecentStore.Add(path, duration);
+        LoadRecentFiles();
+    }
+
+    /// <summary>Fills the empty screen's Recent list from <see cref="RecentStore"/>.</summary>
+    public void LoadRecentFiles()
+    {
+        if (RecentStore is null)
+            return;
+        var now = DateTime.Now;
+        RecentFiles.Clear();
+        foreach (var file in RecentStore.Load())
+            RecentFiles.Add(RecentFileViewModel.From(file, now));
     }
 
     [RelayCommand]

@@ -20,8 +20,25 @@ public interface IMediaPreview
 {
     double Duration { get; }
     double FrameRate { get; }
+
+    /// <summary>Keyframe times, sorted. Empty until the file has been scanned.</summary>
     IReadOnlyList<double> Keyframes { get; }
+
     int AudioStreamCount { get; }
+
+    /// <summary>True for the design's shaded placeholder frames (demo mode).</summary>
+    bool IsPlaceholder { get; }
+
+    /// <summary>
+    /// What is still being analysed, e.g. "analysing 45%"; null when everything is ready.
+    /// </summary>
+    string? Activity { get; }
+
+    /// <summary>Why part of the analysis failed (e.g. a damaged audio stream); null if nothing did.</summary>
+    string? AnalysisError { get; }
+
+    /// <summary>Raised on the UI thread when more thumbnails, waveform or keyframes are available.</summary>
+    event EventHandler? Changed;
 
     /// <summary>Peak level 0..1 of an audio stream between two source times.</summary>
     double AudioPeak(int stream, double startTime, double endTime);

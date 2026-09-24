@@ -8,8 +8,9 @@ It is inspired by [LosslessCut](https://github.com/mifi/lossless-cut). Every edi
 core, so an AI assistant (Claude via MCP) can later edit the same timeline through the same operations.
 
 > **Status:** early development, Phase 1. Windows only for now; the code is kept cross-platform so macOS and
-> Linux can follow. The editor UI and the editing core (undo/redo, project files) are in place. Until media
-> probing, playback (libmpv) and export (FFmpeg) are connected, Open loads a sample project.
+> Linux can follow. Opening videos, the timeline (thumbnails, waveforms, keyframes), editing with undo/redo,
+> project files and export (lossless or re-encoded, merged or separate) work. Playback with libmpv is next;
+> until then the player shows the nearest thumbnail.
 
 ## Phase 1 scope
 
@@ -58,11 +59,14 @@ repository. The build copies them next to `OurCut.exe`. Versions, URLs and SHA-2
 Useful options: `-Check` (verify only, no downloads), `-Force` (reinstall), `-Component ffmpeg`,
 `-Proxy http://proxy:8080`. Downloads are cached in `deps/.cache`.
 
+`dotnet run --project src/OurCut.App -- path/to/video.mp4` opens a video (or an `.ourcut.json` project) at start.
+
 To see the UI with the sample project from the design, start it in demo mode:
 `dotnet run --project src/OurCut.App -- --demo editing` (other screens: `empty`, `ai`, `export`, `exporting`).
 
 Run the tests with `dotnet test OurCut.slnx`. The UI tests render the app headlessly and write screenshots to
-`artifacts/screenshots/`.
+`artifacts/screenshots/`. Tests that run ffmpeg generate their own small videos; they are skipped when ffmpeg
+is not found (in `deps/`, `OURCUT_FFMPEG_DIR` or `PATH`).
 
 Avalonia's build tooling sends anonymous build telemetry. Set `AVALONIA_TELEMETRY_OPTOUT=1` to turn it off
 (CI does this).
@@ -72,7 +76,8 @@ Avalonia's build tooling sends anonymous build telemetry. Set `AVALONIA_TELEMETR
 ```
 src/OurCut.App      Avalonia UI: views and view models (CommunityToolkit.Mvvm)
 src/OurCut.Core     Project model, timeline and edit commands with undo/redo. No UI references.
-src/OurCut.Media    libmpv playback, ffprobe/ffmpeg (FFMpegCore), thumbnails and waveforms (SkiaSharp)
+src/OurCut.Media    ffprobe/ffmpeg: probing, keyframes, export (FFMpegCore), thumbnails, waveforms, cache
+                    (SkiaSharp); libmpv playback comes next
 tests/              xUnit tests for Core, Media and headless UI tests for App
 scripts/            fetch-deps.ps1 and the pinned dependency manifest
 design/             The Claude Design export the UI is built from

@@ -11,4 +11,7 @@ public interface IFileDialogs
 
     /// <summary>Returns where to save the project, or null if cancelled.</summary>
     Task<string?> PickProjectSavePathAsync(string suggestedFileName);
+
+    /// <summary>Returns the chosen folder, or null if cancelled.</summary>
+    Task<string?> PickFolderAsync(string title, string? startFolder);
 }

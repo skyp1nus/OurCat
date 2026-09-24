@@ -43,7 +43,8 @@
                 <DataTemplate x:DataType="vm:RecentFileViewModel">
                   <Button Classes="recent" Height="32" Padding="10,0" CornerRadius="4" HorizontalAlignment="Stretch"
                           HorizontalContentAlignment="Stretch"
-                          Command="{Binding $parent[UserControl].((vm:EditorViewModel)DataContext).OpenFileCommand}">
+                          Command="{Binding $parent[UserControl].((vm:EditorViewModel)DataContext).OpenRecentCommand}"
+                          CommandParameter="{Binding}" ToolTip.Tip="{Binding Path}">
                     <Grid ColumnDefinitions="*,Auto,Auto">
                       <TextBlock Classes="mono" Text="{Binding Name}" FontSize="12" FontWeight="Normal"
                                  Foreground="{StaticResource Text2Brush}" VerticalAlignment="Center" />

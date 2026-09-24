@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:OurCut.App.ViewModels"
              xmlns:c="using:OurCut.App.Controls"
+             xmlns:ex="using:OurCut.Media.Export"
              x:Class="OurCut.App.Views.ExportDialog"
              x:DataType="vm:ExportViewModel">
   <Panel Background="#9E060607">
@@ -99,23 +100,23 @@
             <Grid IsVisible="{Binding IsEncode}" ColumnDefinitions="*,16,*">
               <StackPanel Spacing="7">
                 <TextBlock Classes="field" Text="Video" />
-                <Border Classes="select">
-                  <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Classes="mono" Text="H.264 · CRF 18 · medium" />
-                    <c:SvgIcon Grid.Column="1" Data="{StaticResource IconChevronDown}" StrokeWidth="2.4" Width="11" Height="11"
-                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-                  </Grid>
-                </Border>
+                <ComboBox Classes="select" ItemsSource="{x:Static ex:VideoEncoding.All}" SelectedItem="{Binding Video}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="ex:VideoEncoding">
+                      <TextBlock Classes="mono" Text="{Binding Label}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
               </StackPanel>
               <StackPanel Grid.Column="2" Spacing="7">
                 <TextBlock Classes="field" Text="Audio" />
-                <Border Classes="select">
-                  <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Classes="mono" Text="Copy (AAC 48 kHz)" />
-                    <c:SvgIcon Grid.Column="1" Data="{StaticResource IconChevronDown}" StrokeWidth="2.4" Width="11" Height="11"
-                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-                  </Grid>
-                </Border>
+                <ComboBox Classes="select" ItemsSource="{Binding AudioChoices}" SelectedItem="{Binding Audio}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AudioChoice">
+                      <TextBlock Classes="mono" Text="{Binding Label}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
               </StackPanel>
             </Grid>
 
@@ -131,7 +132,8 @@
                 <Border Classes="select">
                   <TextBlock Classes="mono" Text="{Binding OutputPath}" TextTrimming="CharacterEllipsis" />
                 </Border>
-                <Button Grid.Column="2" Classes="control" Height="30" Padding="12,0" VerticalAlignment="Top" Content="Browse…" />
+                <Button Grid.Column="2" Classes="control" Height="30" Padding="12,0" VerticalAlignment="Top" Content="Browse…"
+                        Command="{Binding BrowseCommand}" />
               </Grid>
             </StackPanel>
           </StackPanel>
@@ -164,12 +166,14 @@
             <TextBlock Classes="mono" Text="{Binding OutputPath}" FontSize="11.5" LineHeight="16.1" Foreground="{StaticResource MutedBrush}"
                        TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
           </StackPanel>
-          <Grid ColumnDefinitions="*,Auto" Margin="18,0,18,4">
+          <Grid ColumnDefinitions="*,Auto" Margin="18,0,18,4" IsVisible="{Binding !HasError}">
             <TextBlock Classes="mono" Text="{Binding Stats}" FontSize="11.5" LineHeight="16.1" Foreground="{StaticResource MutedBrush}"
                        VerticalAlignment="Center" />
             <TextBlock Grid.Column="1" Classes="mono" Text="{Binding PercentText}" FontSize="13" FontWeight="Medium"
                        Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
           </Grid>
+          <SelectableTextBlock Classes="mono" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" FontSize="11.5" LineHeight="16.1"
+                               Foreground="{StaticResource StatusOffBrush}" TextWrapping="Wrap" Margin="18,0,18,4" />
           <ItemsControl ItemsSource="{Binding Rows}" Margin="14,8,14,14">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
@@ -201,9 +205,11 @@
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Classes="mono" Text="{Binding Footer}" FontSize="11.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
               <Button Grid.Column="1" Classes="outline strong" Height="30" Padding="12,0" Content="Cancel export"
-                      IsVisible="{Binding IsNotDone}" Command="{Binding CloseCommand}" />
+                      IsVisible="{Binding IsRunning}" Command="{Binding CloseCommand}" />
+              <Button Grid.Column="1" Classes="outline strong" Height="30" Padding="12,0" Content="Close"
+                      IsVisible="{Binding HasError}" Command="{Binding CloseCommand}" />
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsDone}">
-                <Button Classes="outline strong" Height="30" Padding="12,0" Content="Show in Explorer" />
+                <Button Classes="outline strong" Height="30" Padding="12,0" Content="Show in Explorer" Command="{Binding RevealCommand}" />
                 <Button Classes="primary" Height="30" Padding="14,0" Content="Done" Command="{Binding CloseCommand}" />
               </StackPanel>
             </Grid>
@@ -277,6 +283,19 @@
       <Setter Property="FontSize" Value="11.5" />
       <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
       <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="ComboBox.select">
+      <Setter Property="Height" Value="32" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="10,0,0,0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
     </Style>
 
     <Style Selector="Border.footer">

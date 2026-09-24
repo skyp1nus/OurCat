@@ -38,6 +38,10 @@ public sealed class TimelineControl : Control
     private const double AudioPitch = 26;
     private const double AudioHeight = 24;
     private const double HandleWidth = 9;
+    private const double KeyframeTickHeight = 5;
+
+    /// <summary>Keyframe ticks are drawn only when they are on average at least this far apart (px).</summary>
+    private const double MinKeyframeSpacing = 6;
 
     private static readonly Color Accent = Color.Parse("#60CDFF");
     private static readonly Color Violet = Color.Parse("#AA9CF7");
@@ -63,6 +67,7 @@ public sealed class TimelineControl : Control
     private static readonly IBrush PlayheadBrush = Brushes.White;
     private static readonly IBrush PlayheadText = new SolidColorBrush(Color.Parse("#111111"));
     private static readonly IBrush EmptyBorder = new SolidColorBrush(Color.Parse("#404040"));
+    private static readonly IBrush KeyframeTick = new SolidColorBrush(Color.FromArgb(150, 255, 255, 255));
 
     private readonly List<HitRegion> _hits = [];
     private EditorViewModel? _editor;
@@ -238,6 +243,7 @@ public sealed class TimelineControl : Control
         foreach (var (clip, _) in ordered)
             DrawClip(context, editor, media, clip, visible);
 
+        DrawKeyframes(context, media, visible);
         DrawPlayhead(context, editor);
     }
 
@@ -404,6 +410,40 @@ public sealed class TimelineControl : Control
                 continue;
             ctx.DrawRectangle(brush, null, new RoundedRect(new Rect(x, rect.Y + (rect.Height - h) / 2, bw, h), Math.Min(1, bw / 2)));
         }
+    }
+
+    /// <summary>
+    /// Keyframe ticks along the bottom of the video lane, once zoomed in far enough for them to be
+    /// told apart (lossless cuts start at these).
+    /// </summary>
+    private void DrawKeyframes(DrawingContext ctx, IMediaPreview media, Rect visible)
+    {
+        var keyframes = media.Keyframes;
+        if (keyframes.Count == 0 || Pps <= 0)
+            return;
+        double t0 = T(visible.Left), t1 = T(visible.Right);
+        int first = LowerBound(keyframes, t0);
+        int last = LowerBound(keyframes, t1);
+        int count = last - first;
+        if (count > visible.Width / MinKeyframeSpacing)
+            return;
+        double y = ContentTop + VideoHeight - KeyframeTickHeight;
+        for (int i = first; i < last; i++)
+            ctx.FillRectangle(KeyframeTick, new Rect(Math.Floor(X(keyframes[i])), y, 1, KeyframeTickHeight));
+    }
+
+    private static int LowerBound(IReadOnlyList<double> sorted, double value)
+    {
+        int lo = 0, hi = sorted.Count;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) / 2;
+            if (sorted[mid] < value)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        return lo;
     }
 
     private void DrawGaps(DrawingContext ctx, EditorViewModel editor, Rect visible)
@@ -598,7 +638,8 @@ public sealed class TimelineControl : Control
         ctx.FillRectangle(PlayheadBrush, new Rect(x - 0.5, 18, 1, Bounds.Height - 18));
         var text = Text(TimeFormat.MinutesSeconds(editor.Time), MonoFace(FontWeight.SemiBold), 10.5, PlayheadText);
         double lw = text.Width + 12;
-        var rect = new Rect(x - lw / 2, 3, lw, 17);
+        // Centred on the playhead, but kept inside the timeline at its very start and end.
+        var rect = new Rect(Math.Clamp(x - lw / 2, 3, Math.Max(3, Inner - lw - 3)), 3, lw, 17);
         ctx.DrawRectangle(RulerBg, null, new RoundedRect(rect.Inflate(3), 6));
         ctx.DrawRectangle(PlayheadBrush, null, new RoundedRect(rect, 3));
         ctx.DrawText(text, new Point(rect.X + 6, rect.Y + (17 - text.Height) / 2));

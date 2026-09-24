@@ -1,10 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Text.RegularExpressions;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using OurCut.App.Services;
 using OurCut.Core.Time;
+using OurCut.Media.Export;
+using OurCut.Media.Probing;
+using OurCut.Media.Tools;
 
 namespace OurCut.App.ViewModels;
 
@@ -49,6 +52,9 @@ public sealed partial class ChoiceOption(string label, Action pick) : ViewModelB
     private void Pick() => pick();
 }
 
+/// <summary>An audio setting for re-encoding, with a label that names the source codec for "copy".</summary>
+public sealed record AudioChoice(string Label, AudioEncoding Encoding);
+
 public enum ExportRowState
 {
     Queued,
@@ -91,15 +97,26 @@ public sealed partial class ExportRowViewModel(string name) : ViewModelBase
 }
 
 /// <summary>
-/// Export dialog: settings, then the list of steps with progress.
-/// In this milestone the progress is simulated; the FFmpeg pipeline replaces it later.
+/// Export dialog: settings, then the list of steps with progress. For a real file the export runs
+/// ffmpeg through <see cref="ExportRunner"/> off the UI thread; with the design's sample (demo
+/// mode) the progress is simulated.
 /// </summary>
 public sealed partial class ExportViewModel : ViewModelBase
 {
     private static readonly string[] ContainerNames = ["MP4", "MOV", "MKV"];
+    private const string DemoFolder = @"C:\Users\You\Videos\Exports";
+
     private readonly EditorViewModel _editor;
     private DispatcherTimer? _timer;
+    private DispatcherTimer? _statsTimer;
     private DateTime? _loopHoldStart;
+    private CancellationTokenSource? _exportCts;
+    private ExportPlan? _plan;
+    private List<(int Step, double From, double To)> _rowWindows = [];
+    private IReadOnlyList<string> _written = [];
+    private DateTime _started;
+    private DateTime? _finished;
+    private string? _defaultsFor;
 
     public ExportViewModel(EditorViewModel editor)
     {
@@ -116,6 +133,8 @@ public sealed partial class ExportViewModel : ViewModelBase
             new("Merge into one file", () => Merge = true),
             new("Separate files", () => Merge = false),
         ];
+        AudioChoices = [new("Copy (AAC 48 kHz)", AudioEncoding.Copy), new(AudioEncoding.Aac192.Label, AudioEncoding.Aac192)];
+        Audio = AudioChoices[0];
         RefreshChoices();
     }
 
@@ -123,6 +142,9 @@ public sealed partial class ExportViewModel : ViewModelBase
     public IReadOnlyList<ChoiceOption> Containers { get; }
     public IReadOnlyList<ChoiceOption> Outputs { get; }
     public ObservableCollection<ExportRowViewModel> Rows { get; } = [];
+
+    [ObservableProperty]
+    public partial IReadOnlyList<AudioChoice> AudioChoices { get; private set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDialogOpen), nameof(IsConfiguring), nameof(IsExporting))]
@@ -147,15 +169,39 @@ public sealed partial class ExportViewModel : ViewModelBase
     public partial bool KeepAllTracks { get; set; } = true;
 
     [ObservableProperty]
-    public partial string OutputFolder { get; set; } = @"C:\Users\You\Videos\Exports";
+    [NotifyPropertyChangedFor(nameof(Estimate))]
+    public partial VideoEncoding Video { get; set; } = VideoEncoding.H264Quality;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Estimate))]
+    public partial AudioChoice Audio { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OutputPath))]
+    public partial string OutputFolder { get; set; } = DemoFolder;
 
     /// <summary>Overall progress 0..1.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PercentText), nameof(IsDone), nameof(IsNotDone), nameof(Title), nameof(Stats))]
+    [NotifyPropertyChangedFor(nameof(PercentText), nameof(IsDone), nameof(IsNotDone), nameof(IsRunning), nameof(Title), nameof(Stats))]
     public partial double Progress { get; set; }
+
+    /// <summary>Why the export failed; null while it runs or after it succeeds.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError), nameof(IsRunning), nameof(Title), nameof(Stats))]
+    public partial string? ErrorText { get; set; }
+
+    /// <summary>Waiting for the keyframe scan before the cuts can be planned.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(Stats))]
+    public partial bool IsPreparing { get; set; }
 
     /// <summary>Demo only: restart the simulated progress after it completes.</summary>
     public bool Loop { get; set; }
+
+    /// <summary>The design's sample has no file behind it, so its export is simulated.</summary>
+    public bool IsSimulated => _editor.IsDemo || Preview is null;
+
+    private MediaPreview? Preview => _editor.Media as MediaPreview;
 
     public bool IsDialogOpen => Stage != ExportStage.Closed;
     public bool IsConfiguring => Stage == ExportStage.Configure;
@@ -164,29 +210,58 @@ public sealed partial class ExportViewModel : ViewModelBase
     public bool CanAddChapters => Merge;
     public bool IsDone => Progress >= 1;
     public bool IsNotDone => !IsDone;
+    public bool HasError => ErrorText is not null;
+    public bool IsRunning => !IsDone && !HasError;
 
     public string ModeTitle => Modes.First(m => m.Mode == Mode).Title;
     public string Extension => Container.ToLowerInvariant();
-    public string BaseName => _editor.ProjectName;
+    public string BaseName => SafeFileName(_editor.ProjectName);
 
-    public string OutputPath => Merge
-        ? Path.Join(OutputFolder, $"{BaseName}-cut.{Extension}").Replace('/', '\\')
-        : Path.Join(OutputFolder, $"{BaseName}-{{n}}-{{label}}.{Extension}").Replace('/', '\\');
+    public string OutputPath
+    {
+        get
+        {
+            if (_plan is not null && !IsSimulated)
+                return Merge ? _plan.Outputs[0] : Path.Join(OutputFolder, $"{BaseName}-{{n}}-{{label}}.{Extension}");
+            string path = Merge
+                ? Path.Join(OutputFolder, $"{BaseName}-cut.{Extension}")
+                : Path.Join(OutputFolder, $"{BaseName}-{{n}}-{{label}}.{Extension}");
+            // The design shows a Windows path.
+            return IsSimulated ? path.Replace('/', '\\') : path;
+        }
+    }
 
     public string Summary => $"{Included.Count} clips · {TimeFormat.Duration(Total)} · from {_editor.MediaFileName}";
     public string FileCountText => Merge ? "1 file" : $"{Included.Count} files";
-    public string Estimate => $"≈ {SizeGb.ToString("0.00", CultureInfo.InvariantCulture)} GB · about {Secs(Total / Speed)}";
     public string Footer => $"{ModeTitle} · {Container} · {(Merge ? "merged" : "separate files")}";
     public string PercentText => Math.Floor(Progress * 100).ToString(CultureInfo.InvariantCulture) + "%";
-    public string Title => IsDone ? "Export complete" : "Exporting…";
+    public string Title => HasError ? "Export failed" : IsDone ? "Export complete" : IsPreparing ? "Preparing…" : "Exporting…";
+
+    public string Estimate => Preview is { } p && !_editor.IsDemo
+        ? $"≈ {Size(EstimatedBytes(p.Info))} · about {Secs(Total / EstimatedSpeed(p.Info))}"
+        : $"≈ {SizeGb.ToString("0.00", CultureInfo.InvariantCulture)} GB · about {Secs(Total / Speed)}";
 
     public string Stats
     {
         get
         {
-            double t = Total / Speed;
-            string left = IsDone ? "done" : "~" + TimeFormat.Clock((1 - Progress) * t) + " left";
-            return $"elapsed {TimeFormat.Clock(Progress * t)} · {left} · {Speed.ToString(CultureInfo.InvariantCulture)}× realtime";
+            if (IsSimulated)
+            {
+                double t = Total / Speed;
+                string left = IsDone ? "done" : "~" + TimeFormat.Clock((1 - Progress) * t) + " left";
+                return $"elapsed {TimeFormat.Clock(Progress * t)} · {left} · {Speed.ToString(CultureInfo.InvariantCulture)}× realtime";
+            }
+            if (HasError)
+                return ErrorText!;
+            if (IsPreparing)
+                return "scanning keyframes";
+            double elapsed = ((_finished ?? DateTime.UtcNow) - _started).TotalSeconds;
+            string remaining = IsDone ? "done"
+                : Progress > 0.02 ? "~" + TimeFormat.Clock(elapsed * (1 - Progress) / Progress) + " left"
+                : "estimating";
+            double speed = elapsed > 0.5 && _plan is not null ? Progress * _plan.OutputDuration / elapsed : 0;
+            string speedText = speed > 0 ? $" · {speed.ToString(speed >= 10 ? "0" : "0.0", CultureInfo.InvariantCulture)}× realtime" : "";
+            return $"elapsed {TimeFormat.Clock(elapsed)} · {remaining}{speedText}";
         }
     }
 
@@ -195,14 +270,49 @@ public sealed partial class ExportViewModel : ViewModelBase
     private double Speed => Mode switch { ExportMode.Copy => 62, ExportMode.Smart => 18, _ => 1.4 };
     private double SizeGb => Total * (Mode == ExportMode.Encode ? 14 : 22) / 8 / 1000;
 
+    /// <summary>Lossless output is about the source bitrate; re-encoding at these CRFs usually lands below it.</summary>
+    private double EstimatedBytes(MediaInfo info)
+    {
+        double bitrate = info.BitRate > 0 ? info.BitRate : info.Size * 8 / Math.Max(1, info.Duration);
+        double factor = Mode != ExportMode.Encode ? 1 : Video == VideoEncoding.H264Fast ? 0.5 : Video == VideoEncoding.H265 ? 0.4 : 0.7;
+        return bitrate * factor * Total / 8;
+    }
+
+    /// <summary>Rough speed in × realtime: stream copy is disk bound; encoding depends on the pixel rate.</summary>
+    private double EstimatedSpeed(MediaInfo info)
+    {
+        if (Mode != ExportMode.Encode || info.Video is not { } v)
+            return 60;
+        double pixelRate = Math.Max(1, (double)v.Width * v.Height * Math.Max(1, v.FrameRate));
+        double hd = 1920.0 * 1080 * 30;
+        double preset = Video == VideoEncoding.H264Fast ? 4 : Video == VideoEncoding.H265 ? 0.5 : 1.5;
+        return Math.Max(0.05, preset * hd / pixelRate);
+    }
+
+    private static string Size(double bytes) => bytes >= 1e9
+        ? (bytes / 1e9).ToString("0.00", CultureInfo.InvariantCulture) + " GB"
+        : Math.Max(1, Math.Round(bytes / 1e6)).ToString(CultureInfo.InvariantCulture) + " MB";
+
     private static string Secs(double x) => x < 60
         ? Math.Max(1, Math.Ceiling(x)).ToString(CultureInfo.InvariantCulture) + " s"
         : Math.Round(x / 60).ToString(CultureInfo.InvariantCulture) + " min";
 
+    private static string SafeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars().Concat(['/', '\\', ':', '*', '?', '"', '<', '>', '|']).ToHashSet();
+        string safe = new string([.. name.Select(ch => invalid.Contains(ch) ? '-' : ch)]).Trim().TrimEnd('.');
+        return safe.Length == 0 ? "export" : safe;
+    }
+
     partial void OnModeChanged(ExportMode value) => RefreshChoices();
     partial void OnContainerChanged(string value) => RefreshChoices();
     partial void OnMergeChanged(bool value) => RefreshChoices();
-    partial void OnProgressChanged(double value) => UpdateRows();
+
+    partial void OnProgressChanged(double value)
+    {
+        if (IsSimulated)
+            UpdateRows();
+    }
 
     private void RefreshChoices()
     {
@@ -220,6 +330,10 @@ public sealed partial class ExportViewModel : ViewModelBase
     {
         if (!_editor.HasFile)
             return;
+        if (Preview is { } p && !_editor.IsDemo)
+            ApplyDefaults(p.Info);
+        _plan = null;
+        ErrorText = null;
         Stage = ExportStage.Configure;
         OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(Estimate));
@@ -227,21 +341,68 @@ public sealed partial class ExportViewModel : ViewModelBase
         OnPropertyChanged(nameof(OutputPath));
     }
 
+    /// <summary>For each new file: save next to it, in a container that can hold its streams.</summary>
+    private void ApplyDefaults(MediaInfo info)
+    {
+        if (_defaultsFor == info.Path)
+            return;
+        _defaultsFor = info.Path;
+        OutputFolder = Path.GetDirectoryName(info.Path) ?? OutputFolder;
+        Container = info.NaturalExtension switch
+        {
+            "mp4" or "m4v" => "MP4",
+            "mov" => "MOV",
+            _ => "MKV",
+        };
+        var first = info.Audio.FirstOrDefault();
+        string copy = first is null ? "Copy"
+            : $"Copy ({first.Codec.ToUpperInvariant()} {(first.SampleRate / 1000.0).ToString("0.#", CultureInfo.InvariantCulture)} kHz)";
+        AudioChoices = [new(copy, AudioEncoding.Copy), new(AudioEncoding.Aac192.Label, AudioEncoding.Aac192)];
+        Audio = AudioChoices[0];
+    }
+
     [RelayCommand]
     public void Close()
     {
         StopTimer();
+        StopStatsTimer();
+        _exportCts?.Cancel();
         Stage = ExportStage.Closed;
         Progress = 0;
+        ErrorText = null;
+        IsPreparing = false;
     }
 
     [RelayCommand]
-    public void Start()
+    private async Task Browse()
     {
-        Loop = false;
-        Start(0);
+        if (_editor.Dialogs is null)
+            return;
+        string? folder = await _editor.Dialogs.PickFolderAsync("Save exports to", OutputFolder).ConfigureAwait(true);
+        if (folder is not null)
+            OutputFolder = folder;
     }
 
+    [RelayCommand]
+    private void Reveal()
+    {
+        if (!IsSimulated)
+            FileManager.Reveal(_written.Count > 0 ? _written[0] : OutputFolder);
+    }
+
+    [RelayCommand]
+    public async Task StartAsync()
+    {
+        Loop = false;
+        if (IsSimulated)
+        {
+            Start(0);
+            return;
+        }
+        await RunAsync(Preview!).ConfigureAwait(true);
+    }
+
+    /// <summary>Starts the simulated export at <paramref name="progress"/> (demo screens).</summary>
     public void Start(double progress)
     {
         BuildRows();
@@ -252,6 +413,98 @@ public sealed partial class ExportViewModel : ViewModelBase
         _loopHoldStart = null;
         _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background, (_, _) => Tick());
         _timer.Start();
+    }
+
+    /// <summary>The settings as the Media layer takes them.</summary>
+    public ExportSettings BuildSettings(MediaInfo info)
+    {
+        var tracks = _editor.Session.Project.Source?.AudioTracks ?? [];
+        return new ExportSettings
+        {
+            Mode = Mode switch { ExportMode.Copy => CutMode.Lossless, ExportMode.Smart => CutMode.SmartCut, _ => CutMode.Reencode },
+            Container = Container switch { "MOV" => OutputContainer.Mov, "MKV" => OutputContainer.Mkv, _ => OutputContainer.Mp4 },
+            Merge = Merge,
+            AddChapters = AddChapters && Merge,
+            KeepAllTracks = KeepAllTracks,
+            // Muted lanes are left out unless every track is kept.
+            AudioStreamIndexes = [.. _editor.AudioLanes.Where(l => !l.IsMuted && l.Stream < tracks.Length).Select(l => tracks[l.Stream].Index)],
+            OutputFolder = OutputFolder,
+            BaseName = BaseName,
+            Video = Video,
+            Audio = Audio.Encoding,
+        };
+    }
+
+    private async Task RunAsync(MediaPreview preview)
+    {
+        var cts = new CancellationTokenSource();
+        _exportCts = cts;
+        _plan = null;
+        _written = [];
+        _finished = null;
+        ErrorText = null;
+        Rows.Clear();
+        Progress = 0;
+        Stage = ExportStage.Running;
+        try
+        {
+            IsPreparing = Mode == ExportMode.Copy && !preview.KeyframesTask.IsCompleted;
+            var keyframes = Mode == ExportMode.Copy
+                ? await preview.KeyframesTask.WaitAsync(cts.Token).ConfigureAwait(true)
+                : preview.Keyframes;
+            IsPreparing = false;
+
+            var plan = ExportPlanner.Plan(_editor.Session.Project, preview.Info, keyframes, BuildSettings(preview.Info));
+            _plan = plan;
+            BuildRows(plan);
+            OnPropertyChanged(nameof(OutputPath));
+            _started = DateTime.UtcNow;
+            StartStatsTimer();
+
+            var progress = new Progress<ExportProgress>(p =>
+            {
+                if (ReferenceEquals(_exportCts, cts) && ErrorText is null && _finished is null)
+                    ApplyProgress(p);
+            });
+            _written = await Task.Run(() => ExportRunner.RunAsync(plan, progress, cts.Token), cts.Token).ConfigureAwait(true);
+            _finished = DateTime.UtcNow;
+            ApplyProgress(new ExportProgress(plan.Steps.Count - 1, 1, 1));
+            _editor.ShowMessage(_written.Count == 1 ? $"Exported {Path.GetFileName(_written[0])}" : $"Exported {_written.Count} files");
+        }
+        catch (OperationCanceledException)
+        {
+            if (Stage == ExportStage.Running)
+                Close();
+            _editor.ShowMessage("Export cancelled.");
+        }
+        catch (Exception e) when (e is MediaToolException or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            _finished = DateTime.UtcNow;
+            IsPreparing = false;
+            ErrorText = e.Message;
+        }
+        finally
+        {
+            StopStatsTimer();
+            OnPropertyChanged(nameof(Stats));
+            if (ReferenceEquals(_exportCts, cts))
+                _exportCts = null;
+            cts.Dispose();
+        }
+    }
+
+    private void StartStatsTimer()
+    {
+        StopStatsTimer();
+        _statsTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(500), DispatcherPriority.Background,
+            (_, _) => OnPropertyChanged(nameof(Stats)));
+        _statsTimer.Start();
+    }
+
+    private void StopStatsTimer()
+    {
+        _statsTimer?.Stop();
+        _statsTimer = null;
     }
 
     private void Tick()
@@ -285,6 +538,7 @@ public sealed partial class ExportViewModel : ViewModelBase
         _timer = null;
     }
 
+    /// <summary>Rows for the simulated export, as the design lists them.</summary>
     private void BuildRows()
     {
         Rows.Clear();
@@ -293,11 +547,58 @@ public sealed partial class ExportViewModel : ViewModelBase
         {
             string name = Merge
                 ? $"{i + 1} · {on[i].Label}"
-                : $"{BaseName}-{i + 1}-{Slug(on[i].Label)}.{Extension}";
+                : $"{BaseName}-{i + 1}-{ExportPlanner.Slug(on[i].Label)}.{Extension}";
             Rows.Add(new ExportRowViewModel(name));
         }
         if (Merge)
             Rows.Add(new ExportRowViewModel($"Merge into {BaseName}-cut.{Extension}"));
+    }
+
+    /// <summary>
+    /// One row per step of the plan. A re-encoded merge is a single ffmpeg pass, so it is shown as one
+    /// row per clip, each covering its share of that pass.
+    /// </summary>
+    private void BuildRows(ExportPlan plan)
+    {
+        Rows.Clear();
+        var windows = new List<(int, double, double)>();
+        if (plan.Steps is [{ Kind: ExportStepKind.EncodeMerged } merged])
+        {
+            double total = merged.Duration, at = 0;
+            foreach (var clip in plan.Clips)
+            {
+                Rows.Add(new ExportRowViewModel($"{clip.Number} · {clip.Label}"));
+                double to = total > 0 ? at + clip.OutputDuration / total : 1;
+                windows.Add((0, at, to));
+                at = to;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < plan.Steps.Count; i++)
+            {
+                Rows.Add(new ExportRowViewModel(plan.Steps[i].Name));
+                windows.Add((i, 0, 1));
+            }
+        }
+        _rowWindows = windows;
+        SetCurrentRow();
+    }
+
+    private void ApplyProgress(ExportProgress p)
+    {
+        for (int i = 0; i < Rows.Count && i < _rowWindows.Count; i++)
+        {
+            var (step, from, to) = _rowWindows[i];
+            double f = step < p.StepIndex ? 1
+                : step > p.StepIndex ? 0
+                : to > from ? Math.Clamp((p.StepFraction - from) / (to - from), 0, 1) : 1;
+            bool started = step < p.StepIndex || (step == p.StepIndex && p.StepFraction >= from);
+            Rows[i].Progress = f;
+            Rows[i].State = f >= 1 ? ExportRowState.Done : started ? ExportRowState.Active : ExportRowState.Queued;
+        }
+        Progress = Math.Clamp(p.Overall, 0, 1);
+        SetCurrentRow();
     }
 
     /// <summary>Splits overall progress into per-step progress, as the design does.</summary>
@@ -316,12 +617,18 @@ public sealed partial class ExportViewModel : ViewModelBase
         if (Merge)
             Rows[^1].Progress = Math.Clamp((p - 0.92) / 0.08, 0, 1);
 
+        foreach (var r in Rows)
+            r.State = r.Progress >= 1 ? ExportRowState.Done : r.Progress > 0 ? ExportRowState.Active : ExportRowState.Queued;
+        SetCurrentRow();
+    }
+
+    /// <summary>The first unfinished row is shown large; the ones above it are dimmed.</summary>
+    private void SetCurrentRow()
+    {
         int current = -1;
         for (int i = 0; i < Rows.Count; i++)
         {
-            var r = Rows[i];
-            r.State = r.Progress >= 1 ? ExportRowState.Done : r.Progress > 0 ? ExportRowState.Active : ExportRowState.Queued;
-            if (current < 0 && r.State != ExportRowState.Done)
+            if (current < 0 && Rows[i].State != ExportRowState.Done)
                 current = i;
         }
         if (current < 0)
@@ -332,9 +639,6 @@ public sealed partial class ExportViewModel : ViewModelBase
             Rows[i].IsPast = i < current;
         }
     }
-
-    internal static string Slug(string text) =>
-        Regex.Replace(text.ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');
 }
 
 public enum ExportStage

@@ -95,6 +95,16 @@ public sealed class DesignSample : IMediaPreview
     public double FrameRate => 29.97;
     public IReadOnlyList<double> Keyframes => _keyframes;
     public int AudioStreamCount => _amps.Length;
+    public bool IsPlaceholder => true;
+    public string? Activity => null;
+    public string? AnalysisError => null;
+
+    /// <summary>The sample is complete from the start.</summary>
+    public event EventHandler? Changed
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>Samples in the prototype's amplitude arrays (1200 over the whole file).</summary>
     public int AmplitudeSamples => _amps[0].Length;
