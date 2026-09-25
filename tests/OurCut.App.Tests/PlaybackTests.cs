@@ -295,6 +295,20 @@ public class PlaybackTests
     }
 
     [AvaloniaFact]
+    public void Without_a_picture_the_editor_says_so_and_diagnostics_name_the_output()
+    {
+        var editor = App.CreateEditor(null, player: new FakePlayer());
+        Assert.Contains("Video output not started · decoder —", editor.Settings.DiagnosticsText(), StringComparison.Ordinal);
+
+        editor.VideoOutput = "OpenGL · ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0)";
+        Assert.Contains("Video output OpenGL · ANGLE (AMD, AMD Radeon RX 6700 XT", editor.Settings.DiagnosticsText(), StringComparison.Ordinal);
+        Assert.NotEqual("No video picture", editor.StatusMessage?[..16]);
+
+        editor.VideoOutput = "none: mpv could not create a renderer: unsupported";
+        Assert.Equal("No video picture (mpv could not create a renderer: unsupported). The player shows thumbnails only.", editor.StatusMessage);
+    }
+
+    [AvaloniaFact]
     public void Without_a_file_the_video_view_shows_nothing()
     {
         var editor = App.CreateEditor(null, player: new FakePlayer());
@@ -378,6 +392,9 @@ public sealed class RealPlaybackTests : IDisposable
         using (var frame = window.CaptureRenderedFrame())
             frame!.Save(Path.Combine(Screenshots.Directory, "playback.png"), new PngBitmapEncoderOptions());
 
+        Assert.Equal("software", editor.VideoOutput);
+        Assert.Contains("decoder no", editor.Settings.DiagnosticsText(), StringComparison.Ordinal);
+
         // Settings → Playback while the video is open: the view is rebuilt and draws again; decoding and the
         // audio device change in mpv.
         var before = view.Child;
@@ -389,6 +406,38 @@ public sealed class RealPlaybackTests : IDisposable
         await PumpUntil(() => engine.Mpv.GetPropertyString("hwdec") == "no");
         editor.Settings.Open();
         Assert.Equal("System default", editor.Settings.AudioDevices[0]);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task The_software_view_waits_for_the_renderer_it_replaces_to_let_go()
+    {
+        Assert.SkipWhen(NativeTools.FindTool("ffmpeg") is null || NativeTools.FindTool("ffprobe") is null, "ffmpeg is not installed.");
+        Assert.SkipUnless(MpvPlayer.IsAvailable(out string? mpvError), mpvError ?? "");
+        string video = Path.Combine(_dir, "bars.mp4");
+        await Task.Run(() => ToolProcess.RunAsync("ffmpeg",
+        [
+            "-v", "error", "-f", "lavfi", "-i", "smptebars=size=640x360:rate=30", "-t", "2", "-c:v", "libx264", "-preset", "veryfast",
+            "-pix_fmt", "yuv420p", "-y", video,
+        ], null, Ct), Ct);
+        VideoView.PreferOpenGl = false;
+        using var engine = new MpvPlaybackEngine(new MpvPlayerOptions { AudioOutput = "null", HardwareDecoding = "no" });
+        // Stands in for an OpenGL renderer that is released a moment after its view is replaced.
+        var holder = new MpvSoftwareRenderer(engine.Mpv);
+        var editor = App.CreateEditor(null, new FfmpegMediaOpener(new MediaCache(Path.Combine(_dir, "cache"))), player: engine);
+        var window = new MainWindow { DataContext = editor, Width = 1440, Height = 900 };
+        window.Show();
+
+        await editor.OpenMediaAsync(video);
+        await PumpUntil(() => editor.HasPlayback);
+        await Task.Delay(300, Ct);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Null(editor.VideoOutput);
+        holder.Dispose();
+
+        await PumpUntil(() => editor.VideoOutput == "software");
+        await PumpUntil(() => HasYellow(window), 5);
+        Assert.Null(editor.StatusMessage is { } m && m.StartsWith("No video picture", StringComparison.Ordinal) ? m : null);
         window.Close();
     }
 

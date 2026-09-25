@@ -6,6 +6,12 @@ namespace OurCut.Media.Ffmpeg;
 public static class FfmpegText
 {
     /// <summary>
+    /// Input options that decode on the GPU when there is one (D3D11/DXVA2 on Windows, VideoToolbox on macOS, VAAPI/VDPAU on
+    /// Linux) and on the CPU otherwise: ffmpeg falls back by itself. Frames come back to memory for the filters.
+    /// </summary>
+    public static IReadOnlyList<string> GpuDecoding { get; } = ["-hwaccel", "auto"];
+
+    /// <summary>
     /// Seconds with six decimals and an invariant decimal point, e.g. <c>12.040000</c>.
     /// ffmpeg accepts this for -ss, -t and -to without the millisecond truncation of TimeSpan.
     /// </summary>

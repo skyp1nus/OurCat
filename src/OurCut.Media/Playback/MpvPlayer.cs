@@ -70,7 +70,7 @@ public readonly record struct AudioMix(string AudioTrack, string LavfiComplex)
 public sealed class MpvPlayer : IDisposable
 {
     private const ulong SeekTag = 1UL << 62;
-    private const ulong TimePosId = 1, PauseId = 2, DurationId = 3, EofId = 4, WidthId = 5, HeightId = 6;
+    private const ulong TimePosId = 1, PauseId = 2, DurationId = 3, EofId = 4, WidthId = 5, HeightId = 6, DecoderId = 7;
 
     private readonly Thread _eventThread;
     private readonly Lock _lock = new();
@@ -81,6 +81,7 @@ public sealed class MpvPlayer : IDisposable
     private double _position, _seekTarget, _duration;
     private volatile bool _paused = true, _eof, _disposed;
     private int _videoWidth, _videoHeight;
+    private string? _decoder;
     private MpvRenderer? _renderer;
 
     /// <summary>Checks that libmpv can be loaded.</summary>
@@ -135,6 +136,7 @@ public sealed class MpvPlayer : IDisposable
         Check(MpvNative.mpv_observe_property(Handle, EofId, "eof-reached", MpvFormat.Flag));
         Check(MpvNative.mpv_observe_property(Handle, WidthId, "dwidth", MpvFormat.Int64));
         Check(MpvNative.mpv_observe_property(Handle, HeightId, "dheight", MpvFormat.Int64));
+        Check(MpvNative.mpv_observe_property(Handle, DecoderId, "hwdec-current", MpvFormat.String));
 
         _eventThread = new Thread(EventLoop) { IsBackground = true, Name = "mpv events" };
         _eventThread.Start();
@@ -150,6 +152,12 @@ public sealed class MpvPlayer : IDisposable
     public bool IsEndReached => _eof;
     public bool IsSeeking => _seeks.IsSeeking;
     public (int Width, int Height) VideoSize => (Volatile.Read(ref _videoWidth), Volatile.Read(ref _videoHeight));
+
+    /// <summary>
+    /// How the video is decoded: the hardware decoder in use ("d3d11va-copy", "vaapi-copy"), "no" for the CPU, or null
+    /// before a video is decoded. Read from mpv's events, so it is safe on any thread.
+    /// </summary>
+    public string? CurrentDecoder => Volatile.Read(ref _decoder);
 
     /// <summary>Why the last file stopped with an error.</summary>
     public string? LastError { get; private set; }
@@ -446,6 +454,9 @@ public sealed class MpvPlayer : IDisposable
             case HeightId:
                 Volatile.Write(ref _videoHeight, has ? (int)*(long*)property.Data : 0);
                 break;
+            case DecoderId:
+                Volatile.Write(ref _decoder, has && property.Format == MpvFormat.String ? Marshal.PtrToStringUTF8(*(IntPtr*)property.Data) : null);
+                return;
             default:
                 return;
         }

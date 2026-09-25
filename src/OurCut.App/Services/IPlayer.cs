@@ -48,6 +48,9 @@ public interface IPlayer : IDisposable
 
     /// <summary>Settings → Playback → Hardware decoding, from now on.</summary>
     void SetHardwareDecoding(HardwareDecodingMode mode);
+
+    /// <summary>How the open video is decoded ("d3d11va-copy", or "no" on the CPU); null when unknown.</summary>
+    string? CurrentDecoder => null;
 }
 
 /// <summary><see cref="IPlayer"/> on libmpv. The video view attaches a renderer to <see cref="Mpv"/>.</summary>
@@ -97,6 +100,7 @@ public sealed class MpvPlaybackEngine : IPlayer
     public IReadOnlyList<AudioOutputDevice> AudioDevices() => Mpv.AudioDevices();
     public void SetAudioDevice(string? name) => Mpv.SetAudioDevice(name);
     public void SetHardwareDecoding(HardwareDecodingMode mode) => Mpv.SetHardwareDecoding(PlaybackSettings.MpvHardwareDecoding(mode));
+    public string? CurrentDecoder => Mpv.LoadedPath is null ? null : Mpv.CurrentDecoder;
 
     /// <summary>mpv reports every frame; the UI hears about it at most once per dispatcher pass.</summary>
     private void PostChanged()

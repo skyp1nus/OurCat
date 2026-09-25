@@ -149,6 +149,9 @@ public sealed class MpvPlayerTests(SampleMediaFixture media) : IClassFixture<Sam
     {
         var player = await LoadAsync();
 
+        // The player was made with hwdec=no: mpv reports decoding on the CPU.
+        await WaitUntil(() => player.CurrentDecoder == "no");
+
         player.SetHardwareDecoding("auto-copy");
         await WaitUntil(() => player.GetPropertyString("hwdec") == "auto-copy");
         player.SetHardwareDecoding("no");

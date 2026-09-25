@@ -27,6 +27,12 @@ public sealed class VideoView : Decorator
     public static readonly StyledProperty<bool> SoftwareOnlyProperty =
         AvaloniaProperty.Register<VideoView, bool>(nameof(SoftwareOnly));
 
+    /// <summary>What draws the video (<see cref="Output"/>), for the editor's diagnostics and messages.</summary>
+    public static readonly DirectProperty<VideoView, string?> OutputProperty =
+        AvaloniaProperty.RegisterDirect<VideoView, string?>(nameof(Output), v => v.Output, (v, value) => v.Output = value);
+
+    private string? _output;
+
     /// <summary>How long OpenGL may take to start before the software renderer is used instead.</summary>
     private static readonly TimeSpan OpenGlStartTimeout = TimeSpan.FromSeconds(2);
 
@@ -35,6 +41,16 @@ public sealed class VideoView : Decorator
     public IPlayer? Player { get => GetValue(PlayerProperty); set => SetValue(PlayerProperty, value); }
 
     public bool SoftwareOnly { get => GetValue(SoftwareOnlyProperty); set => SetValue(SoftwareOnlyProperty, value); }
+
+    /// <summary>
+    /// "OpenGL · AMD Radeon RX 6700 XT …" (the GPU's own name), "software", "none: why" when no picture can be drawn,
+    /// or null before a video is shown.
+    /// </summary>
+    public string? Output
+    {
+        get => _output;
+        private set => SetAndRaise(OutputProperty, ref _output, value);
+    }
 
     /// <summary>
     /// Try OpenGL first. Off in headless tests; <c>OURCUT_VIDEO=software</c> turns it off as well.
@@ -74,15 +90,17 @@ public sealed class VideoView : Decorator
     {
         StopFallbackTimer();
         Child = null;
+        Output = null;
         if (VisualRoot is null || Player is not MpvPlaybackEngine engine)
             return;
         if (!PreferOpenGl || SoftwareOnly)
         {
-            Child = new SoftwareVideoView(engine.Mpv);
+            Child = Software(engine);
             return;
         }
         var gl = new OpenGlVideoView(engine.Mpv);
         gl.Failed += (_, _) => UseSoftware(engine);
+        gl.Started += (_, _) => Output = "OpenGL · " + gl.GpuName;
         Child = gl;
         _fallbackTimer = new DispatcherTimer(OpenGlStartTimeout, DispatcherPriority.Background, (_, _) =>
         {
@@ -100,7 +118,15 @@ public sealed class VideoView : Decorator
         if (Child is SoftwareVideoView || !ReferenceEquals(Player, engine))
             return;
         Child = null;
-        Child = new SoftwareVideoView(engine.Mpv);
+        Child = Software(engine);
+    }
+
+    private SoftwareVideoView Software(MpvPlaybackEngine engine)
+    {
+        var view = new SoftwareVideoView(engine.Mpv);
+        view.Started += (_, _) => Output = "software";
+        view.Failed += (_, reason) => Output = "none: " + reason;
+        return view;
     }
 
     private void StopFallbackTimer()
@@ -118,6 +144,12 @@ internal sealed class OpenGlVideoView(MpvPlayer player) : OpenGlControlBase
 
     public bool IsRunning => _renderer is not null;
 
+    /// <summary>The GPU as its OpenGL driver names it ("ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 …)").</summary>
+    public string GpuName { get; private set; } = "";
+
+    /// <summary>mpv draws with OpenGL.</summary>
+    public event EventHandler? Started;
+
     /// <summary>OpenGL started but mpv could not use it, or the context was lost.</summary>
     public event EventHandler? Failed;
 
@@ -125,8 +157,10 @@ internal sealed class OpenGlVideoView(MpvPlayer player) : OpenGlControlBase
     {
         try
         {
+            GpuName = gl.GetString(GlConsts.GL_RENDERER) ?? "";
             _renderer = new MpvOpenGlRenderer(player, gl.GetProcAddress);
             _renderer.UpdateRequested += (_, _) => Dispatcher.UIThread.Post(RequestNextFrameRendering, DispatcherPriority.Render);
+            Dispatcher.UIThread.Post(() => Started?.Invoke(this, EventArgs.Empty));
         }
         catch (Exception e) when (e is MpvException or InvalidOperationException)
         {
@@ -172,6 +206,9 @@ internal sealed class SoftwareVideoView : Control
 {
     private const int MaxPixels = 3840 * 2160;
 
+    /// <summary>How long the view waits for the OpenGL renderer it replaces to let go of the player.</summary>
+    private static readonly TimeSpan HandOverTimeout = TimeSpan.FromSeconds(5);
+
     private readonly MpvPlayer _player;
     private readonly Lock _frameLock = new();
     private readonly AutoResetEvent _wake = new(false);
@@ -181,6 +218,8 @@ internal sealed class SoftwareVideoView : Control
     private int _targetWidth, _targetHeight, _resized, _framePosted;
     private FrameBuffer? _back, _front;
     private WriteableBitmap? _bitmap;
+    private DispatcherTimer? _retry;
+    private DateTime _retryUntil;
 
     public SoftwareVideoView(MpvPlayer player)
     {
@@ -188,28 +227,62 @@ internal sealed class SoftwareVideoView : Control
         ClipToBounds = true;
     }
 
+    /// <summary>mpv draws into this view.</summary>
+    public event EventHandler? Started;
+
+    /// <summary>No renderer could be made; the argument says why. The thumbnail preview stays visible.</summary>
+    public event EventHandler<string>? Failed;
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         _stop = false;
+        _retryUntil = DateTime.UtcNow + HandOverTimeout;
+        TryStart();
+    }
+
+    /// <summary>
+    /// mpv has one renderer at a time, and an OpenGL view being replaced releases its renderer a little later (with its
+    /// GL context), so until then this one tries again.
+    /// </summary>
+    private void TryStart()
+    {
+        if (_stop || _renderer is not null)
+            return;
         try
         {
             _renderer = new MpvSoftwareRenderer(_player);
         }
-        catch (Exception ex) when (ex is MpvException or InvalidOperationException)
+        catch (Exception ex) when (ex is MpvException or InvalidOperationException && DateTime.UtcNow < _retryUntil)
         {
-            // No video (another renderer still holds the player); the thumbnail preview stays visible.
-            System.Diagnostics.Debug.WriteLine("Software video renderer unavailable: " + ex.Message);
+            // mpv refuses a second render context (MpvException) as long as the old one exists.
+            _retry ??= new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background, (_, _) => TryStart());
+            _retry.Start();
             return;
         }
+        catch (Exception ex) when (ex is MpvException or InvalidOperationException)
+        {
+            StopRetry();
+            Failed?.Invoke(this, ex.Message);
+            return;
+        }
+        StopRetry();
         _renderer.UpdateRequested += (_, _) => _wake.Set();
         _thread = new Thread(RenderLoop) { IsBackground = true, Name = "mpv software render" };
         _thread.Start();
         UpdateTargetSize();
+        Started?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void StopRetry()
+    {
+        _retry?.Stop();
+        _retry = null;
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        StopRetry();
         _stop = true;
         _wake.Set();
         _thread?.Join();
