@@ -9,8 +9,9 @@ namespace OurCut.Media.Previews;
 public sealed record ThumbnailFrame(double Time, int Width, int Height, byte[] Bgra);
 
 /// <summary>
-/// Extracts evenly spaced thumbnails in one ffmpeg pass. Only keyframes are decoded
-/// (<c>-skip_frame nokey</c>), which is fast even for long 4K files.
+/// Extracts evenly spaced thumbnails in one ffmpeg pass. Only keyframes are decoded (<c>-skip_frame nokey</c>), which is
+/// fast even for long 4K files, and from an MP4 or MOV only keyframes are read (<c>-discard nokey</c>: its index says
+/// which samples they are).
 /// </summary>
 public static class ThumbnailExtractor
 {
@@ -31,7 +32,7 @@ public static class ThumbnailExtractor
 
     public static IReadOnlyList<string> Arguments(MediaInfo info, int width, int height, double interval) =>
     [
-        "-v", "error", .. FfmpegText.GpuDecoding, "-skip_frame", "nokey", "-i", info.Path,
+        "-v", "error", .. FfmpegText.GpuDecoding, "-discard", "nokey", "-skip_frame", "nokey", "-i", info.Path,
         "-map", "0:" + info.Video!.Index.ToString(CultureInfo.InvariantCulture), "-an", "-sn", "-dn",
         "-vf", string.Create(CultureInfo.InvariantCulture,
             $"fps=1/{interval:0.######}:round=near,scale={width}:{height}:flags=bilinear,format=bgra"),

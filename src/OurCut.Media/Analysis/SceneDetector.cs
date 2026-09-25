@@ -111,12 +111,12 @@ public static class SceneDetector
     /// <summary>
     /// ffmpeg arguments: frames at a fixed rate from the start of the file (as keyframe times are counted), each
     /// shrunk to <see cref="Width"/>×<see cref="Height"/> grey, as raw bytes on stdout. Decoding is on the GPU when
-    /// there is one; otherwise the decoder gets half the cores, so playback and the rest of the editor stay responsive.
+    /// there is one, otherwise on every core: ffmpeg runs below normal priority, so playback and the editor still come
+    /// first (<see cref="ToolProcess"/>).
     /// </summary>
     public static IReadOnlyList<string> Arguments(MediaInfo info, double rate) =>
     [
-        "-v", "error", "-threads", Math.Max(2, Environment.ProcessorCount / 2).ToString(CultureInfo.InvariantCulture),
-        .. FfmpegText.GpuDecoding, "-i", info.Path,
+        "-v", "error", .. FfmpegText.GpuDecoding, "-i", info.Path,
         "-map", "0:" + info.Video!.Index.ToString(CultureInfo.InvariantCulture), "-an", "-sn", "-dn",
         "-vf", string.Create(CultureInfo.InvariantCulture,
             $"fps=fps={rate:0.######}:start_time=0:round=near,scale={Width}:{Height}:flags=area,format=gray"),

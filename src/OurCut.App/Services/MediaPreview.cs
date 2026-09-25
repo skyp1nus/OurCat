@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
@@ -19,7 +22,7 @@ namespace OurCut.App.Services;
 /// Preview of a real media file. Keyframes, the waveform and thumbnails are read from the cache or
 /// extracted with ffmpeg/ffprobe in the background, all three at once, and appear on the timeline
 /// as they arrive; the editor is usable immediately. Silences come from the waveform. Scene detection
-/// decodes the whole video, so it runs last.
+/// decodes the whole video, so it runs last. How long each part took is kept for Copy diagnostics.
 /// </summary>
 public sealed class MediaPreview : IMediaPreview, IDisposable
 {
@@ -28,12 +31,16 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
 
     private static readonly IBrush PendingBrush = new SolidColorBrush(Color.Parse("#1C1C1C"));
 
+    /// <summary>The parts <see cref="AnalysisTimes"/> lists, in this order.</summary>
+    private static readonly string[] TimedParts = ["keyframes", "thumbnails", "waveform", "scenes", "transcript"];
+
     private readonly CancellationTokenSource _cts = new();
     private readonly MediaCache? _cache;
     private readonly List<Thumbnail> _thumbnails = [];
     private readonly Lock _lock = new();
     private readonly TaskCompletionSource<IReadOnlyList<double>> _keyframesReady =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly ConcurrentDictionary<string, string> _times = new();
 
     private readonly int _expectedThumbnails;
     private double[] _keyframes = [];
@@ -115,6 +122,14 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
         }
     }
 
+    public string? AnalysisTimes =>
+        _times.IsEmpty ? null : string.Join(" · ", TimedParts.Where(_times.ContainsKey).Select(part => $"{part} {_times[part]}"));
+
+    private void Took(string part, Stopwatch watch) =>
+        _times[part] = watch.Elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s";
+
+    private void Cached(string part) => _times[part] = "cached";
+
     public string? Activity
     {
         get
@@ -168,6 +183,7 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
         {
             if (_cache?.LoadText(Info.Path, cacheName) is { } json && Transcript.FromJson(json) is { } cached)
             {
+                Cached("transcript");
                 Finish(cached);
                 return;
             }
@@ -179,6 +195,7 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
             await _mainAnalysisDone.Task.WaitAsync(ct).ConfigureAwait(false);
             _transcriptState = TranscriptState.Running;
             NotifyChanged();
+            var watch = Stopwatch.StartNew();
             using var recognizer = setup.Create();
             var words = new List<Word>();
             await ToolProcess.RunAsync("ffmpeg", SpeechAudio.Arguments(Info), (stdout, token) =>
@@ -193,6 +210,8 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
                 }, token), ct).ConfigureAwait(false);
             var transcript = new Transcript(setup.Model.Id, language, [.. words], recognizer.HasApproximateTimes);
             _cache?.SaveText(Info.Path, cacheName, transcript.ToJson());
+            if (Current())
+                Took("transcript", watch);
             Finish(transcript);
         }
         catch (OperationCanceledException)
@@ -321,13 +340,16 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
         if (_cache?.LoadSceneScores(Info.Path) is { } cached)
         {
             Volatile.Write(ref _scenes, cached);
+            Cached("scenes");
             return;
         }
         var scores = SceneDetector.Create(Info);
         Volatile.Write(ref _scenes, scores);
         _detectingScenes = true;
         NotifyChanged();
+        var watch = Stopwatch.StartNew();
         await SceneDetector.DetectAsync(Info, scores, NotifyChanged, ct).ConfigureAwait(false);
+        Took("scenes", watch);
         _cache?.SaveSceneScores(Info.Path, scores);
     }
 
@@ -352,13 +374,19 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
         if (Info.Video is null)
             return;
         double[]? keyframes = _cache?.LoadKeyframes(Info.Path);
-        if (keyframes is null)
+        if (keyframes is not null)
         {
+            Cached("keyframes");
+        }
+        else
+        {
+            var watch = Stopwatch.StartNew();
             keyframes = await KeyframeScanner.ScanAsync(Info, new Reporter<double>(f =>
             {
                 Volatile.Write(ref _keyframeProgress, f);
                 NotifyChanged();
             }), ct).ConfigureAwait(false);
+            Took("keyframes", watch);
             _cache?.SaveKeyframes(Info.Path, keyframes);
         }
         Volatile.Write(ref _keyframes, keyframes);
@@ -374,10 +402,13 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
         if (_cache?.LoadWaveform(Info.Path) is { } cached && cached.StreamCount == Info.Audio.Length)
         {
             Waveform.CopyFrom(cached);
+            Cached("waveform");
             NotifyChanged();
             return;
         }
+        var watch = Stopwatch.StartNew();
         await WaveformExtractor.ExtractAsync(Info, Waveform, NotifyChanged, ct).ConfigureAwait(false);
+        Took("waveform", watch);
         _cache?.SaveWaveform(Info.Path, Waveform);
     }
 
@@ -392,14 +423,17 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
             {
                 foreach (var frame in cached)
                     Add(frame);
+                Cached("thumbnails");
                 return;
             }
             var frames = new List<ThumbnailFrame>();
+            var watch = Stopwatch.StartNew();
             await ThumbnailExtractor.ExtractAsync(Info, frame =>
             {
                 frames.Add(frame);
                 Add(frame);
             }, height, cancellationToken: ct).ConfigureAwait(false);
+            Took("thumbnails", watch);
             _cache?.SaveThumbnails(Info.Path, frames);
         }
         finally

@@ -300,6 +300,7 @@ public class PlaybackTests
     {
         var editor = App.CreateEditor(null, player: new FakePlayer());
         Assert.Contains("Video output not started · decoder —", editor.Settings.DiagnosticsText(), StringComparison.Ordinal);
+        Assert.Contains("Analysis —", editor.Settings.DiagnosticsText(), StringComparison.Ordinal);
 
         editor.VideoOutput = "OpenGL · ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0)";
         Assert.Contains("Video output OpenGL · ANGLE (AMD, AMD Radeon RX 6700 XT", editor.Settings.DiagnosticsText(), StringComparison.Ordinal);

@@ -66,6 +66,40 @@ public class MediaIntegrationTests(SampleMediaFixture media) : IClassFixture<Sam
     }
 
     [Fact]
+    public async Task An_mp4_without_B_frames_has_its_keyframes_read_alone()
+    {
+        media.SkipIfUnavailable();
+        string path = Path.Combine(media.NewOutputFolder(), "no b-frames.mp4");
+        await ToolProcess.RunAsync("ffmpeg",
+        [
+            "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30000/1001", "-t", "10", "-c:v", "libx264", "-preset", "veryfast",
+            "-g", "45", "-keyint_min", "45", "-sc_threshold", "0", "-bf", "0", "-pix_fmt", "yuv420p", "-y", path,
+        ], null, Ct);
+        var info = await MediaProbe.ProbeAsync(path, Ct);
+        Assert.True(KeyframeScanner.CanSkipToKeyframes(info));
+        var reports = new List<double>();
+
+        double[]? keyframes = await KeyframeScanner.ReadKeyframesOnlyAsync(info, new SyncProgress<double>(reports.Add), Ct);
+
+        Assert.NotNull(keyframes);
+        Assert.Equal(await KeyframeScanner.ReadThroughAsync(info, null, Ct), keyframes);
+        Assert.Equal([0, 1.5015, 3.003, 4.5045, 6.006, 7.5075, 9.009], keyframes);
+        Assert.Equal(1, reports[^1]);
+        Assert.Equal(keyframes, await KeyframeScanner.ScanAsync(info, cancellationToken: Ct));
+    }
+
+    [Fact]
+    public async Task With_B_frames_the_keyframes_are_read_through()
+    {
+        media.SkipIfUnavailable();
+        var info = await MediaProbe.ProbeAsync(media.Mp4, Ct);
+        Assert.False(KeyframeScanner.CanSkipToKeyframes(info));
+
+        // Had the probe missed the B-frames, reading the keyframes alone would give up on seeing them.
+        Assert.Null(await KeyframeScanner.ReadKeyframesOnlyAsync(info, null, Ct));
+    }
+
+    [Fact]
     public async Task Waveform_has_the_level_of_each_stream()
     {
         media.SkipIfUnavailable();
