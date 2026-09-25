@@ -36,6 +36,43 @@ public static class ExportRunner
         var written = new List<string>();
         string? current = null;
         double done = 0;
+        var active = plan;
+
+        // One step with ffmpeg; its error lines become the exception's message.
+        async Task RunFfmpegAsync(ExportPlan stepPlan, ExportStep step, int index, double before)
+        {
+            var errors = new Queue<string>();
+            var command = FfmpegCommands.ForStep(stepPlan, step)
+                .NotifyOnProgress(t =>
+                {
+                    double f = step.Duration > 0 ? Math.Clamp(t.TotalSeconds / step.Duration, 0, 1) : 0;
+                    progress?.Report(new ExportProgress(index, f, before + f * step.Weight));
+                })
+                .NotifyOnError(line =>
+                {
+                    lock (errors)
+                    {
+                        errors.Enqueue(line);
+                        if (errors.Count > 20)
+                            errors.Dequeue();
+                    }
+                })
+                .CancellableThrough(cancellationToken);
+            try
+            {
+                await command.ProcessAsynchronously(throwOnError: true, options).ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is FFMpegException or Instances.Exceptions.InstanceFileNotFoundException
+                                      && !cancellationToken.IsCancellationRequested)
+            {
+                string tail;
+                lock (errors)
+                    tail = string.Join('\n', errors.Where(l => !l.StartsWith("frame=", StringComparison.Ordinal)
+                                                             && !l.StartsWith("size=", StringComparison.Ordinal)));
+                throw new MediaToolException("ffmpeg", -1, tail.Length > 0 ? tail : e.Message);
+            }
+        }
+
         // Everything that writes a file, temporary ones included, is inside the try: whenever the export stops,
         // the finally removes the temporary files from the output folder.
         try
@@ -62,35 +99,17 @@ public static class ExportRunner
                 double before = done;
                 progress?.Report(new ExportProgress(i, 0, before));
 
-                var errors = new Queue<string>();
-                var command = FfmpegCommands.ForStep(plan, step)
-                    .NotifyOnProgress(t =>
-                    {
-                        double f = step.Duration > 0 ? Math.Clamp(t.TotalSeconds / step.Duration, 0, 1) : 0;
-                        progress?.Report(new ExportProgress(index, f, before + f * step.Weight));
-                    })
-                    .NotifyOnError(line =>
-                    {
-                        lock (errors)
-                        {
-                            errors.Enqueue(line);
-                            if (errors.Count > 20)
-                                errors.Dequeue();
-                        }
-                    })
-                    .CancellableThrough(cancellationToken);
                 try
                 {
-                    await command.ProcessAsynchronously(throwOnError: true, options).ConfigureAwait(false);
+                    await RunFfmpegAsync(active, step, index, before).ConfigureAwait(false);
                 }
-                catch (Exception e) when (e is FFMpegException or Instances.Exceptions.InstanceFileNotFoundException
-                                          && !cancellationToken.IsCancellationRequested)
+                catch (MediaToolException) when (active.Settings.GpuEncoder is not null && !cancellationToken.IsCancellationRequested)
                 {
-                    string tail;
-                    lock (errors)
-                        tail = string.Join('\n', errors.Where(l => !l.StartsWith("frame=", StringComparison.Ordinal)
-                                                                 && !l.StartsWith("size=", StringComparison.Ordinal)));
-                    throw new MediaToolException("ffmpeg", -1, tail.Length > 0 ? tail : e.Message);
+                    // The GPU encoder could not take this video (its size, say): the CPU encodes this step and the rest.
+                    await TryDeleteAsync(step.OutputPath).ConfigureAwait(false);
+                    active = active with { Settings = active.Settings with { GpuEncoder = null } };
+                    progress?.Report(new ExportProgress(i, 0, before));
+                    await RunFfmpegAsync(active, step, index, before).ConfigureAwait(false);
                 }
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!File.Exists(step.OutputPath))

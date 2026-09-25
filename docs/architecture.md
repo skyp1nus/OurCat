@@ -84,7 +84,11 @@ A merged lossless export cuts every clip to a temporary file and joins them with
 written afterwards from the real length of each cut, so they start exactly where their clip does.
 
 A re-encoded merge is one ffmpeg pass: each clip is its own frame-accurately seeked input, joined with the concat
-filter. Re-encoding one clip per file copies audio when asked, dropping packets before the in-point
+filter. With `ExportSettings.GpuEncoder` (NVENC, AMF, Quick Sync or VideoToolbox) the video is encoded on the GPU at a
+constant quality near the preset's CRF (`GpuEncoder.Arguments`); if a step fails there, the CPU encodes it and the
+rest. At start the app looks for one (`GpuEncoderProbe`): ffmpeg lists the encoders it was built with, and each listed
+one is tried on a few frames with the export's own arguments, since most builds list them all whatever the hardware.
+Settings → Export shows what was found; "Use the GPU encoder when available" decides whether re-encoding uses it. Re-encoding one clip per file copies audio when asked, dropping packets before the in-point
 (`-copypriorss 0`).
 
 Output names come from Settings → Export's file name pattern (`ExportSettings.FileNamePattern`, filled by
@@ -258,7 +262,6 @@ Places where the UI and the setting exist but the behaviour does not are marked 
 - **Shortcuts**: `Shortcuts.Handle` dispatches fixed keys instead of `KeyMap.Find(KeyCombo.From(key, mods))`.
 - **Playback**: hardware decoding and the renderer apply at the next start; the audio device list and output; the
   Jump chips show fixed keys.
-- **Export defaults**: the GPU encoder is saved but not used by the export; GPU encoder detection.
 - **General**: the startup action, the recent files limit, the cache size and Clear cache.
 - **Transcription**: the Transcript tab's status says CPU until transcription runs on a GPU.
 

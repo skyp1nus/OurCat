@@ -291,6 +291,35 @@ public class MediaIntegrationTests(SampleMediaFixture media) : IClassFixture<Sam
     }
 
     [Fact]
+    public async Task A_gpu_encoder_that_fails_hands_over_to_the_cpu()
+    {
+        media.SkipIfUnavailable();
+        var (info, keyframes) = await Analyse(media.Mp4);
+        string folder = media.NewOutputFolder();
+        var missing = new GpuEncoder("Missing", "no_such_encoder");
+        var plan = ExportPlanner.Plan(Project(info), info, keyframes,
+            Settings(folder) with { Mode = CutMode.Reencode, Merge = false, Video = VideoEncoding.H264Fast, GpuEncoder = missing });
+
+        var written = await ExportRunner.RunAsync(plan, cancellationToken: Ct);
+
+        Assert.Equal(plan.Outputs, written);
+        Assert.Equal(2, Directory.GetFiles(folder).Length);
+        Assert.Equal(1.7, (await MediaProbe.ProbeAsync(written[0], Ct)).Duration, 0.1);
+    }
+
+    [Fact]
+    public async Task A_gpu_encoder_is_found_only_if_it_encodes()
+    {
+        media.SkipIfUnavailable();
+
+        var found = await GpuEncoderProbe.DetectAsync(cancellationToken: Ct);
+
+        // No GPU on CI: none. On a computer with one, what was found really encodes.
+        if (found is not null)
+            await ToolProcess.RunAsync("ffmpeg", GpuEncoderProbe.TestArguments(found.Encoder, VideoEncoding.H264Quality), null, Ct);
+    }
+
+    [Fact]
     public async Task Cancelling_before_the_first_step_removes_the_chapters_file()
     {
         media.SkipIfUnavailable();

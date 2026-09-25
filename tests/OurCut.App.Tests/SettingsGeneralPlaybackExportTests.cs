@@ -39,6 +39,36 @@ public sealed class SettingsGeneralPlaybackExportTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Re_encoding_uses_the_gpu_encoder_found_at_start_when_allowed()
+    {
+        var editor = App.CreateEditor(null);
+        var settings = editor.Settings;
+        var export = editor.Export;
+        Assert.Equal("No GPU encoder found. Re-encoding uses the CPU.", settings.GpuEncoderNote);
+
+        await settings.DetectGpuEncoderAsync(_ => Task.FromResult<GpuEncoderSupport?>(new(GpuEncoder.Nvenc, Hevc: false)), TestContext.Current.CancellationToken);
+
+        Assert.Equal("Detected: NVIDIA NVENC. H.265 still uses the CPU.", settings.GpuEncoderNote);
+        Assert.Null(export.BuildSettings().GpuEncoder);
+        export.Mode = ExportMode.Encode;
+        Assert.Same(GpuEncoder.Nvenc, export.BuildSettings().GpuEncoder);
+        Assert.EndsWith("H.264 re-encode on NVIDIA NVENC", export.EstimateLine, StringComparison.Ordinal);
+        export.Video = VideoEncoding.H265;
+        Assert.Null(export.BuildSettings().GpuEncoder);
+        Assert.EndsWith("H.265 re-encode", export.EstimateLine, StringComparison.Ordinal);
+
+        export.Video = VideoEncoding.H264Quality;
+        settings.UseGpuEncoder = false;
+        Assert.Null(export.BuildSettings().GpuEncoder);
+
+        await settings.DetectGpuEncoderAsync(_ => Task.FromResult<GpuEncoderSupport?>(new(GpuEncoder.Amf, Hevc: true)), TestContext.Current.CancellationToken);
+        Assert.Equal("Detected: AMD AMF", settings.GpuEncoderNote);
+        await settings.DetectGpuEncoderAsync(_ => Task.FromResult<GpuEncoderSupport?>(null), TestContext.Current.CancellationToken);
+        Assert.Equal("No GPU encoder found. Re-encoding uses the CPU.", settings.GpuEncoderNote);
+        Assert.Null(export.Gpu);
+    }
+
+    [AvaloniaFact]
     public void General_playback_and_export_choices_are_saved_and_read_back()
     {
         var store = new AppSettingsStore(SettingsFile);

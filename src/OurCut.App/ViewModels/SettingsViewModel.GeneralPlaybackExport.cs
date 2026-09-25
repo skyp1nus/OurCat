@@ -60,7 +60,7 @@ public sealed partial class SettingsViewModel
         LoadExportDefaults(null);
         // Shown only: the Export dialog's demo screens keep the plain defaults.
         FixedExportFolder = @"D:\Videos\Exports";
-        GpuEncoderNote = GpuNote("NVIDIA NVENC (RTX 4070)");
+        GpuEncoderNote = "Detected: NVIDIA NVENC (RTX 4070)";
         _loading = wasLoading;
         RefreshNamePreview();
     }

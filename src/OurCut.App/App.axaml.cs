@@ -40,6 +40,8 @@ public partial class App : Application
                 editor.Settings.Store = store;
                 editor.Settings.Installer = new ModelInstaller(ModelInstaller.CreateHttpClient());
                 editor.RevealInFolder = FileManager.Reveal;
+                // A few test encodes in the background; the Export dialog uses what they find.
+                _ = editor.Settings.DetectGpuEncoderAsync();
                 // Claude connects through "OurCut mcp" (Settings → MCP server).
                 mcp = new EditorMcpServer(editor);
                 mcp.Start();

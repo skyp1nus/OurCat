@@ -347,8 +347,18 @@ public sealed partial class ExportViewModel : ViewModelBase
     public string ProgressDetail => (IsByClaude ? "Started by Claude · " : "")
         + (HasError ? ErrorText! : IsDone ? $"{(Merge ? MergedFileName : FileCountText)} · {OutputFolder}" : Stats);
 
-    /// <summary>The dialog's footer: estimated size and whether anything is re-encoded.</summary>
-    public string EstimateLine => Estimate + (Mode == ExportMode.Copy ? " · no re-encode" : " · " + Video.Label.Split(' ')[0] + " re-encode");
+    /// <summary>The dialog's footer: estimated size and whether anything is re-encoded, and on which GPU.</summary>
+    public string EstimateLine => Estimate + (Mode == ExportMode.Copy ? " · no re-encode"
+        : " · " + Video.Label.Split(' ')[0] + " re-encode" + (GpuEncoderFor(Video) is { } gpu ? " on " + gpu.Name : ""));
+
+    /// <summary>The GPU encoder found at start (Settings → Export); null for none.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Estimate), nameof(EstimateLine))]
+    public partial GpuEncoderSupport? Gpu { get; set; }
+
+    /// <summary>The GPU encoder a re-encode uses: when Settings → Export allows it and it can encode <paramref name="video"/>.</summary>
+    private GpuEncoder? GpuEncoderFor(VideoEncoding video) =>
+        Mode == ExportMode.Encode && Defaults.UseGpuEncoder ? Gpu?.For(video) : null;
     public string FileCountText => Merge ? "1 file" : $"{Included.Count} files";
     public string Footer => $"{ModeTitle} · {Container} · {(Merge ? "merged" : "separate files")}";
     public string PercentText => Math.Floor(Progress * 100).ToString(CultureInfo.InvariantCulture) + "%";
@@ -430,7 +440,9 @@ public sealed partial class ExportViewModel : ViewModelBase
         double pixelRate = Math.Max(1, (double)v.Width * v.Height * Math.Max(1, v.FrameRate));
         double hd = 1920.0 * 1080 * 30;
         double preset = Video == VideoEncoding.H264Fast ? 4 : Video == VideoEncoding.H265 ? 0.5 : 1.5;
-        return Math.Max(0.05, preset * hd / pixelRate);
+        // A GPU encoder is several times faster than x264 or x265 on the CPU.
+        double gpu = GpuEncoderFor(Video) is null ? 1 : Video == VideoEncoding.H265 ? 10 : 4;
+        return Math.Max(0.05, preset * gpu * hd / pixelRate);
     }
 
     private static string Size(double bytes) => bytes >= 1e9
@@ -596,7 +608,7 @@ public sealed partial class ExportViewModel : ViewModelBase
         _overwrite = Defaults.IfExists == FileExistsAction.Overwrite;
         // Settings → Export → If the file exists: Ask. The dialog asks before anything is written.
         if (Defaults.IfExists == FileExistsAction.Ask
-            && ExportPlanner.OutputNames(_editor.Session.Project, BuildSettings(Preview!.Info)).Where(File.Exists)
+            && ExportPlanner.OutputNames(_editor.Session.Project, BuildSettings()).Where(File.Exists)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList() is { Count: > 0 } existing)
         {
             ExistingFiles = existing;
@@ -746,10 +758,9 @@ public sealed partial class ExportViewModel : ViewModelBase
     }
 
     /// <summary>The settings as the Media layer takes them.</summary>
-    public ExportSettings BuildSettings(MediaInfo info)
+    public ExportSettings BuildSettings()
     {
         var tracks = _editor.Session.Project.Source?.AudioTracks ?? [];
-        // STUB: re-encode with the detected GPU encoder when Defaults.UseGpuEncoder.
         return new ExportSettings
         {
             Mode = Mode switch { ExportMode.Copy => CutMode.Lossless, ExportMode.Smart => CutMode.SmartCut, _ => CutMode.Reencode },
@@ -766,6 +777,7 @@ public sealed partial class ExportViewModel : ViewModelBase
             // Claude's exports never replace a file.
             Overwrite = _overwrite && !IsByClaude,
             Video = Video,
+            GpuEncoder = GpuEncoderFor(Video),
             Audio = Audio.Encoding,
         };
     }
@@ -791,7 +803,7 @@ public sealed partial class ExportViewModel : ViewModelBase
             cts.Token.ThrowIfCancellationRequested();
             IsPreparing = false;
 
-            var plan = ExportPlanner.Plan(_editor.Session.Project, preview.Info, keyframes, BuildSettings(preview.Info));
+            var plan = ExportPlanner.Plan(_editor.Session.Project, preview.Info, keyframes, BuildSettings());
             _plan = plan;
             BuildRows(plan);
             OnPropertyChanged(nameof(OutputPath));
