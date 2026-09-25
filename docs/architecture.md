@@ -243,7 +243,10 @@ bind to view models and never change the project themselves.
   source-generated JSON, enums by name (`LenientEnumConverter`). A section missing from the file (an older version
   wrote it, or it is at its defaults) reads as null and means the defaults; a value this version does not know falls
   back to its default, and the rest of the file is kept.
-  Playback is read before the player is created, since the renderer and hardware decoding are chosen at start.
+  Playback is read before the player is created, which starts with the saved decoding and audio device. Changes apply
+  while it plays: `IPlayer.SetHardwareDecoding` (mpv `hwdec`), `SetAudioDevice` (`audio-device`, one of
+  `AudioDevices`, mpv's `audio-device-list`, listed again whenever Settings opens; the setting keeps mpv's name and the
+  list shows its description), and the renderer through `VideoView.SoftwareOnly`, which rebuilds the view.
 - **Key map**: `KeyMap` (each `ShortcutAction`'s `KeyCombo`s; the defaults are `KeyMap.Catalog`) is what Settings →
   Keyboard (`KeyboardSettingsViewModel`) edits: search, recording (while `IsRecording`, `Shortcuts.Handle` hands every
   key to `Record`), conflicts (Replace takes the key from the other action, so no key runs two actions) and reset.
@@ -260,7 +263,6 @@ bind to view models and never change the project themselves.
 Places where the UI and the setting exist but the behaviour does not are marked with a one-line `// STUB:` comment
 (`grep -rn "// STUB:" src`):
 
-- **Playback**: hardware decoding and the renderer apply at the next start; the audio device list and output.
 - **General**: the startup action, the recent files limit, the cache size and Clear cache.
 - **Transcription**: the Transcript tab's status says CPU until transcription runs on a GPU.
 

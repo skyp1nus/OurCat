@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace OurCut.Media.Playback;
 
@@ -28,7 +29,13 @@ public sealed record MpvPlayerOptions
 
     /// <summary>mpv's <c>hwdec</c>. Copy-back decoding works with every renderer.</summary>
     public string HardwareDecoding { get; init; } = "auto-copy";
+
+    /// <summary>mpv's <c>audio-device</c> (<see cref="MpvPlayer.AudioDevices"/>); null for the system default.</summary>
+    public string? AudioDevice { get; init; }
 }
+
+/// <summary>An audio output mpv can play to: its name ("wasapi/{…}", "pulse/…") and what the system calls it.</summary>
+public sealed record AudioOutputDevice(string Name, string Description);
 
 /// <summary>
 /// How mpv plays the audio tracks that are not muted: one track directly (<c>aid</c>), several mixed
@@ -112,6 +119,8 @@ public sealed class MpvPlayer : IDisposable
         SetOption("audio-client-name", "OurCut");
         if (options.AudioOutput is { } ao)
             SetOption("ao", ao, required: true);
+        if (options.AudioDevice is { } device)
+            SetOption("audio-device", device);
 
         int status = MpvNative.mpv_initialize(Handle);
         if (status < 0)
@@ -219,6 +228,43 @@ public sealed class MpvPlayer : IDisposable
         {
             Command(0, "set", "aid", mix.AudioTrack);
             Command(0, "set", "lavfi-complex", mix.LavfiComplex);
+        }
+    }
+
+    /// <summary>Plays to <paramref name="name"/>, one of <see cref="AudioDevices"/>; null for the system default.</summary>
+    public void SetAudioDevice(string? name) => Command(0, "set", "audio-device", name ?? "auto");
+
+    /// <summary>Changes <c>hwdec</c> while playing ("auto-copy", "no").</summary>
+    public void SetHardwareDecoding(string hwdec) => Command(0, "set", "hwdec", hwdec);
+
+    /// <summary>The audio outputs mpv sees now, without "auto" (the system default).</summary>
+    public IReadOnlyList<AudioOutputDevice> AudioDevices() => ParseAudioDevices(GetPropertyString("audio-device-list"));
+
+    /// <summary><c>audio-device-list</c> as mpv writes it: [{"name":"auto","description":"Autoselect device"}, …].</summary>
+    internal static IReadOnlyList<AudioOutputDevice> ParseAudioDevices(string? json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return [];
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return [];
+            var devices = new List<AudioOutputDevice>();
+            foreach (var d in doc.RootElement.EnumerateArray())
+            {
+                if (d.ValueKind == JsonValueKind.Object && d.TryGetProperty("name", out var name) && name.GetString() is { Length: > 0 } n
+                    && n != "auto")
+                {
+                    string description = d.TryGetProperty("description", out var text) && text.GetString() is { Length: > 0 } t ? t : n;
+                    devices.Add(new AudioOutputDevice(n, description));
+                }
+            }
+            return devices;
+        }
+        catch (JsonException)
+        {
+            return [];
         }
     }
 

@@ -39,6 +39,15 @@ public interface IPlayer : IDisposable
 
     /// <summary>Which audio tracks are heard (one entry per track, in the file's order); muting is preview only.</summary>
     void SetAudioTracks(IReadOnlyList<bool> enabled);
+
+    /// <summary>The audio outputs the system has now; empty when they cannot be listed.</summary>
+    IReadOnlyList<AudioOutputDevice> AudioDevices();
+
+    /// <summary>Plays to a device of <see cref="AudioDevices"/>; null for the system default.</summary>
+    void SetAudioDevice(string? name);
+
+    /// <summary>Settings → Playback → Hardware decoding, from now on.</summary>
+    void SetHardwareDecoding(HardwareDecodingMode mode);
 }
 
 /// <summary><see cref="IPlayer"/> on libmpv. The video view attaches a renderer to <see cref="Mpv"/>.</summary>
@@ -85,6 +94,9 @@ public sealed class MpvPlaybackEngine : IPlayer
     public void SetVolume(double volume) => Mpv.SetVolume(volume);
     public void SetSpeed(double speed) => Mpv.SetSpeed(speed);
     public void SetAudioTracks(IReadOnlyList<bool> enabled) => Mpv.SetAudioTracks(enabled);
+    public IReadOnlyList<AudioOutputDevice> AudioDevices() => Mpv.AudioDevices();
+    public void SetAudioDevice(string? name) => Mpv.SetAudioDevice(name);
+    public void SetHardwareDecoding(HardwareDecodingMode mode) => Mpv.SetHardwareDecoding(PlaybackSettings.MpvHardwareDecoding(mode));
 
     /// <summary>mpv reports every frame; the UI hears about it at most once per dispatcher pass.</summary>
     private void PostChanged()

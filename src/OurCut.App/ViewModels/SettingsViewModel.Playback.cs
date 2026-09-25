@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using OurCut.App.Services;
+using OurCut.Media.Playback;
 
 namespace OurCut.App.ViewModels;
 
@@ -11,6 +12,9 @@ public sealed partial class SettingsViewModel
     private static readonly double[] JumpLengths = [0.5, 1, 2, 5];
 
     private DispatcherTimer? _volumeSpeedTimer;
+
+    /// <summary>The player's audio outputs: mpv's name for each description the list shows.</summary>
+    private IReadOnlyList<AudioOutputDevice> _audioDevices = [];
 
     private ChoiceSet<HardwareDecodingMode>? _hardwareDecodingChoices;
     private ChoiceSet<HardwareDecodingMode> HardwareDecodingChoices => _hardwareDecodingChoices ??= new(
@@ -31,10 +35,15 @@ public sealed partial class SettingsViewModel
     public partial HardwareDecodingMode HardwareDecoding { get; set; } = HardwareDecodingMode.Auto;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UsesSoftwareRenderer))]
     public partial VideoRendererMode Renderer { get; set; } = VideoRendererMode.Auto;
 
+    /// <summary>The video view draws without OpenGL (Renderer: Software).</summary>
+    public bool UsesSoftwareRenderer => Renderer == VideoRendererMode.Software;
+
+    /// <summary>"System default", then the player's audio outputs by description.</summary>
     [ObservableProperty]
-    public partial IReadOnlyList<string> AudioDevices { get; private set; } = ListAudioDevices();
+    public partial IReadOnlyList<string> AudioDevices { get; private set; } = [SystemDefaultDevice];
 
     [ObservableProperty]
     public partial string AudioDevice { get; set; } = SystemDefaultDevice;
@@ -49,14 +58,14 @@ public sealed partial class SettingsViewModel
     partial void OnHardwareDecodingChanged(HardwareDecodingMode value)
     {
         _hardwareDecodingChoices?.Select(value);
-        // STUB: apply to the running player (mpv hwdec); today it takes effect at the next start.
+        _editor.Player?.SetHardwareDecoding(value);
         SavePlayback();
     }
 
     partial void OnRendererChanged(VideoRendererMode value)
     {
         _rendererChoices?.Select(value);
-        // STUB: rebuild VideoView with the new renderer; today it takes effect at the next start.
+        // The video view follows UsesSoftwareRenderer.
         SavePlayback();
     }
 
@@ -65,7 +74,7 @@ public sealed partial class SettingsViewModel
         // The list clears its selection while its items are replaced.
         if (value is null)
             return;
-        // STUB: set mpv audio-device on the player (MpvPlayerOptions has no device yet).
+        _editor.Player?.SetAudioDevice(DeviceName(value));
         SavePlayback();
     }
 
@@ -86,8 +95,44 @@ public sealed partial class SettingsViewModel
         ? s with { Volume = _editor.Volume, Speed = _editor.Speed }
         : s with { Volume = null, Speed = null };
 
+    private void InitPlayback()
+    {
+        // A device plugged in since shows up the next time the dialog opens.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(IsOpen) && IsOpen)
+                RefreshAudioDevices();
+        };
+        _editor.PropertyChanged += OnVolumeOrSpeedChanged;
+    }
+
+    /// <summary>Lists the player's audio outputs; the chosen one stays listed even when it is unplugged.</summary>
+    private void RefreshAudioDevices()
+    {
+        if (_editor.IsDemo || _editor.Player is not { } player)
+            return;
+        string chosen = AudioDevice;
+        _audioDevices = player.AudioDevices();
+        var shown = new List<string> { SystemDefaultDevice };
+        shown.AddRange(_audioDevices.Select(d => d.Description).Distinct(StringComparer.Ordinal));
+        if (!shown.Contains(chosen))
+            shown.Add(chosen);
+        bool wasLoading = _loading;
+        _loading = true;
+        AudioDevices = shown;
+        AudioDevice = chosen;
+        _loading = wasLoading;
+    }
+
+    /// <summary>mpv's name for a device the list shows; a device that is not plugged in is shown by its name.</summary>
+    private string? DeviceName(string shown) => shown == SystemDefaultDevice ? null
+        : _audioDevices.FirstOrDefault(d => d.Description == shown)?.Name ?? shown;
+
+    private string DeviceShown(string? name) => name is null ? SystemDefaultDevice
+        : _audioDevices.FirstOrDefault(d => d.Name == name)?.Description ?? name;
+
     // A slider drag is saved once, after it stops.
-    private void InitPlayback() => _editor.PropertyChanged += (_, e) =>
+    private void OnVolumeOrSpeedChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName is not (nameof(EditorViewModel.Volume) or nameof(EditorViewModel.Speed))
             || !RememberVolumeAndSpeed || _loading || _editor.IsDemo)
@@ -103,10 +148,7 @@ public sealed partial class SettingsViewModel
         }
         _volumeSpeedTimer.Stop();
         _volumeSpeedTimer.Start();
-    };
-
-    // STUB: list mpv's audio-device-list.
-    private static IReadOnlyList<string> ListAudioDevices() => [SystemDefaultDevice];
+    }
 
     private void SavePlayback() => UpdateSettings(s => s with { Playback = ToPlaybackSettings() });
 
@@ -114,8 +156,7 @@ public sealed partial class SettingsViewModel
     internal PlaybackSettings ToPlaybackSettings()
     {
         var stored = _settings.Playback;
-        return new(HardwareDecoding, Renderer, AudioDevice == SystemDefaultDevice ? null : AudioDevice, JumpSeconds, RememberVolumeAndSpeed,
-            stored?.Volume, stored?.Speed);
+        return new(HardwareDecoding, Renderer, DeviceName(AudioDevice), JumpSeconds, RememberVolumeAndSpeed, stored?.Volume, stored?.Speed);
     }
 
     /// <summary>Shows <paramref name="s"/>; a value the dialog does not offer reads as its default.</summary>
@@ -124,7 +165,8 @@ public sealed partial class SettingsViewModel
         s ??= new();
         HardwareDecoding = Enum.IsDefined(s.HardwareDecoding) ? s.HardwareDecoding : HardwareDecodingMode.Auto;
         Renderer = Enum.IsDefined(s.Renderer) ? s.Renderer : VideoRendererMode.Auto;
-        string device = string.IsNullOrWhiteSpace(s.AudioDevice) ? SystemDefaultDevice : s.AudioDevice;
+        RefreshAudioDevices();
+        string device = DeviceShown(string.IsNullOrWhiteSpace(s.AudioDevice) ? null : s.AudioDevice);
         // A device that is not plugged in now stays chosen, so the list shows it.
         if (!AudioDevices.Contains(device))
             AudioDevices = [.. AudioDevices, device];
