@@ -164,7 +164,8 @@ public sealed class RealMediaTests : IDisposable
         var preview = (MediaPreview)editor.Media!;
         // Scene detection waits for the Scenes chip (or Claude).
         Assert.False(editor.HasSceneData);
-        Assert.Equal("Find scene changes (reads every frame, so it takes a while)", editor.ScenesTip);
+        Assert.False(preview.ScenesRequested);
+        Assert.Equal("Show scene changes (finding them reads every frame, so it takes a while)", editor.ScenesTip);
         Assert.True(editor.CanToggleScenes);
         Assert.False(editor.ScenesOn);
 
@@ -324,10 +325,41 @@ public sealed class RealMediaTests : IDisposable
         Assert.Equal(a.Keyframes, b.Keyframes);
         Assert.Equal(a.ThumbnailCount, b.ThumbnailCount);
         Assert.Equal(a.Waveform.Filled, b.Waveform.Filled);
-        // Scene changes found before are shown again without asking.
+        // Scene changes found before are read back too; the chip (off at first) only decides whether they are shown.
         Assert.Equal("keyframes cached · thumbnails cached · waveform cached · scenes cached", b.AnalysisTimes);
         Assert.True(b.ScenesRequested && b.ScenesComplete);
+        Assert.False(second.ScenesOn);
+        second.ToggleScenesCommand.Execute(null);
         Assert.True(second.ScenesOn);
+        // The sample is one shot: the cached search found nothing, and nothing is searched again.
+        Assert.Equal("No scene changes found", second.ScenesTip);
+        // Turning the chip off keeps what was found.
+        second.ToggleScenesCommand.Execute(null);
+        Assert.True(b.ScenesComplete);
+        w2.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Turning_the_Scenes_chip_off_stops_the_search_and_keeps_nothing_of_it()
+    {
+        string video = await SampleAsync();
+        var (editor, window) = await OpenAsync(video);
+        var preview = (MediaPreview)editor.Media!;
+        editor.ToggleScenesCommand.Execute(null);
+        Assert.True(preview.ScenesRequested);
+
+        editor.ToggleScenesCommand.Execute(null);
+        await preview.ScenesTask.WaitAsync(TimeSpan.FromSeconds(60), Ct);
+        Assert.False(preview.ScenesRequested);
+        Assert.Empty(preview.SceneChanges);
+        Assert.DoesNotContain("scenes", preview.AnalysisTimes, StringComparison.Ordinal);
+        window.Close();
+
+        // Nothing half done was cached: the next open has no scene changes until the chip asks.
+        var (again, w2) = await OpenAsync(video);
+        var b = (MediaPreview)again.Media!;
+        Assert.False(b.ScenesRequested);
+        Assert.DoesNotContain("scenes", b.AnalysisTimes, StringComparison.Ordinal);
         w2.Close();
     }
 

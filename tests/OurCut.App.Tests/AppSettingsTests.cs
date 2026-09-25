@@ -24,7 +24,8 @@ public sealed class AppSettingsTests : IDisposable
             Merge: false, Chapters: false, ExportAudioTracksMode.UnmutedOnly, ReencodeVideoPreset.H265, ReencodeAudioChoice.Aac192,
             UseGpuEncoder: false, FileExistsAction.Overwrite, AfterExportAction.Nothing),
         new KeyboardSettings(new Dictionary<string, IReadOnlyList<string>> { ["ToggleExclude"] = ["Ctrl E"], ["Export"] = [] }),
-        new McpSettings(Enabled: false, "Ask", "Allow", "Never"));
+        new McpSettings(Enabled: false, "Ask", "Allow", "Never"),
+        new TimelineSettings(Keyframes: false, Silences: false, Scenes: true, Snap: false));
 
     private static void AssertSame(AppSettings expected, AppSettings actual)
     {
@@ -35,6 +36,7 @@ public sealed class AppSettingsTests : IDisposable
         Assert.Equal(expected.Export, actual.Export);
         AssertLists(expected.Keyboard?.Shortcuts, actual.Keyboard?.Shortcuts);
         Assert.Equal(expected.Mcp, actual.Mcp);
+        Assert.Equal(expected.Timeline, actual.Timeline);
     }
 
     private static void AssertLists(IReadOnlyDictionary<string, IReadOnlyList<string>>? expected, IReadOnlyDictionary<string, IReadOnlyList<string>>? actual)
@@ -62,6 +64,7 @@ public sealed class AppSettingsTests : IDisposable
         string json = System.IO.File.ReadAllText(File);
         Assert.Contains("\"startup\": \"StartEmpty\"", json, StringComparison.Ordinal);
         Assert.Contains("\"video\": \"H265\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"timeline\": {", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -92,6 +95,7 @@ public sealed class AppSettingsTests : IDisposable
         Assert.Null(loaded.Export);
         Assert.Null(loaded.Keyboard);
         Assert.Null(loaded.Mcp);
+        Assert.Null(loaded.Timeline);
         Assert.Equal(AppSettings.Default with { Transcription = loaded.Transcription }, loaded);
     }
 

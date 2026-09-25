@@ -7,7 +7,8 @@ public sealed record AppSettings(
     PlaybackSettings? Playback = null,
     ExportDefaults? Export = null,
     KeyboardSettings? Keyboard = null,
-    McpSettings? Mcp = null)
+    McpSettings? Mcp = null,
+    TimelineSettings? Timeline = null)
 {
     public static AppSettings Default { get; } = new(new TranscriptionSettings());
 }
