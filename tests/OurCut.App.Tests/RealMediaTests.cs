@@ -213,6 +213,51 @@ public sealed class RealMediaTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Claude_exports_in_the_dialog_and_never_overwrites()
+    {
+        string video = await SampleAsync();
+        var (editor, window) = await OpenAsync(video);
+        MarkTwoClips(editor);
+        string outDir = Path.Combine(_dir, "by-claude");
+        var tools = new OurCut.Mcp.EditorTools(new EditorMcpHost(editor));
+
+        var first = await tools.Export(container: "mkv", folder: outDir);
+
+        Assert.Equal("done", first.Status);
+        Assert.Equal([Path.Combine(outDir, "sample-cut.mkv")], first.Files);
+        Assert.Equal("Lossless copy · MKV · merged", first.Settings);
+        Assert.True(File.Exists(first.Files[0]));
+        // The user sees it in the Export dialog, as if they had pressed Export.
+        Assert.True(editor.Export.IsExporting && editor.Export.IsDone);
+
+        var second = await tools.Export(container: "mkv", folder: outDir);
+        Assert.Equal([Path.Combine(outDir, "sample-cut (2).mkv")], second.Files);
+        Assert.Equal("done", (await tools.GetExportStatus()).Status);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Claude_can_cancel_its_export()
+    {
+        string video = await SampleAsync();
+        var (editor, window) = await OpenAsync(video);
+        MarkTwoClips(editor);
+        string outDir = Directory.CreateDirectory(Path.Combine(_dir, "cancelled")).FullName;
+        var host = new EditorMcpHost(editor);
+
+        Assert.Null(host.StartExport(new OurCut.Mcp.ExportRequest(Mode: "reencode", Folder: outDir)));
+        Assert.Equal("running", host.Export!.Status);
+        Assert.Contains("already running", host.StartExport(new OurCut.Mcp.ExportRequest()), StringComparison.Ordinal);
+        Assert.True(host.CancelExport());
+
+        Assert.Equal("cancelled", host.Export!.Status);
+        Assert.False(editor.Export.IsDialogOpen);
+        await PumpUntil(() => editor.StatusMessage == "Export cancelled.");
+        Assert.Empty(Directory.GetFiles(outDir));
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public async Task Reencoding_into_separate_files_shows_one_row_per_file()
     {
         string video = await SampleAsync();

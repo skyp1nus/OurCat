@@ -30,7 +30,7 @@ editor as they happen, each one undoable.
 
 - **Claude via MCP** (done): Claude reads the project and edits the timeline — add, trim, split, exclude,
   reorder and rename clips, several edits as one undo step, revert any earlier edit, move the playhead, open
-  videos and save the project. See [Connecting Claude](#connecting-claude).
+  videos, save the project and export it (the Export dialog shows the progress; files are never overwritten). See [Connecting Claude](#connecting-claude).
 - **Silence and scene detection** (done): pauses (from the waveform, at a level that follows the recording's
   background noise) show as hatched bands on the audio lanes, scene changes (a cut, a new slide or window) as
   markers on the ruler. Scene detection decodes the video once in the background and is cached. Claude can

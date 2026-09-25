@@ -261,6 +261,23 @@ public class MediaIntegrationTests(SampleMediaFixture media) : IClassFixture<Sam
     }
 
     [Fact]
+    public async Task Cancelling_before_the_first_step_removes_the_chapters_file()
+    {
+        media.SkipIfUnavailable();
+        var (info, keyframes) = await Analyse(media.Mp4);
+        string folder = media.NewOutputFolder();
+        // A re-encoded merge writes its chapters file before ffmpeg runs.
+        var plan = ExportPlanner.Plan(Project(info), info, keyframes, Settings(folder) with { Mode = CutMode.Reencode });
+        Assert.NotNull(plan.ChaptersPath);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExportRunner.RunAsync(plan, cancellationToken: cts.Token));
+
+        Assert.Empty(Directory.GetFiles(folder));
+    }
+
+    [Fact]
     public async Task Ffmpeg_errors_are_reported_and_cleaned_up()
     {
         media.SkipIfUnavailable();
