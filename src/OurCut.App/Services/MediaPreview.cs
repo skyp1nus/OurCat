@@ -123,7 +123,7 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
                 parts.Add(_thumbnailsDone ? 1 : Math.Min(1, (double)ThumbnailCount / Math.Max(1, _expectedThumbnails)));
             }
             if (Info.Audio.Length > 0)
-                parts.Add(Waveform.IsComplete ? 1 : (double)Waveform.Filled / Math.Max(1, Waveform.Capacity));
+                parts.Add(Waveform.IsComplete ? 1 : (double)Waveform.Decoded / Math.Max(1, Waveform.Capacity));
             return parts.Count == 0 ? 1 : parts.Average();
         }
     }

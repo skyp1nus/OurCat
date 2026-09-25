@@ -1,20 +1,24 @@
 using System.Buffers.Binary;
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using OurCut.Media.Probing;
 using OurCut.Media.Tools;
 
 namespace OurCut.Media.Previews;
 
 /// <summary>
-/// Audio peaks of every audio stream, 100 buckets per second, filled progressively while ffmpeg decodes.
-/// Reading while it fills is safe: <see cref="Filled"/> only grows.
+/// Audio peaks of every audio stream, 100 buckets per second, filled progressively while ffmpeg decodes, in one
+/// stretch from the start or in several at once (<see cref="WaveformExtractor"/> splits long files). Reading while it
+/// fills is safe: a stretch only grows.
 /// </summary>
 public sealed class WaveformData
 {
     public const int BucketsPerSecond = 100;
 
     private readonly float[][] _peaks;
-    private int _filled;
+
+    /// <summary>What is decoded: (first bucket, buckets filled) per stretch, in order. Replaced, never changed.</summary>
+    private (int Start, int Count)[] _stretches = [(0, 0)];
 
     public WaveformData(int streams, double duration)
     {
@@ -25,14 +29,30 @@ public sealed class WaveformData
     internal WaveformData(float[][] peaks, int filled)
     {
         _peaks = peaks;
-        _filled = filled;
+        _stretches = [(0, filled)];
     }
 
     public int StreamCount => _peaks.Length;
     public int Capacity => _peaks.Length == 0 ? 0 : _peaks[0].Length;
 
-    /// <summary>Number of buckets decoded so far.</summary>
-    public int Filled => Volatile.Read(ref _filled);
+    /// <summary>Buckets decoded from the start without a gap (silence detection reads these).</summary>
+    public int Filled
+    {
+        get
+        {
+            int end = 0;
+            foreach (var (start, count) in Volatile.Read(ref _stretches))
+            {
+                if (start > end)
+                    break;
+                end = Math.Max(end, start + count);
+            }
+            return end;
+        }
+    }
+
+    /// <summary>Buckets decoded anywhere, for progress.</summary>
+    public int Decoded => Volatile.Read(ref _stretches).Sum(s => s.Count);
 
     public bool IsComplete { get; internal set; }
 
@@ -47,7 +67,11 @@ public sealed class WaveformData
             _peaks[stream][bucket] = peak;
     }
 
-    internal void Publish(int filled) => Volatile.Write(ref _filled, Math.Min(filled, Capacity));
+    internal void Publish(int filled) => Publish([(0, filled)]);
+
+    /// <summary>The stretches decoded so far, in order, each (first bucket, buckets filled).</summary>
+    internal void Publish(IEnumerable<(int Start, int Count)> stretches) =>
+        Volatile.Write(ref _stretches, [.. stretches.Select(s => (s.Start, Math.Clamp(s.Count, 0, Math.Max(0, Capacity - s.Start))))]);
 
     /// <summary>Takes over the peaks of another waveform of the same file, e.g. one read from the cache.</summary>
     public void CopyFrom(WaveformData other)
@@ -68,13 +92,15 @@ public sealed class WaveformData
     {
         if (stream < 0 || stream >= _peaks.Length)
             return 0;
-        int filled = Filled;
         int b0 = Math.Max(0, (int)Math.Floor(start * BucketsPerSecond));
-        int b1 = Math.Min(filled, Math.Max(b0 + 1, (int)Math.Ceiling(end * BucketsPerSecond)));
+        int b1 = Math.Max(b0 + 1, (int)Math.Ceiling(end * BucketsPerSecond));
         float max = 0;
         var p = _peaks[stream];
-        for (int b = b0; b < b1; b++)
-            max = Math.Max(max, p[b]);
+        foreach (var (first, count) in Volatile.Read(ref _stretches))
+        {
+            for (int b = Math.Max(b0, first), last = Math.Min(b1, first + count); b < last; b++)
+                max = Math.Max(max, p[b]);
+        }
         return ToDisplay(max);
     }
 
@@ -83,26 +109,86 @@ public sealed class WaveformData
 }
 
 /// <summary>
-/// Decodes all audio streams in one ffmpeg pass (each resampled to 8 kHz mono and merged into one
-/// interleaved stream) and folds the samples into <see cref="WaveformData"/> peaks.
+/// Decodes all audio streams (each resampled to 8 kHz mono and merged into one interleaved stream) and folds the
+/// samples into <see cref="WaveformData"/> peaks. Audio decodes on one core per ffmpeg, so a long file is split into
+/// stretches decoded at once, which fill in side by side.
 /// </summary>
 public static class WaveformExtractor
 {
     public const int SampleRate = 8000;
     private const int SamplesPerBucket = SampleRate / WaveformData.BucketsPerSecond;
 
+    /// <summary>Shortest stretch worth its own ffmpeg, in seconds.</summary>
+    private const double MinStretch = 30;
+
+    private const int MaxStretches = 8;
+
     public static WaveformData Create(MediaInfo info) => new(info.Audio.Length, info.Duration);
 
-    public static async Task ExtractAsync(MediaInfo info, WaveformData target, Action? onChunk = null,
-        CancellationToken cancellationToken = default)
+    /// <summary>How many stretches a file of <paramref name="duration"/> seconds is decoded in on <paramref name="cores"/> cores.</summary>
+    public static int StretchesFor(double duration, int cores) =>
+        Math.Clamp((int)(duration / MinStretch), 1, Math.Clamp(cores, 1, MaxStretches));
+
+    public static Task ExtractAsync(MediaInfo info, WaveformData target, Action? onChunk = null,
+        CancellationToken cancellationToken = default) =>
+        ExtractAsync(info, target, StretchesFor(info.Duration, Environment.ProcessorCount), onChunk, cancellationToken);
+
+    internal static async Task ExtractAsync(MediaInfo info, WaveformData target, int parts, Action? onChunk,
+        CancellationToken cancellationToken)
     {
-        int n = info.Audio.Length;
-        if (n == 0)
+        if (info.Audio.Length == 0)
         {
             target.IsComplete = true;
             return;
         }
-        await ToolProcess.RunAsync("ffmpeg", Arguments(info), async (stdout, ct) =>
+        int size = (int)Math.Ceiling((double)target.Capacity / parts);
+        var filled = new int[parts];
+        var gate = new Lock();
+        void Report(int part, int count)
+        {
+            lock (gate)
+            {
+                filled[part] = count;
+                target.Publish(filled.Select((c, p) => (p * size, c)));
+            }
+            onChunk?.Invoke();
+        }
+
+        // One failing stretch stops the others; its error is the one reported.
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var tasks = Enumerable.Range(0, parts).Select(async part =>
+        {
+            try
+            {
+                await ExtractStretchAsync(info, target, part * size, part == parts - 1 ? null : size, count => Report(part, count), stop.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                await stop.CancelAsync().ConfigureAwait(false);
+                throw;
+            }
+        }).ToArray();
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested
+                                                 && tasks.FirstOrDefault(t => t.IsFaulted)?.Exception?.InnerException is { } failure)
+        {
+            ExceptionDispatchInfo.Throw(failure);
+        }
+        target.IsComplete = true;
+        onChunk?.Invoke();
+    }
+
+    /// <summary>Decodes <paramref name="buckets"/> buckets (to the end if null) into the waveform from <paramref name="first"/> on.</summary>
+    private static Task ExtractStretchAsync(MediaInfo info, WaveformData target, int first, int? buckets, Action<int> report,
+        CancellationToken cancellationToken)
+    {
+        int n = info.Audio.Length;
+        return ToolProcess.RunAsync("ffmpeg", Arguments(info, (double)first / WaveformData.BucketsPerSecond,
+            buckets is { } b ? (double)b / WaveformData.BucketsPerSecond : null), async (stdout, ct) =>
         {
             var buffer = new byte[64 * 1024];
             int frameBytes = 2 * n, carry = 0, sampleInBucket = 0, bucket = 0;
@@ -128,7 +214,7 @@ public static class WaveformExtractor
                     {
                         for (int s = 0; s < n; s++)
                         {
-                            target.Set(s, bucket, peaks[s]);
+                            target.Set(s, first + bucket, peaks[s]);
                             peaks[s] = 0;
                         }
                         bucket++;
@@ -140,27 +226,32 @@ public static class WaveformExtractor
                     Buffer.BlockCopy(buffer, whole, buffer, 0, carry);
                 if ((DateTime.UtcNow - lastPublish).TotalMilliseconds > 250)
                 {
-                    target.Publish(bucket);
-                    onChunk?.Invoke();
+                    report(bucket);
                     lastPublish = DateTime.UtcNow;
                 }
             }
             if (sampleInBucket > 0)
             {
                 for (int s = 0; s < n; s++)
-                    target.Set(s, bucket, peaks[s]);
+                    target.Set(s, first + bucket, peaks[s]);
                 bucket++;
             }
-            target.Publish(bucket);
-        }, cancellationToken).ConfigureAwait(false);
-        target.IsComplete = true;
-        onChunk?.Invoke();
+            report(buckets is { } limit ? Math.Min(bucket, limit) : bucket);
+        }, cancellationToken);
     }
 
-    /// <summary>ffmpeg arguments: one 8 kHz mono channel per audio stream, interleaved s16le on stdout.</summary>
-    public static IReadOnlyList<string> Arguments(MediaInfo info)
+    /// <summary>ffmpeg arguments for the whole file: one 8 kHz mono channel per audio stream, interleaved s16le on stdout.</summary>
+    public static IReadOnlyList<string> Arguments(MediaInfo info) => Arguments(info, 0, null);
+
+    /// <summary>The same for <paramref name="length"/> seconds (to the end if null) from <paramref name="start"/>.</summary>
+    public static IReadOnlyList<string> Arguments(MediaInfo info, double start, double? length)
     {
-        var args = new List<string> { "-v", "error", "-i", info.Path, "-vn", "-sn", "-dn" };
+        var args = new List<string> { "-v", "error" };
+        if (start > 0)
+            args.AddRange(["-ss", start.ToString("0.###", CultureInfo.InvariantCulture)]);
+        args.AddRange(["-i", info.Path, "-vn", "-sn", "-dn"]);
+        if (length is { } seconds)
+            args.AddRange(["-t", seconds.ToString("0.###", CultureInfo.InvariantCulture)]);
         const string Mono = "aresample={0},aformat=sample_fmts=s16:channel_layouts=mono";
         string mono = string.Format(CultureInfo.InvariantCulture, Mono, SampleRate);
         if (info.Audio.Length == 1)

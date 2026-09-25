@@ -33,6 +33,37 @@ public class WaveformDataTests
     }
 
     [Fact]
+    public void Stretches_decoded_side_by_side_show_as_they_fill()
+    {
+        var data = new WaveformData(1, 1);
+        data.Set(0, 10, 0.5f);
+        data.Set(0, 60, 1f);
+        data.Set(0, 80, 1f);
+        data.Publish([(0, 20), (50, 20)]);
+
+        Assert.Equal(WaveformData.ToDisplay(0.5), data.Peak(0, 0, 0.3), 9);
+        Assert.Equal(1, data.Peak(0, 0.5, 0.7), 9);
+        // Bucket 80 is past the second stretch's filled part.
+        Assert.Equal(0, data.Peak(0, 0.75, 1));
+        Assert.Equal(20, data.Filled);
+        Assert.Equal(40, data.Decoded);
+
+        data.Publish([(0, 50), (50, 31)]);
+        Assert.Equal(81, data.Filled);
+        Assert.Equal(1, data.Peak(0, 0.75, 1), 9);
+    }
+
+    [Theory]
+    [InlineData(10, 8, 1)]
+    [InlineData(59, 8, 1)]
+    [InlineData(180, 4, 4)]
+    [InlineData(180, 16, 6)]
+    [InlineData(3600, 16, 8)]
+    [InlineData(3600, 1, 1)]
+    public void Long_files_are_decoded_in_stretches_of_at_least_30_s(double duration, int cores, int stretches) =>
+        Assert.Equal(stretches, WaveformExtractor.StretchesFor(duration, cores));
+
+    [Fact]
     public void Peak_of_a_range_shorter_than_a_bucket_still_reads_one_bucket()
     {
         var data = new WaveformData(1, 1);
@@ -77,6 +108,16 @@ public class WaveformDataTests
         var info = ExportSample.Info with { Audio = [ExportSample.Info.Audio[1]] };
         var args = WaveformExtractor.Arguments(info);
         Assert.Equal(["-map", "0:2", "-af", "aresample=8000,aformat=sample_fmts=s16:channel_layouts=mono"], args.Skip(7).Take(4));
+    }
+
+    [Fact]
+    public void A_stretch_seeks_to_its_start_and_stops_after_its_length()
+    {
+        var info = ExportSample.Info with { Audio = [ExportSample.Info.Audio[1]] };
+        Assert.Equal(["-v", "error", "-ss", "25.01", "-i", ExportSample.SourcePath, "-vn", "-sn", "-dn", "-t", "25.01", "-map", "0:2"],
+            WaveformExtractor.Arguments(info, 25.01, 25.01).Take(13));
+        Assert.Equal(["-v", "error", "-ss", "50.02", "-i", ExportSample.SourcePath, "-vn", "-sn", "-dn", "-map", "0:2"],
+            WaveformExtractor.Arguments(info, 50.02, null).Take(11));
     }
 }
 

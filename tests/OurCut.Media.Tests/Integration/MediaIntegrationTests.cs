@@ -115,6 +115,37 @@ public class MediaIntegrationTests(SampleMediaFixture media) : IClassFixture<Sam
     }
 
     [Fact]
+    public async Task A_long_file_decoded_in_stretches_gives_the_same_waveform_as_one_pass()
+    {
+        media.SkipIfUnavailable();
+        string path = Path.Combine(media.NewOutputFolder(), "long.m4a");
+        // 75 s of a tone whose loudness rises and falls every 10 s, and a stereo second stream at a steady level.
+        await ToolProcess.RunAsync("ffmpeg",
+        [
+            "-v", "error", "-f", "lavfi", "-i", "aevalsrc=0.5*sin(2*PI*440*t)*(0.55+0.45*sin(2*PI*0.1*t)):s=48000:d=75",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=75", "-map", "0:a", "-map", "1:a",
+            "-ac:1", "2", "-c:a", "aac", "-y", path,
+        ], null, Ct);
+        var info = await MediaProbe.ProbeAsync(path, Ct);
+        var whole = WaveformExtractor.Create(info);
+        var parts = WaveformExtractor.Create(info);
+        var chunks = 0;
+
+        await WaveformExtractor.ExtractAsync(info, whole, 1, null, Ct);
+        await WaveformExtractor.ExtractAsync(info, parts, 3, () => Interlocked.Increment(ref chunks), Ct);
+
+        Assert.True(parts.IsComplete);
+        Assert.Equal(whole.Filled, parts.Filled);
+        Assert.Equal(whole.Decoded, parts.Decoded);
+        Assert.True(chunks >= 3);
+        for (int s = 0; s < 2; s++)
+        {
+            for (int b = 0; b < whole.Filled; b++)
+                Assert.True(Math.Abs(whole[s, b] - parts[s, b]) < 0.02, $"stream {s}, bucket {b}: {whole[s, b]} vs {parts[s, b]}");
+        }
+    }
+
+    [Fact]
     public async Task Thumbnails_are_decoded_at_the_requested_interval()
     {
         media.SkipIfUnavailable();
