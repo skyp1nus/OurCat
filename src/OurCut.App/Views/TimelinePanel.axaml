@@ -44,7 +44,7 @@
                 <TextBlock Text="Silence" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
-            <Button Classes="chip" Classes.on="{Binding ShowScenes}" Height="24" Padding="8,0" IsEnabled="{Binding HasSceneData}"
+            <Button Classes="chip" Classes.on="{Binding ScenesOn}" Height="24" Padding="8,0" IsEnabled="{Binding CanToggleScenes}"
                     ToolTip.Tip="{Binding ScenesTip}" ToolTip.ShowOnDisabled="True"
                     Command="{Binding ToggleScenesCommand}">
               <StackPanel Orientation="Horizontal" Spacing="6">

@@ -16,7 +16,7 @@ public sealed class AppSettingsTests : IDisposable
 
     /// <summary>Every section with values other than its defaults.</summary>
     private AppSettings Changed() => new(
-        new TranscriptionSettings("Whisper", "best", "CPU", "Ukrainian", _dir, TranscribeOnOpen: false,
+        new TranscriptionSettings("Whisper", "best", "CPU", "Ukrainian", _dir, TranscribeOnOpen: true,
             FillerWords: new Dictionary<string, IReadOnlyList<string>> { ["en"] = ["um", "so"], ["uk"] = ["ну"] }),
         new GeneralSettings(StartupAction.StartEmpty, Autosave: false, RecentFilesLimit: 20),
         new PlaybackSettings(HardwareDecodingMode.Off, VideoRendererMode.Software, "Headphones", 5, RememberVolumeAndSpeed: false, 0.5, 1.5),
@@ -65,6 +65,19 @@ public sealed class AppSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Transcribing_on_open_saved_while_it_was_the_default_reads_as_off()
+    {
+        System.IO.File.WriteAllText(File, """{ "transcription": { "transcribeOnOpen": true } }""");
+        var store = new AppSettingsStore(File);
+
+        Assert.False(store.Load().Transcription.TranscribeOnOpen);
+
+        store.Save(AppSettings.Default with { Transcription = new TranscriptionSettings(TranscribeOnOpen: true) });
+        Assert.Contains("\"transcribeWhenOpened\": true", System.IO.File.ReadAllText(File), StringComparison.Ordinal);
+        Assert.True(store.Load().Transcription.TranscribeOnOpen);
+    }
+
+    [Fact]
     public void An_older_file_without_the_new_keys_reads_them_as_defaults()
     {
         System.IO.File.WriteAllText(File, """{ "transcription": { "engine": "Whisper", "language": "English" } }""");
@@ -72,7 +85,7 @@ public sealed class AppSettingsTests : IDisposable
         var loaded = new AppSettingsStore(File).Load();
 
         Assert.Equal(new TranscriptionSettings(Engine: "Whisper", Language: "English"), loaded.Transcription);
-        Assert.True(loaded.Transcription.TranscribeOnOpen);
+        Assert.False(loaded.Transcription.TranscribeOnOpen);
         Assert.Null(loaded.Transcription.FillerWords);
         Assert.Null(loaded.General);
         Assert.Null(loaded.Playback);

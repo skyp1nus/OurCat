@@ -21,8 +21,10 @@ namespace OurCut.App.Services;
 /// <summary>
 /// Preview of a real media file. Keyframes, the waveform and thumbnails are read from the cache or
 /// extracted with ffmpeg/ffprobe in the background, all three at once, and appear on the timeline
-/// as they arrive; the editor is usable immediately. Silences come from the waveform. Scene detection
-/// decodes the whole video, so it runs last. How long each part took is kept for Copy diagnostics.
+/// as they arrive; the editor is usable immediately. Silences come from the waveform. Scene detection and
+/// transcription go through the whole video, so they run only when asked for (<see cref="DetectScenes"/>,
+/// <see cref="StartTranscription"/>); what an earlier run cached is shown straight away. How long each part took is
+/// kept for Copy diagnostics.
 /// </summary>
 public sealed class MediaPreview : IMediaPreview, IDisposable
 {
@@ -48,6 +50,7 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     private volatile bool _thumbnailsDone;
     private volatile bool _analysing;
     private volatile bool _detectingScenes;
+    private int _scenesRequested;
     private volatile string? _error;
     private SceneScores? _scenes;
     private readonly TaskCompletionSource _mainAnalysisDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -90,7 +93,10 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     /// <summary>Completes with the keyframes once they are scanned (empty if the scan failed).</summary>
     public Task<IReadOnlyList<double>> KeyframesTask => _keyframesReady.Task;
 
-    /// <summary>Completes when the background analysis has finished, failed or been cancelled.</summary>
+    /// <summary>
+    /// Completes when keyframes, waveform and thumbnails (and cached scenes) are read, failed or cancelled. Scene
+    /// detection (<see cref="ScenesTask"/>) and transcription run on their own.
+    /// </summary>
     public Task Analysis { get; private set; } = Task.CompletedTask;
 
     /// <summary>Why part of the analysis failed, if it did.</summary>
@@ -157,7 +163,16 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     /// once keyframes, waveform and thumbnails are done (scene detection may still run) and fills in piece by piece.
     /// Asking again with the same model and language changes nothing; another model or language starts over.
     /// </summary>
-    public void StartTranscription(TranscriptionSetup setup)
+    public void StartTranscription(TranscriptionSetup setup) => Transcribe(setup, cachedOnly: false);
+
+    /// <summary>Shows the transcript <paramref name="setup"/>'s model made earlier, if the cache has it; transcribes nothing.</summary>
+    public void LoadTranscript(TranscriptionSetup setup)
+    {
+        if (_transcriptState == TranscriptState.None)
+            Transcribe(setup, cachedOnly: true);
+    }
+
+    private void Transcribe(TranscriptionSetup setup, bool cachedOnly)
     {
         if (_disposed || (setup.Key == _transcriptKey && _transcriptState is not (TranscriptState.None or TranscriptState.Failed)))
             return;
@@ -168,12 +183,12 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
         Volatile.Write(ref _transcript, null);
         Volatile.Write(ref _transcriptProgress, 0);
         _transcriptError = null;
-        _transcriptState = TranscriptState.Waiting;
+        _transcriptState = cachedOnly ? TranscriptState.None : TranscriptState.Waiting;
         NotifyChanged();
-        _ = Task.Run(() => TranscribeAsync(setup, cts), CancellationToken.None);
+        _ = Task.Run(() => TranscribeAsync(setup, cts, cachedOnly), CancellationToken.None);
     }
 
-    private async Task TranscribeAsync(TranscriptionSetup setup, CancellationTokenSource cts)
+    private async Task TranscribeAsync(TranscriptionSetup setup, CancellationTokenSource cts, bool cachedOnly)
     {
         var ct = cts.Token;
         string language = setup.Language ?? "auto";
@@ -187,6 +202,8 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
                 Finish(cached);
                 return;
             }
+            if (cachedOnly)
+                return;
             if (Info.Audio.Length == 0)
             {
                 Finish(new Transcript(setup.Model.Id, language, []));
@@ -250,7 +267,41 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
 
     public bool SilencesComplete => Info.Audio.Length == 0 || Waveform.IsComplete || Analysis.IsCompleted;
 
-    public bool ScenesComplete => Info.Video is null || Volatile.Read(ref _scenes) is { IsComplete: true } || Analysis.IsCompleted;
+    public bool ScenesComplete => Info.Video is null || Volatile.Read(ref _scenes) is { IsComplete: true } || ScenesTask.IsCompleted;
+
+    /// <summary>Scene detection was asked for, or its results came from the cache.</summary>
+    public bool ScenesRequested => Info.Video is null || Volatile.Read(ref _scenesRequested) == 1;
+
+    /// <summary>Completes when scene detection has finished, failed or been cancelled; done while nobody asked for it.</summary>
+    public Task ScenesTask { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// Starts scene detection (once): it reads every frame, so it waits for keyframes, waveform and thumbnails, and
+    /// its results fill in as it goes.
+    /// </summary>
+    public void DetectScenes()
+    {
+        if (Info.Video is null || _disposed || Interlocked.Exchange(ref _scenesRequested, 1) == 1)
+            return;
+        var ct = _cts.Token;
+        ScenesTask = Task.Run(async () =>
+        {
+            try
+            {
+                await _mainAnalysisDone.Task.WaitAsync(ct).ConfigureAwait(false);
+                await Guard(() => DetectScenesAsync(ct)).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                _detectingScenes = false;
+                NotifyChanged();
+            }
+        }, CancellationToken.None);
+        NotifyChanged();
+    }
 
     /// <summary>The timeline's silences, recomputed only when more of the waveform has been decoded.</summary>
     private SilenceAnalysis SilenceAnalysis
@@ -310,32 +361,34 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     {
         try
         {
-            try
-            {
-                await Task.WhenAll(
-                    Guard(() => ScanKeyframesAsync(ct)),
-                    Guard(() => ExtractWaveformAsync(ct)),
-                    Guard(() => ExtractThumbnailsAsync(ct))).ConfigureAwait(false);
-            }
-            finally
-            {
-                _keyframesReady.TrySetResult(Keyframes);
-                _analysing = false;
-                _mainAnalysisDone.TrySetResult();
-                NotifyChanged();
-            }
-            await Guard(() => DetectScenesAsync(ct)).ConfigureAwait(false);
+            await Task.WhenAll(
+                Guard(() => ScanKeyframesAsync(ct)),
+                Guard(() => ExtractWaveformAsync(ct)),
+                Guard(() => ExtractThumbnailsAsync(ct)),
+                Guard(() => Task.Run(LoadCachedScenes, ct))).ConfigureAwait(false);
         }
         finally
         {
-            _detectingScenes = false;
+            _keyframesReady.TrySetResult(Keyframes);
+            _analysing = false;
+            _mainAnalysisDone.TrySetResult();
             NotifyChanged();
         }
     }
 
+    /// <summary>Scene changes found when the file was open before: shown, though nobody asked this time.</summary>
+    private void LoadCachedScenes()
+    {
+        if (Info.Video is null || _cache?.LoadSceneScores(Info.Path) is not { } cached)
+            return;
+        Volatile.Write(ref _scenes, cached);
+        Cached("scenes");
+        Volatile.Write(ref _scenesRequested, 1);
+    }
+
     private async Task DetectScenesAsync(CancellationToken ct)
     {
-        if (Info.Video is null || ct.IsCancellationRequested)
+        if (Info.Video is null || ct.IsCancellationRequested || Volatile.Read(ref _scenes) is { IsComplete: true })
             return;
         if (_cache?.LoadSceneScores(Info.Path) is { } cached)
         {
@@ -590,7 +643,7 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
         }
         _cts.Cancel();
         // The analysis still holds the token until it notices the cancellation.
-        Analysis.ContinueWith(_ => _cts.Dispose(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        Task.WhenAll(Analysis, ScenesTask).ContinueWith(_ => _cts.Dispose(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
     }
 
     /// <summary>An <see cref="IProgress{T}"/> that reports on the calling thread (no UI marshalling).</summary>

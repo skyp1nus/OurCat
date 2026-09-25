@@ -49,11 +49,24 @@ public interface IMediaPreview
     {
     }
 
+    /// <summary>Shows the transcript made earlier with this setup, if it was cached; transcribes nothing.</summary>
+    void LoadTranscript(TranscriptionSetup setup)
+    {
+    }
+
     /// <summary>Silence detection has seen all of the audio (or given up).</summary>
     bool SilencesComplete => true;
 
     /// <summary>Scene detection has seen all of the video (or given up).</summary>
     bool ScenesComplete => true;
+
+    /// <summary>Scene changes were asked for (or came from the cache); until then nothing is detected.</summary>
+    bool ScenesRequested => true;
+
+    /// <summary>Starts scene detection unless it was asked for already. It reads every frame, so it takes a while.</summary>
+    void DetectScenes()
+    {
+    }
 
     /// <summary>Silences with other settings; null if the file has no audio or they cannot be computed.</summary>
     /// <param name="streams">Audio streams (0-based) that must all be quiet; all if null.</param>
