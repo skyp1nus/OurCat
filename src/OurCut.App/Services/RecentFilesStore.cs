@@ -9,15 +9,21 @@ public sealed record RecentFile(string Path, double Duration, DateTime OpenedUtc
 /// <summary>Remembers recently opened files in a small JSON file in the user's app data.</summary>
 public sealed class RecentFilesStore(string file)
 {
-    public const int Capacity = 8;
+    /// <summary>How many files are kept, so a larger <see cref="Limit"/> shows the older ones again.</summary>
+    public const int Capacity = 20;
+
+    /// <summary>How many files the list has: Settings → General → Recent files (5, 10 or 20).</summary>
+    public int Limit { get; set; } = 10;
 
     public static string DefaultFile { get; } =
         System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OurCut", "recent.json");
 
     public string File { get; } = file;
 
-    /// <summary>Recent files that still exist, newest first. A missing or broken list reads as empty.</summary>
-    public IReadOnlyList<RecentFile> Load()
+    /// <summary>Recent files that still exist, newest first, at most <see cref="Limit"/>. A missing or broken list reads as empty.</summary>
+    public IReadOnlyList<RecentFile> Load() => [.. LoadAll().Take(Limit)];
+
+    private IReadOnlyList<RecentFile> LoadAll()
     {
         try
         {
@@ -36,7 +42,7 @@ public sealed class RecentFilesStore(string file)
     {
         string full = System.IO.Path.GetFullPath(path);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        var list = Load().Where(r => !string.Equals(r.Path, full, comparison)).ToList();
+        var list = LoadAll().Where(r => !string.Equals(r.Path, full, comparison)).ToList();
         list.Insert(0, new RecentFile(full, duration, openedUtc ?? DateTime.UtcNow));
         Write([.. list.Take(Capacity)]);
     }

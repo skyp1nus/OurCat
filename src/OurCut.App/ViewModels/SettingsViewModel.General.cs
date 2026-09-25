@@ -70,7 +70,6 @@ public sealed partial class SettingsViewModel
     partial void OnStartupChanged(StartupAction value)
     {
         _startupChoices?.Select(value);
-        // STUB: App start does not read Startup yet; OpenLastProject should open RecentFiles[0] when no file was passed.
         SaveGeneral();
     }
 
@@ -83,7 +82,11 @@ public sealed partial class SettingsViewModel
     partial void OnRecentFilesLimitChanged(int value)
     {
         _recentLimitChoices?.Select(value);
-        // STUB: RecentFilesStore still keeps RecentFilesStore.Capacity (8) entries; make it take this limit.
+        if (_editor.RecentStore is { } store)
+        {
+            store.Limit = value;
+            _editor.LoadRecentFiles();
+        }
         SaveGeneral();
     }
 
@@ -116,8 +119,9 @@ public sealed partial class SettingsViewModel
             Reveal(CacheFolder);
     }
 
+    /// <summary>Frees the cache but for the open video's analysis and every transcript, then measures it again.</summary>
     [RelayCommand]
-    private void ClearCache()
+    private async Task ClearCache()
     {
         if (_editor.IsDemo)
         {
@@ -125,7 +129,20 @@ public sealed partial class SettingsViewModel
             CanClearCache = false;
             return;
         }
-        // STUB: delete the cache folders except the open video's and every transcript-*.json (slow to redo), then measure again.
+        CanClearCache = false;
+        var cache = new MediaCache(CacheFolder);
+        string? open = _editor.HasFile ? _editor.Session.Project.Source?.Path : null;
+        await Task.Run(() => cache.Clear(open)).ConfigureAwait(true);
+        await MeasureCacheAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Sums the cache's files off the UI thread (it can hold thousands of thumbnails).</summary>
+    internal async Task MeasureCacheAsync()
+    {
+        var cache = new MediaCache(CacheFolder);
+        var (bytes, videos) = await Task.Run(cache.Measure).ConfigureAwait(true);
+        CacheUsedText = FormatCacheUsage(bytes, videos);
+        CanClearCache = bytes > 0;
     }
 
     [RelayCommand]
@@ -188,18 +205,12 @@ public sealed partial class SettingsViewModel
         return $"{size} · {videos.ToString(c)} {(videos == 1 ? "video" : "videos")}";
     }
 
-    // STUB: sum the file sizes under root; each sub-folder is one video.
-    private static (long Bytes, int Videos)? MeasureCache(string root) => null;
-
     /// <summary>Measures the cache and reads the tool versions (once); the demo keeps its sample values.</summary>
     private void RefreshGeneral()
     {
         if (_editor.IsDemo)
             return;
-        CacheFolder = MediaCache.DefaultRoot;
-        var used = MeasureCache(CacheFolder);
-        CacheUsedText = used is { } u ? FormatCacheUsage(u.Bytes, u.Videos) : "—";
-        CanClearCache = used is not { Bytes: 0 };
+        _ = MeasureCacheAsync();
         if (_versionsRead)
             return;
         _versionsRead = true;

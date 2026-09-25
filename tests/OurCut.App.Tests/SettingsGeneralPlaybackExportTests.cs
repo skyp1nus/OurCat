@@ -364,6 +364,96 @@ public sealed class SettingsGeneralPlaybackExportTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void The_recent_files_limit_sets_how_many_are_listed()
+    {
+        var store = new RecentFilesStore(Path.Combine(_dir, "recent.json"));
+        for (int i = 0; i < 12; i++)
+        {
+            string file = Path.Combine(_dir, $"{i}.mp4");
+            File.WriteAllText(file, "");
+            store.Add(file, 1);
+        }
+        var editor = App.CreateEditor(null, recent: store);
+        editor.LoadRecentFiles();
+        Assert.Equal(10, editor.RecentFiles.Count);
+
+        Pick(editor.Settings.RecentLimitOptions, "5");
+        Assert.Equal(5, editor.RecentFiles.Count);
+        Pick(editor.Settings.RecentLimitOptions, "20");
+        Assert.Equal(12, editor.RecentFiles.Count);
+        Assert.Equal("11.mp4", editor.RecentFiles[0].Name);
+    }
+
+    [AvaloniaFact]
+    public async Task On_startup_the_last_project_opens_unless_a_file_was_given_or_the_setting_says_empty()
+    {
+        var store = new RecentFilesStore(Path.Combine(_dir, "recent.json"));
+        foreach (string name in (string[])["older.mp4", "last.mp4"])
+        {
+            string file = Path.Combine(_dir, name);
+            File.WriteAllText(file, "");
+            store.Add(file, 1);
+        }
+
+        var opener = new SampleOpener();
+        var editor = App.CreateEditor(null, opener, store);
+        await editor.StartAsync(null);
+        Assert.Equal([Path.Combine(_dir, "last.mp4")], opener.Opened);
+        Assert.Equal("last.mp4", editor.MediaFileName);
+
+        opener = new SampleOpener();
+        editor = App.CreateEditor(null, opener, store);
+        await editor.StartAsync("/videos/given.mp4");
+        Assert.Equal(["/videos/given.mp4"], opener.Opened);
+
+        opener = new SampleOpener();
+        editor = App.CreateEditor(null, opener, store);
+        editor.Settings.Startup = StartupAction.StartEmpty;
+        await editor.StartAsync(null);
+        Assert.Empty(opener.Opened);
+        Assert.False(editor.HasFile);
+    }
+
+    [AvaloniaFact]
+    public async Task Clear_cache_keeps_the_open_video_and_the_transcripts()
+    {
+        string cacheRoot = Path.Combine(_dir, "cache");
+        string video = Path.Combine(_dir, "open.mp4");
+        File.WriteAllText(video, "video");
+        string openKey = OurCut.Media.Caching.MediaCache.KeyFor(video)!;
+        void Put(string folder, string name, int bytes)
+        {
+            Directory.CreateDirectory(Path.Combine(cacheRoot, folder));
+            File.WriteAllBytes(Path.Combine(cacheRoot, folder, name), new byte[bytes]);
+        }
+        Put(openKey, "keyframes.bin", 1000);
+        Put("other1", "thumbs-54.bin", 2_000_000);
+        Put("other1", "transcript-parakeet-auto.json", 500);
+        Put("other2", "waveform.bin", 3000);
+
+        var editor = App.CreateEditor(null, new SampleOpener());
+        await editor.OpenMediaAsync(video);
+        var settings = editor.Settings;
+        settings.CacheFolder = cacheRoot;
+        await settings.MeasureCacheAsync();
+        Assert.Equal("2 MB · 3 videos", settings.CacheUsedText);
+        Assert.True(settings.CanClearCache);
+
+        await settings.ClearCacheCommand.ExecuteAsync(null);
+
+        Assert.Equal("2 KB · 2 videos", settings.CacheUsedText);
+        Assert.True(File.Exists(Path.Combine(cacheRoot, openKey, "keyframes.bin")));
+        Assert.True(File.Exists(Path.Combine(cacheRoot, "other1", "transcript-parakeet-auto.json")));
+        Assert.False(File.Exists(Path.Combine(cacheRoot, "other1", "thumbs-54.bin")));
+        Assert.False(Directory.Exists(Path.Combine(cacheRoot, "other2")));
+
+        settings.CacheFolder = Path.Combine(_dir, "no-cache");
+        await settings.MeasureCacheAsync();
+        Assert.Equal("0 B · 0 videos", settings.CacheUsedText);
+        Assert.False(settings.CanClearCache);
+    }
+
+    [AvaloniaFact]
     public async Task Volume_and_speed_are_remembered_between_sessions()
     {
         var store = new AppSettingsStore(SettingsFile);

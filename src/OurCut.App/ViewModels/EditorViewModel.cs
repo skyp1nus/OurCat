@@ -773,6 +773,19 @@ public sealed partial class EditorViewModel : ViewModelBase
         LoadRecentFiles();
     }
 
+    /// <summary>
+    /// What the app opens at start: <paramref name="file"/> from the command line, or else the newest recent file when
+    /// Settings → General → On startup says "Open the last project".
+    /// </summary>
+    public Task StartAsync(string? file)
+    {
+        if (file is not null)
+            return OpenPath(file);
+        if (!IsDemo && Settings.Startup == StartupAction.OpenLastProject && RecentFiles.FirstOrDefault() is { } last)
+            return OpenPath(last.Path);
+        return Task.CompletedTask;
+    }
+
     /// <summary>Fills the empty screen's Recent list from <see cref="RecentStore"/>.</summary>
     public void LoadRecentFiles()
     {

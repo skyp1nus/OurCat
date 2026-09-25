@@ -238,6 +238,10 @@ bind to view models and never change the project themselves.
 - **Settings dialog**: `SettingsViewModel` is split by section (`SettingsViewModel.<Section>.cs`, views in
   `Views/Settings/<Section>Section.axaml`, shared styles in `Theme/Controls.axaml`). Every change goes through
   `UpdateSettings(change)`, which applies it to `Current` and saves. Segmented controls use `ChoiceSet<T>`.
+- **General**: at start `EditorViewModel.StartAsync` opens the file given on the command line, or else the newest
+  recent file when "On startup" is "Open the last project". `RecentFilesStore` keeps 20 files and lists `Limit` of
+  them (Recent files: 5, 10 or 20). The cache card measures `MediaCache.Measure` (one folder per video) off the UI
+  thread; Clear cache (`MediaCache.Clear`) keeps the open video's folder and every `transcript-*.json`.
 - **Settings file**: `AppSettings(Transcription, General?, Playback?, Export?, Keyboard?, Mcp?)` (records and enums
   in `Services/Settings/`), saved by `AppSettingsStore` to `%LOCALAPPDATA%\OurCut\settings.json` with
   source-generated JSON, enums by name (`LenientEnumConverter`). A section missing from the file (an older version
@@ -263,7 +267,6 @@ bind to view models and never change the project themselves.
 Places where the UI and the setting exist but the behaviour does not are marked with a one-line `// STUB:` comment
 (`grep -rn "// STUB:" src`):
 
-- **General**: the startup action, the recent files limit, the cache size and Clear cache.
 - **Transcription**: the Transcript tab's status says CPU until transcription runs on a GPU.
 
 ## Extension points

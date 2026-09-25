@@ -48,6 +48,91 @@ public sealed class MediaCache
         return dir;
     }
 
+    // ---- Size and clearing ---------------------------------------------------------------
+
+    /// <summary>The cache's size on disk and how many videos it holds (a folder each). A missing cache is empty.</summary>
+    public (long Bytes, int Videos) Measure()
+    {
+        if (!Directory.Exists(Root))
+            return (0, 0);
+        long bytes = 0;
+        int videos = 0;
+        try
+        {
+            foreach (var file in new DirectoryInfo(Root).EnumerateFiles("*", SearchOption.AllDirectories))
+                bytes += Size(file);
+            videos = Directory.EnumerateDirectories(Root).Count();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // What could be read so far.
+        }
+        return (bytes, videos);
+    }
+
+    /// <summary>
+    /// Frees the cache: every video's analysis goes, except <paramref name="keepMediaPath"/>'s (the open video uses it),
+    /// and transcripts stay (they take long to redo). A folder left empty goes too; files in use are skipped.
+    /// </summary>
+    public void Clear(string? keepMediaPath = null)
+    {
+        if (!Directory.Exists(Root))
+            return;
+        string? keep = keepMediaPath is null ? null : KeyFor(keepMediaPath);
+        foreach (string dir in SafeEnumerate(() => Directory.EnumerateDirectories(Root)))
+        {
+            if (Path.GetFileName(dir) == keep)
+                continue;
+            foreach (string entry in SafeEnumerate(() => Directory.EnumerateFileSystemEntries(dir)))
+            {
+                if (IsTranscript(entry))
+                    continue;
+                TryDo(() =>
+                {
+                    if (Directory.Exists(entry))
+                        Directory.Delete(entry, recursive: true);
+                    else
+                        File.Delete(entry);
+                });
+            }
+            TryDo(() =>
+            {
+                if (!Directory.EnumerateFileSystemEntries(dir).Any())
+                    Directory.Delete(dir);
+            });
+        }
+    }
+
+    private static bool IsTranscript(string path)
+    {
+        string name = Path.GetFileName(path);
+        return name.StartsWith("transcript-", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal) && File.Exists(path);
+    }
+
+    private static long Size(FileInfo file)
+    {
+        try
+        {
+            return file.Length;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    private static List<string> SafeEnumerate(Func<IEnumerable<string>> entries)
+    {
+        try
+        {
+            return [.. entries()];
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
     // ---- Keyframes -----------------------------------------------------------------------
 
     public double[]? LoadKeyframes(string mediaPath) => Try(() =>

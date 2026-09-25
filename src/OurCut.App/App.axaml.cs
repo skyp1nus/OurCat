@@ -56,8 +56,7 @@ public partial class App : Application
             editor.Dialogs = new StorageFileDialogs(window);
             editor.Settings.CopyText = text => window.Clipboard?.SetTextAsync(text) ?? Task.CompletedTask;
             desktop.MainWindow = window;
-            if (ParseFileArgument(args) is { } file)
-                _ = editor.OpenPath(file);
+            _ = editor.StartAsync(ParseFileArgument(args));
         }
         base.OnFrameworkInitializationCompleted();
     }
