@@ -184,10 +184,23 @@ Results are JSON; times are seconds, rounded to milliseconds, with `MM:SS.mmm` r
 - **Smart cut**: `CutMode.SmartCut` exists in the export settings; the planner rejects it for now. It becomes
   a third kind of plan (re-encode the GOP around each cut, copy the rest, concat). The dialog lists it as not
   yet available.
-- **Transcription**: a future source of labels and ranges for `AddClipCommand` / `RenameClipCommand`.
-  Settings → Transcription (engine, model, device, language, models folder) is saved to
-  `%LOCALAPPDATA%\OurCut\settings.json`; outside demo mode the model table only reports which models are in the
-  models folder, and downloads come with transcription.
+- **Transcription**: a source of labels and ranges for `AddClipCommand` / `RenameClipCommand`; the engines come
+  next (see Transcription models).
+
+## Transcription models
+
+`OurCut.Transcription` (no UI references) knows the models Settings → Transcription lists (`ModelCatalog`):
+Parakeet TDT 0.6B v3 (int8 ONNX for sherpa-onnx, 25 European languages including Ukrainian; a .tar.bz2 from the
+sherpa-onnx GitHub releases) and four Whisper ggml models for whisper.cpp (single files from Hugging Face).
+
+- `ModelInstaller` downloads into `<models folder>/<id>.partial`, continuing an interrupted download with an HTTP
+  range request, unpacks archives there (SharpZipLib's bzip2 + `System.Formats.Tar`, without the archive's top
+  folder, refusing entries that point outside it) and renames the folder to `<id>` only when every file the model
+  needs is there. It checks free space first and explains failures (HTTP status, lost connection, full disk).
+- `ModelStore` answers whether a model is installed (all its files present), its size, and deletes it.
+- The settings (engine, model, device, language, models folder) are saved to `%LOCALAPPDATA%\OurCut\settings.json`;
+  models go to `%LOCALAPPDATA%\OurCut\models` unless another folder is chosen. Cancelling a download removes it;
+  a failed one is kept and continues on the next try.
 
 ## Project file (`.ourcut.json`)
 

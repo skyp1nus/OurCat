@@ -22,6 +22,10 @@
     <!-- The official MCP C# SDK, core package only (no ASP.NET or hosting). -->
     <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
   </ItemGroup>
+  <ItemGroup Label="Transcription">
+    <!-- bzip2 for the sherpa-onnx model archives (.tar.bz2); .NET has no bzip2 decoder. -->
+    <PackageVersion Include="SharpZipLib" Version="1.4.2" />
+  </ItemGroup>
   <ItemGroup Label="Tests">
     <!-- Avalonia.Headless.XUnit 12.1 requires xUnit v3 3.x; 4.x breaks test discovery. -->
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

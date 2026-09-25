@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Local speech-to-text: model downloads and the engines. No UI dependencies. -->
+  <PropertyGroup>
+    <RootNamespace>OurCut.Transcription</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OurCut.Core\OurCut.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SharpZipLib" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="OurCut.Transcription.Tests" />
+  </ItemGroup>
+</Project>

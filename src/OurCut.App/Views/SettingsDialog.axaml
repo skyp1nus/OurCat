@@ -135,7 +135,7 @@
                           <Grid ColumnDefinitions="*,12,60,12,56,12,128">
                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                               <TextBlock Classes="mono" Text="{Binding Id}" FontSize="11.5" Foreground="{StaticResource TextBrush}"
-                                         TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                         TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Languages}" />
                               <Border IsVisible="{Binding IsInstalled}" Height="16" Padding="5,0" CornerRadius="4" BorderThickness="1"
                                       BorderBrush="#804ADE80" VerticalAlignment="Center">
                                 <TextBlock Text="Installed" FontSize="9.5" FontWeight="Medium" Foreground="{StaticResource StatusOnBrush}"
@@ -162,7 +162,7 @@
                                       ToolTip.Tip="Delete the model files" />
                               <Button Classes="soft" IsVisible="{Binding IsNotInstalled}" IsEnabled="{Binding CanManage}" Height="24" Padding="10,0"
                                       CornerRadius="6" FontSize="11.5" Content="Download" Command="{Binding DownloadCommand}"
-                                      ToolTip.Tip="Model downloads come with transcription" ToolTip.ShowOnDisabled="True" />
+                                      ToolTip.Tip="{Binding Error}" />
                             </StackPanel>
                           </Grid>
                         </Border>

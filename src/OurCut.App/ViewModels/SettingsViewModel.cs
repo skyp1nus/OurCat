@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OurCut.App.Services;
+using OurCut.Transcription.Models;
 
 namespace OurCut.App.ViewModels;
 
@@ -16,12 +17,20 @@ public enum ModelState
 }
 
 /// <summary>A transcription model in the Settings → Transcription table.</summary>
-public sealed partial class TranscriptionModelViewModel(SettingsViewModel owner, string id, string engine, string size)
-    : ViewModelBase
+public sealed partial class TranscriptionModelViewModel(SettingsViewModel owner, TranscriptionModel model) : ViewModelBase
 {
-    public string Id { get; } = id;
-    public string Engine { get; } = engine;
-    public string Size { get; } = size;
+    public TranscriptionModel Model { get; } = model;
+    public string Id => Model.Id;
+    public string Engine => Model.Engine.ToString();
+    public string Size => Model.SizeText;
+    public string Languages => Model.Languages;
+
+    /// <summary>Why the last download failed; null if it did not.</summary>
+    [ObservableProperty]
+    public partial string? Error { get; set; }
+
+    /// <summary>The running download, cancelled by the row's ✕.</summary>
+    internal CancellationTokenSource? RunningDownload { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDownloading), nameof(IsNotInstalled))]
@@ -36,7 +45,7 @@ public sealed partial class TranscriptionModelViewModel(SettingsViewModel owner,
     public bool IsNotInstalled => State == ModelState.NotInstalled;
     public string PercentText => Math.Floor(Progress * 100).ToString(CultureInfo.InvariantCulture) + "%";
 
-    /// <summary>Downloads and deletes only work in demo mode until transcription exists.</summary>
+    /// <summary>Downloads and deletes work (they are simulated in demo mode).</summary>
     public bool CanManage => owner.CanManageModels;
 
     [RelayCommand]
@@ -56,15 +65,6 @@ public sealed partial class TranscriptionModelViewModel(SettingsViewModel owner,
 /// </summary>
 public sealed partial class SettingsViewModel : ViewModelBase
 {
-    private static readonly (string Id, string Engine, string Size)[] Catalog =
-    [
-        ("parakeet-tdt-0.6b-v2", "Parakeet", "1.2 GB"),
-        ("whisper-large-v3-turbo", "Whisper", "1.6 GB"),
-        ("whisper-medium", "Whisper", "1.5 GB"),
-        ("whisper-small", "Whisper", "488 MB"),
-        ("whisper-base.en", "Whisper", "148 MB"),
-    ];
-
     public static IReadOnlyList<string> Sections { get; } = ["General", "Playback", "Export", "Transcription", "Keyboard", "MCP server"];
     public static IReadOnlyList<string> Engines { get; } = ["Auto", "Parakeet", "Whisper"];
     public static IReadOnlyList<string> Devices { get; } = ["Auto", "GPU", "CPU"];
@@ -78,7 +78,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     public SettingsViewModel(EditorViewModel editor)
     {
         _editor = editor;
-        Models = [.. Catalog.Select(m => new TranscriptionModelViewModel(this, m.Id, m.Engine, m.Size))];
+        Models = [.. ModelCatalog.All.Select(m => new TranscriptionModelViewModel(this, m))];
         SectionOptions = [.. Sections.Select(name => new ChoiceOption(name, () => Section = name))];
         EngineOptions = [.. Engines.Select(e => new ChoiceOption(e, () => Engine = e))];
         DeviceOptions = [.. Devices.Select(d => new ChoiceOption(d, () => Device = d))];
@@ -142,7 +142,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial IReadOnlyList<ModelOption> ModelOptions { get; private set; } = [];
 
-    public bool CanManageModels => _editor.IsDemo;
+    public bool CanManageModels => _editor.IsDemo || Installer is not null;
+
+    /// <summary>Downloads models; null in tests that do not download.</summary>
+    public ModelInstaller? Installer { get; set; }
+
+    private ModelStore InstalledModels => new(ModelsFolder);
 
     public string DeviceNote => _editor.IsDemo
         ? (Device == "CPU" ? "16 threads · ~4× slower" : "NVIDIA RTX 4070 · CUDA 12.4")
@@ -208,7 +213,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         {
             (m.State, m.Progress) = m.Id switch
             {
-                "parakeet-tdt-0.6b-v2" or "whisper-large-v3-turbo" => (ModelState.Installed, 1.0),
+                "parakeet-tdt-0.6b-v3" or "whisper-large-v3-turbo" => (ModelState.Installed, 1.0),
                 "whisper-small" => (ModelState.Downloading, 0.64),
                 _ => (ModelState.NotInstalled, 0.0),
             };
@@ -302,17 +307,79 @@ public sealed partial class SettingsViewModel : ViewModelBase
         if (!CanManageModels || !model.IsNotInstalled)
             return;
         model.Progress = 0;
+        model.Error = null;
         model.State = ModelState.Downloading;
-        StartDownloadTimer();
+        if (_editor.IsDemo)
+            StartDownloadTimer();
+        else
+            _ = InstallAsync(model, InstalledModels);
+    }
+
+    /// <summary>Downloads a model into the models folder; the row shows the progress.</summary>
+    private async Task InstallAsync(TranscriptionModelViewModel model, ModelStore store)
+    {
+        using var cts = new CancellationTokenSource();
+        model.RunningDownload = cts;
+        var progress = new Progress<InstallProgress>(p =>
+        {
+            if (model.IsDownloading)
+                model.Progress = p.Fraction;
+        });
+        try
+        {
+            await Installer!.InstallAsync(model.Model, store, progress, cts.Token).ConfigureAwait(true);
+            model.State = ModelState.Installed;
+            model.Progress = 1;
+            RefreshModelOptions(Model?.Value);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled with the row's ✕: nothing of it is kept.
+            TryDelete(() => store.DeletePartial(model.Model));
+            model.State = ModelState.NotInstalled;
+            model.Progress = 0;
+        }
+        catch (ModelDownloadException e)
+        {
+            model.State = ModelState.NotInstalled;
+            model.Progress = 0;
+            model.Error = e.Message;
+            _editor.ShowMessage($"Could not download {model.Id}: {e.Message}");
+        }
+        finally
+        {
+            model.RunningDownload = null;
+        }
     }
 
     internal void Delete(TranscriptionModelViewModel model)
     {
         if (!CanManageModels)
             return;
+        if (model.RunningDownload is { } running)
+        {
+            running.Cancel();
+            return;
+        }
+        if (!_editor.IsDemo && !TryDelete(() => InstalledModels.Delete(model.Model)))
+            return;
         model.State = ModelState.NotInstalled;
         model.Progress = 0;
         RefreshModelOptions(Model?.Value);
+    }
+
+    private bool TryDelete(Action delete)
+    {
+        try
+        {
+            delete();
+            return true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _editor.ShowMessage("Could not delete the model: " + e.Message);
+            return false;
+        }
     }
 
     /// <summary>Advances simulated downloads (demo mode), 0.6 % every 150 ms like the prototype.</summary>
@@ -348,22 +415,15 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _downloadTimer = null;
     }
 
-    /// <summary>Marks the models found in the models folder (a file or folder named after the model) as installed.</summary>
+    /// <summary>Marks the models that are fully installed in the models folder (downloads in progress stay as they are).</summary>
     private void ScanModels()
     {
         if (_editor.IsDemo)
             return;
-        foreach (var m in Models)
+        var store = InstalledModels;
+        foreach (var m in Models.Where(m => !m.IsDownloading))
         {
-            bool found = false;
-            try
-            {
-                found = Directory.Exists(Path.Combine(ModelsFolder, m.Id))
-                        || (Directory.Exists(ModelsFolder) && Directory.EnumerateFiles(ModelsFolder, m.Id + ".*").Any());
-            }
-            catch (Exception e) when (e is IOException or ArgumentException or UnauthorizedAccessException)
-            {
-            }
+            bool found = store.IsInstalled(m.Model);
             m.State = found ? ModelState.Installed : ModelState.NotInstalled;
             m.Progress = found ? 1 : 0;
         }
