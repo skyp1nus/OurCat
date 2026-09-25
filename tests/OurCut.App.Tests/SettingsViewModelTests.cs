@@ -46,6 +46,8 @@ public sealed class SettingsViewModelTests : IDisposable
     public void Without_an_installer_models_cannot_be_downloaded()
     {
         var settings = App.CreateEditor(null).Settings;
+        // Not the user's models folder, which may have models installed.
+        settings.ModelsFolder = Directory.CreateDirectory(Path.Combine(_dir, "empty-models")).FullName;
         var model = settings.Models[0];
         Assert.False(model.CanManage);
         model.DownloadCommand.Execute(null);
