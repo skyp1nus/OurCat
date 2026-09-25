@@ -1,4 +1,5 @@
 using System.Globalization;
+using OurCut.Media.Ffmpeg;
 using OurCut.Media.Probing;
 using OurCut.Media.Tools;
 
@@ -30,7 +31,7 @@ public static class ThumbnailExtractor
 
     public static IReadOnlyList<string> Arguments(MediaInfo info, int width, int height, double interval) =>
     [
-        "-v", "error", "-skip_frame", "nokey", "-i", info.Path,
+        "-v", "error", .. FfmpegText.GpuDecoding, "-skip_frame", "nokey", "-i", info.Path,
         "-map", "0:" + info.Video!.Index.ToString(CultureInfo.InvariantCulture), "-an", "-sn", "-dn",
         "-vf", string.Create(CultureInfo.InvariantCulture,
             $"fps=1/{interval:0.######}:round=near,scale={width}:{height}:flags=bilinear,format=bgra"),

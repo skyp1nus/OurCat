@@ -188,6 +188,8 @@ public sealed partial class SettingsViewModel
         $"{RuntimeInformation.OSDescription} · {RuntimeInformation.OSArchitecture}",
         RuntimeInformation.FrameworkDescription,
         $"Hardware decoding {HardwareDecoding} · renderer {Renderer}",
+        $"Video output {_editor.VideoOutput ?? "not started"} · decoder {_editor.Player?.CurrentDecoder ?? "—"}",
+        $"Open file {_editor.MediaInfoText}",
         $"Settings {AppSettingsStore.DefaultFile}",
         $"Logs {CrashLog.Folder}");
 

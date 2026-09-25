@@ -70,17 +70,24 @@ public readonly record struct AudioMix(string AudioTrack, string LavfiComplex)
 public sealed class MpvPlayer : IDisposable
 {
     private const ulong SeekTag = 1UL << 62;
-    private const ulong TimePosId = 1, PauseId = 2, DurationId = 3, EofId = 4, WidthId = 5, HeightId = 6;
+    private const ulong TimePosId = 1, PauseId = 2, DurationId = 3, EofId = 4, WidthId = 5, HeightId = 6, DecoderId = 7;
 
     private readonly Thread _eventThread;
     private readonly Lock _lock = new();
     private readonly Queue<string> _errors = new();
     private TaskCompletionSource? _loading;
     private string? _loadingPath;
+
+    /// <summary>
+    /// The file the app opened and has not unloaded. Unlike <see cref="LoadedPath"/> it survives the error mpv ends a
+    /// file with when its video output is taken away, so a renderer switch reopens the right file.
+    /// </summary>
+    private string? _openPath;
     private readonly SeekState _seeks = new();
     private double _position, _seekTarget, _duration;
     private volatile bool _paused = true, _eof, _disposed;
     private int _videoWidth, _videoHeight;
+    private string? _decoder;
     private MpvRenderer? _renderer;
 
     /// <summary>Checks that libmpv can be loaded.</summary>
@@ -135,6 +142,7 @@ public sealed class MpvPlayer : IDisposable
         Check(MpvNative.mpv_observe_property(Handle, EofId, "eof-reached", MpvFormat.Flag));
         Check(MpvNative.mpv_observe_property(Handle, WidthId, "dwidth", MpvFormat.Int64));
         Check(MpvNative.mpv_observe_property(Handle, HeightId, "dheight", MpvFormat.Int64));
+        Check(MpvNative.mpv_observe_property(Handle, DecoderId, "hwdec-current", MpvFormat.String));
 
         _eventThread = new Thread(EventLoop) { IsBackground = true, Name = "mpv events" };
         _eventThread.Start();
@@ -150,6 +158,12 @@ public sealed class MpvPlayer : IDisposable
     public bool IsEndReached => _eof;
     public bool IsSeeking => _seeks.IsSeeking;
     public (int Width, int Height) VideoSize => (Volatile.Read(ref _videoWidth), Volatile.Read(ref _videoHeight));
+
+    /// <summary>
+    /// How the video is decoded: the hardware decoder in use ("d3d11va-copy", "vaapi-copy"), "no" for the CPU, or null
+    /// before a video is decoded. Read from mpv's events, so it is safe on any thread.
+    /// </summary>
+    public string? CurrentDecoder => Volatile.Read(ref _decoder);
 
     /// <summary>Why the last file stopped with an error.</summary>
     public string? LastError { get; private set; }
@@ -172,6 +186,7 @@ public sealed class MpvPlayer : IDisposable
             _loading?.TrySetCanceled();
             _loading = tcs;
             _loadingPath = path;
+            _openPath = path;
             _errors.Clear();
         }
         // "start" and "pause" apply to the next file; loadfile's own option syntax differs between versions.
@@ -188,6 +203,7 @@ public sealed class MpvPlayer : IDisposable
         {
             _loading?.TrySetCanceled();
             _loading = null;
+            _openPath = null;
         }
         LoadedPath = null;
         Command(0, "stop");
@@ -362,16 +378,25 @@ public sealed class MpvPlayer : IDisposable
     {
         if (_disposed)
             return;
-        Command(0, "set", "vo", vo);
         Task pending;
+        string? path;
         lock (_lock)
+        {
             pending = _loading?.Task ?? Task.CompletedTask;
+            path = _openPath;
+        }
+        // Where the video is now (a load in flight decides it when it lands).
+        double? position = pending.IsCompleted ? Position : null;
+        bool wasPlaying = IsPlaying;
+        Command(0, "set", "vo", vo);
+        if (path is null)
+            return;
         _ = pending.ContinueWith(previous =>
         {
-            if (_disposed || LoadedPath is not { } path)
+            // Unloaded, or another file opened meanwhile: that one is loaded with the new output already.
+            if (_disposed || !string.Equals(Volatile.Read(ref _openPath), path, StringComparison.Ordinal))
                 return;
-            bool wasPlaying = IsPlaying;
-            _ = LoadAsync(path, Position).ContinueWith(t =>
+            _ = LoadAsync(path, position ?? Position).ContinueWith(t =>
             {
                 if (t.IsCompletedSuccessfully && wasPlaying)
                     Play();
@@ -446,6 +471,9 @@ public sealed class MpvPlayer : IDisposable
             case HeightId:
                 Volatile.Write(ref _videoHeight, has ? (int)*(long*)property.Data : 0);
                 break;
+            case DecoderId:
+                Volatile.Write(ref _decoder, has && property.Format == MpvFormat.String ? Marshal.PtrToStringUTF8(*(IntPtr*)property.Data) : null);
+                return;
             default:
                 return;
         }

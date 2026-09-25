@@ -69,8 +69,9 @@ public sealed class MpvPlayerTests(SampleMediaFixture media) : IClassFixture<Sam
     {
         var player = await LoadAsync();
         player.Seek(4.5);
-        Assert.True(player.IsSeeking);
-        Assert.Equal(4.5, player.Position, 6);
+        // While the seek is in flight the position is its target; on a small file mpv may already have landed there
+        // (SeekStateTests cover IsSeeking itself).
+        Assert.Equal(4.5, player.Position, 3);
         await WaitUntil(() => !player.IsSeeking);
         Assert.Equal(4.5, player.Position, 3);
 
@@ -149,6 +150,9 @@ public sealed class MpvPlayerTests(SampleMediaFixture media) : IClassFixture<Sam
     {
         var player = await LoadAsync();
 
+        // The player was made with hwdec=no: mpv reports decoding on the CPU.
+        await WaitUntil(() => player.CurrentDecoder == "no");
+
         player.SetHardwareDecoding("auto-copy");
         await WaitUntil(() => player.GetPropertyString("hwdec") == "auto-copy");
         player.SetHardwareDecoding("no");
@@ -165,6 +169,37 @@ public sealed class MpvPlayerTests(SampleMediaFixture media) : IClassFixture<Sam
         player.SetAudioDevice(null);
         await WaitUntil(() => player.GetPropertyString("audio-device") == "auto");
         Assert.Equal(media.Mp4, player.LoadedPath);
+    }
+
+    [Fact]
+    public async Task Taking_the_renderer_away_while_playing_keeps_the_file_open()
+    {
+        var player = await LoadAsync();
+        var renderer = new MpvSoftwareRenderer(player);
+        var pixels = Marshal.AllocHGlobal(64 * 36 * 4);
+        try
+        {
+            // The first switch reopens the file with the render context.
+            await WaitUntil(() => player.GetPropertyString("current-vo") == "libmpv");
+            player.Seek(1.5);
+            player.Play();
+            await WaitUntil(() =>
+            {
+                if (renderer.HasNewFrame())
+                    renderer.Render(pixels, 64, 36, 64 * 4);
+                return player.Position > 1.6;
+            });
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(pixels);
+        }
+
+        // mpv may end the file with an error when its video output goes; the player reopens it where it was.
+        renderer.Dispose();
+
+        await WaitUntil(() => player.GetPropertyString("path") == media.Mp4 && player.LoadedPath == media.Mp4 && player.Position > 1.5);
+        Assert.NotEqual("libmpv", player.GetPropertyString("current-vo"));
     }
 
     [Fact]

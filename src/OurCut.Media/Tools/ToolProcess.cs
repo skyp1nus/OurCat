@@ -111,6 +111,7 @@ public static class ToolProcess
             throw new MediaToolException($"Could not start {tool}: {e.Message}", e);
         }
         process.BeginErrorReadLine();
+        YieldToPlayback(process);
 
         using var kill = cancellationToken.Register(() => Kill(process));
         try
@@ -162,6 +163,22 @@ public static class ToolProcess
             while (await reader.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
                 onLine(line);
         }, cancellationToken);
+
+    /// <summary>
+    /// Analysis (keyframes, waveform, thumbnails, scenes, speech audio) runs beside playback and the UI and gets the CPU
+    /// they leave; exports run through FFMpegCore at normal priority.
+    /// </summary>
+    private static void YieldToPlayback(Process process)
+    {
+        try
+        {
+            process.PriorityClass = ProcessPriorityClass.BelowNormal;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
+        {
+            // Already exited, or the system does not allow it: it runs at normal priority.
+        }
+    }
 
     private static void Kill(Process process)
     {

@@ -60,6 +60,9 @@ single right answer, so the command refuses with an `EditException` and the UI s
 - **Previews**: `WaveformExtractor` decodes every audio stream in one pass to 8 kHz mono and keeps one peak per
   10 ms (`WaveformData`, drawn on a dB scale). `ThumbnailExtractor` decodes only keyframes
   (`-skip_frame nokey`) to raw BGRA, at most about 300 per file. Both stream their results as they arrive.
+  Thumbnails and scene detection decode on the GPU when there is one (`FfmpegText.GpuDecoding`, `-hwaccel auto`,
+  which falls back to the CPU by itself), and every analysis process (`ToolProcess`) runs below normal priority so
+  playback and the UI keep the CPU they need.
 - **Cache** (`MediaCache`): keyframes, waveform and a JPEG thumbnail atlas per file in
   `%LOCALAPPDATA%\OurCut\cache`, keyed by path, size and modification time.
 - **Export**: `ExportPlanner` turns the project and `ExportSettings` into an `ExportPlan` (every step, output
@@ -121,12 +124,18 @@ written. Claude's exports always add a number. "After export: Show in folder" re
 - **Video** goes through the render API into OurCut's own view: `MpvOpenGlRenderer` draws into Avalonia's OpenGL
   framebuffer; `MpvSoftwareRenderer` renders BGRX frames into memory on a background thread. `vo=libmpv` without
   a render context fails the whole file, so the player uses `vo=null` until a renderer is attached and reopens
-  the file where it was when one attaches or detaches.
+  the file where it was when one attaches or detaches. A renderer detaches before it frees its context (freeing it
+  takes the output away, and mpv may end the file with an error), and the reopen goes by the file the app opened
+  (`_openPath`), not `LoadedPath`, which that error clears.
 
 In the App, `IPlayer` is what `EditorViewModel` uses (`MpvPlaybackEngine` in the app, a fake in tests). The view
 model keeps the playhead: user moves become seeks, the player's positions come back as `Time` without seeking
 again. `VideoView` shows the video (OpenGL first, software if OpenGL is not there within two seconds or fails);
-until its first frame the thumbnail preview underneath shows through. Without libmpv, or for the design's
+until its first frame the thumbnail preview underneath shows through. mpv allows one render context per player and
+refuses a second one while the old exists, so the software view keeps trying for a few seconds while the OpenGL view
+it replaces lets go. `VideoView.Output` tells the editor what draws the video ("OpenGL · " and the GPU as the
+driver names it, "software", or "none: why", which puts a message in the status bar rather than leaving blurry
+thumbnails unexplained); Copy diagnostics includes it and mpv's `hwdec-current` (`MpvPlayer.CurrentDecoder`). Without libmpv, or for the design's
 sample, playback is simulated over the thumbnails.
 
 ## Silence and scene detection

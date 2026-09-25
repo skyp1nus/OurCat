@@ -70,7 +70,7 @@
             <c:VideoSurface Media="{Binding Media}" Time="{Binding Time}" Caption="{Binding FrameText}" />
             <!-- libmpv video on top; until its first frame the thumbnail underneath shows through. -->
             <c:VideoView Name="Video" Player="{Binding Player}" SoftwareOnly="{Binding Settings.UsesSoftwareRenderer}"
-                         IsVisible="{Binding HasPlayback}" />
+                         Output="{Binding VideoOutput, Mode=OneWayToSource}" IsVisible="{Binding HasPlayback}" />
             <Border IsVisible="{Binding IsInClip}" Classes="overlay" HorizontalAlignment="Left" VerticalAlignment="Top">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <TextBlock Classes="mono" Text="{Binding CurrentClipNumber}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />

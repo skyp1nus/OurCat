@@ -252,6 +252,20 @@ public sealed partial class EditorViewModel : ViewModelBase
     /// <summary>Media details in the status bar, or "No file open".</summary>
     public string MediaInfoText => HasFile && MediaInfo.Length > 0 ? MediaInfo : HasFile ? MediaFileName : "No file open";
 
+    /// <summary>
+    /// What draws the video, as the video view reports it: "OpenGL · (the GPU)", "software", "none: why", or null before
+    /// a video is shown.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? VideoOutput { get; set; }
+
+    // Without a picture the player shows only the timeline thumbnails, which would pass for a blurry video.
+    partial void OnVideoOutputChanged(string? value)
+    {
+        if (value is not null && value.StartsWith("none: ", StringComparison.Ordinal))
+            ShowMessage("No video picture (" + value["none: ".Length..] + "). The player shows thumbnails only.");
+    }
+
     // ---- Playback ------------------------------------------------------------------------
 
     [ObservableProperty]
