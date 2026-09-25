@@ -36,10 +36,15 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
             ? new SilenceReport(found.Ranges, found.ThresholdDb, found.NoiseFloorDb, found.IsComplete)
             : null;
 
-    public SceneReport? FindSceneChanges(double threshold) =>
-        editor.Media?.FindSceneChanges(threshold) is { } found
+    /// <summary>Starts scene detection the first time Claude asks; later calls see how far it got.</summary>
+    public SceneReport? FindSceneChanges(double threshold)
+    {
+        editor.Media?.DetectScenes();
+        return editor.Media?.FindSceneChanges(threshold) is { } found
             ? new SceneReport(found.Changes, found.IsComplete, found.Progress)
             : null;
+    }
+
     public string? AnalysisStatus => editor.Media?.Activity;
 
     /// <summary>Settings → Transcription → Filler words, every language.</summary>

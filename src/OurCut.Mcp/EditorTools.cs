@@ -135,12 +135,13 @@ public sealed class EditorTools(IEditorHost host)
         1-based output positions. Lossless export starts each clip at the keyframe at or before its start;
         use find_keyframes when exact starts matter.
 
-        You cannot see or hear the video, but find_silences shows where the speaker pauses and
-        find_scene_changes where the picture changes (a cut, a new slide or window); both are analysed in
-        the background after a video is opened. cut_silences removes pauses in one step.
+        You cannot see or hear the video, but find_silences shows where the speaker pauses (analysed as soon as
+        a video is opened) and find_scene_changes where the picture changes (a cut, a new slide or window). Scene
+        detection reads every frame, so it starts the first time you ask and fills in: call again for the rest.
+        cut_silences removes pauses in one step.
 
-        get_transcript gives what is said, as timed sentences (OurCut transcribes locally once a model is
-        installed in Settings → Transcription); search_transcript finds words or phrases, find_filler_words the
+        get_transcript gives what is said, as timed sentences (OurCut transcribes locally the first time it is
+        asked, once a model is installed in Settings → Transcription); search_transcript finds words or phrases, find_filler_words the
         user's filler words (ums, uhs…). Use the times to add, trim or split clips, label clips after what is said, or cut words and
         sentences out with cut_ranges or cut_filler_words.
 

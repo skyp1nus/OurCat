@@ -20,7 +20,7 @@ public sealed partial class SettingsViewModel
 
     /// <summary>Transcribe a video as soon as it is opened; when off, only when someone asks.</summary>
     [ObservableProperty]
-    public partial bool TranscribeOnOpen { get; set; } = true;
+    public partial bool TranscribeOnOpen { get; set; }
 
     /// <summary>One row of chips per language, then the "Add…" box.</summary>
     public IReadOnlyList<FillerLanguageViewModel> FillerLanguages { get; private set; } = [];

@@ -152,8 +152,10 @@ Both live in `OurCut.Media.Analysis` and keep their raw measurements, so a diffe
   chosen track stays under the level for at least the minimum length (1 s on the timeline). The default level is
   12 dB over the noise floor (the level of the quietest 5 % of the audio), kept between −55 and −35 dBFS, so a
   noisy microphone still has pauses and quiet music is not taken for one.
-- **Scene changes** (`SceneDetector`) need the whole video decoded, so they run after the rest of the analysis
-  (status bar: "detecting scenes 34%"), on the GPU or every CPU core (below normal priority). ffmpeg shrinks every frame (at the video's own
+- **Scene changes** (`SceneDetector`) need the whole video decoded, so they are found only when asked for: the
+  timeline's Scenes chip or Claude's `find_scene_changes` (`MediaPreview.DetectScenes`); scene changes cached from
+  an earlier run are shown straight away. Detection waits for the rest of the analysis (status bar: "detecting
+  scenes 34%") and runs on the GPU or every CPU core (below normal priority). ffmpeg shrinks every frame (at the video's own
   rate, up to 60 fps, timed from the file start like keyframes) to 64×36 grey and pipes it out; each frame is
   scored against the one before as ffmpeg's `scdet` does: the mean difference, but no more than its jump from the
   previous frame's, so steady motion (scrolling, panning) scores low and a cut scores high. The per-frame scores
@@ -307,9 +309,11 @@ and Whisper large-v3-turbo, small and base.en (99 languages; base.en English onl
   approximate.
 - **Data**: `Word`, `Phrase` and `Transcript` live in Core (`OurCut.Core.Transcripts`), so the MCP tools use them
   without the engine. Phrases end at . ! ? … or pauses of 0.8 s.
-- **In the editor** (`MediaPreview`): transcription starts when a file is opened (unless "Transcribe when a video is
-  opened" is off) and a model is installed, after keyframes, waveform and thumbnails (it may overlap scene
-  detection), on half the cores. The status bar shows "transcribing 34%", the transcript fills in piece by piece
+- **In the editor** (`MediaPreview`): transcription starts when asked for (the Transcript tab's Transcribe, or a
+  Claude transcript tool), or when a file is opened with "Transcribe when a video is opened" on (off by default;
+  saved as `transcribeWhenOpened`, so files from when it was on by default read as off), once a model is installed.
+  A transcript cached earlier with the chosen model is shown when the file opens either way. It runs after
+  keyframes, waveform and thumbnails (it may overlap scene detection), on half the cores. The status bar shows "transcribing 34%", the transcript fills in piece by piece
   and is cached per model and language (`transcript-<model>-<language>.json`). Installing a model or changing the
   model or language starts it (with "Transcribe when a video is opened" off, only a transcript already asked for).
 

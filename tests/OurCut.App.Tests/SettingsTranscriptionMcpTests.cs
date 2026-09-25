@@ -56,11 +56,11 @@ public sealed class SettingsTranscriptionMcpTests : IDisposable
         var store = new AppSettingsStore(Path.Combine(_dir, "settings.json"));
         var settings = App.CreateEditor(null).Settings;
         settings.Store = store;
-        Assert.True(settings.TranscribeOnOpen);
+        Assert.False(settings.TranscribeOnOpen);
         Assert.Equal(["English", "Ukrainian"], settings.FillerLanguages.Select(l => l.Label));
         Assert.Equal(FillerWords.English, Chips(Language(settings, "en")));
 
-        settings.TranscribeOnOpen = false;
+        settings.TranscribeOnOpen = true;
         var english = Language(settings, "en");
         english.Draft = "  Hmm ";
         english.AddDraftCommand.Execute(null);
@@ -71,14 +71,14 @@ public sealed class SettingsTranscriptionMcpTests : IDisposable
         Assert.Equal("hmm", english.Entries[^2] is FillerWordViewModel { Word: var last } ? last : null);
         Assert.Same(english, english.Entries[^1]);
         var saved = store.Load().Transcription;
-        Assert.False(saved.TranscribeOnOpen);
+        Assert.True(saved.TranscribeOnOpen);
         Assert.NotNull(saved.FillerWords);
         Assert.Equal("hmm", saved.FillerWords["en"][^1]);
         Assert.DoesNotContain("ну", saved.FillerWords["uk"]);
 
         var reloaded = App.CreateEditor(null).Settings;
         reloaded.Load(store.Load());
-        Assert.False(reloaded.TranscribeOnOpen);
+        Assert.True(reloaded.TranscribeOnOpen);
         Assert.Equal(Chips(english), Chips(Language(reloaded, "en")));
         Assert.Equal(["е-е", "типу", "короче"], Chips(Language(reloaded, "uk")));
 
@@ -322,7 +322,7 @@ public sealed class SettingsTranscriptionMcpTests : IDisposable
         var settings = App.CreateEditor(null).Settings;
         settings.Load(new AppSettingsStore(file).Load());
 
-        Assert.True(settings.TranscribeOnOpen);
+        Assert.False(settings.TranscribeOnOpen);
         Assert.True(FillerWords.AreDefaults(settings.FillerWords));
         Assert.Null(settings.Current.Mcp);
         Assert.True(settings.McpEnabled);

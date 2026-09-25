@@ -49,12 +49,15 @@ public sealed partial class EditorViewModel : ViewModelBase
         Claude = new ClaudePanelViewModel(new ClaudeExportViewModel(this), new ClaudeFileRequestViewModel(this));
         Settings = new SettingsViewModel(this);
         TranscriptPanel = CreateTranscriptPanel();
-        // With "transcribe when opened" off, only a transcript someone asked for (or the tab's Download) is started.
+        // With "transcribe when opened" off, only a transcript someone asked for (or the tab's Download) is started;
+        // one made earlier with the new model is shown.
         Settings.TranscriptionChanged += (_, _) =>
         {
             if ((Settings.TranscribeOnOpen || TranscriptPanel.TranscribeWhenInstalled || Media is { TranscriptState: not TranscriptState.None })
                 && StartTranscription() is null)
                 TranscriptPanel.TranscribeWhenInstalled = false;
+            else
+                LoadCachedTranscript();
         };
         Session.Changed += OnSessionChanged;
         PropertyChanged += (_, e) =>
@@ -168,7 +171,7 @@ public sealed partial class EditorViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasFile), nameof(IsEmpty), nameof(Duration), nameof(DurationText),
         nameof(SourceLengthText), nameof(StatusRight), nameof(FrameText), nameof(HasSilenceData), nameof(HasSceneData),
-        nameof(SilenceTip), nameof(ScenesTip),
+        nameof(SilenceTip), nameof(ScenesTip), nameof(CanToggleScenes), nameof(ScenesOn),
         nameof(TransportDurationText), nameof(VideoAspect), nameof(HasPlayback))]
     public partial IMediaPreview? Media { get; set; }
 
@@ -198,7 +201,8 @@ public sealed partial class EditorViewModel : ViewModelBase
             _appliedKeyframes = keyframes;
             Session.Keyframes = keyframes;
         }
-        foreach (string name in (string[])[nameof(HasSilenceData), nameof(HasSceneData), nameof(SilenceTip), nameof(ScenesTip)])
+        foreach (string name in (string[])[nameof(HasSilenceData), nameof(HasSceneData), nameof(SilenceTip), nameof(ScenesTip),
+                     nameof(CanToggleScenes), nameof(ScenesOn)])
             OnPropertyChanged(name);
         if (media.AnalysisError is { } error && !_previewErrorShown)
         {
@@ -341,6 +345,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         : media.AudioStreamCount == 0 ? "No audio in this file" : "No pauses of a second or more in this file";
 
     public string ScenesTip => Media is not { } media ? "Scene changes"
+        : !media.ScenesRequested ? "Find scene changes (reads every frame, so it takes a while)"
         : media.SceneChanges.Count is > 0 and var n
             ? $"Scene changes: {n}" + (media.ScenesComplete ? "" : " so far")
         : !media.ScenesComplete ? "Detecting scene changes…"
@@ -363,8 +368,25 @@ public sealed partial class EditorViewModel : ViewModelBase
     [RelayCommand]
     private void ToggleSilences() => ShowSilences = !ShowSilences;
 
+    /// <summary>The Scenes chip: shows or hides the markers, or starts finding them the first time.</summary>
+    public bool CanToggleScenes => HasSceneData || Media is { ScenesRequested: false };
+
+    /// <summary>The Scenes chip is lit: markers are shown (or on their way).</summary>
+    public bool ScenesOn => ShowScenes && Media is { ScenesRequested: true };
+
     [RelayCommand]
-    private void ToggleScenes() => ShowScenes = !ShowScenes;
+    private void ToggleScenes()
+    {
+        if (Media is { ScenesRequested: false } media)
+        {
+            media.DetectScenes();
+            ShowScenes = true;
+            foreach (string name in (string[])[nameof(ScenesTip), nameof(CanToggleScenes), nameof(ScenesOn)])
+                OnPropertyChanged(name);
+            return;
+        }
+        ShowScenes = !ShowScenes;
+    }
 
     [RelayCommand]
     private void ToggleSnap() => SnapToKeyframes = !SnapToKeyframes;
@@ -375,7 +397,11 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     partial void OnShowKeyframesChanged(bool value) => RaiseTimelineChanged();
     partial void OnShowSilencesChanged(bool value) => RaiseTimelineChanged();
-    partial void OnShowScenesChanged(bool value) => RaiseTimelineChanged();
+    partial void OnShowScenesChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ScenesOn));
+        RaiseTimelineChanged();
+    }
 
     // ---- Totals and status ---------------------------------------------------------------
 
@@ -506,6 +532,8 @@ public sealed partial class EditorViewModel : ViewModelBase
             UnloadPlayer();
         if (Settings.TranscribeOnOpen)
             StartTranscription();
+        else
+            LoadCachedTranscript();
     }
 
     /// <summary>Makes the recognizer (tests use a fake); sherpa-onnx if null.</summary>
@@ -519,13 +547,25 @@ public sealed partial class EditorViewModel : ViewModelBase
     {
         if (IsDemo || !HasFile || Media is not { } media)
             return "No video is open.";
-        if (Settings.ActiveModel is not { } model)
+        if (TranscriptionSetup() is not { } setup)
             return "No transcription model is installed. The user can download one in Settings → Transcription (parakeet-tdt-0.6b-v3 is recommended).";
-        var setup = new TranscriptionSetup(model, Settings.DirectoryOf(model), Settings.LanguageCode ?? ModelCatalog.OnlyLanguage(model));
-        if (RecognizerFactory is { } factory)
-            setup = setup with { CreateRecognizer = () => factory(setup) };
         media.StartTranscription(setup);
         return null;
+    }
+
+    /// <summary>Shows the open file's transcript from the cache, if the chosen model made one before.</summary>
+    private void LoadCachedTranscript()
+    {
+        if (!IsDemo && HasFile && Media is { } media && TranscriptionSetup() is { } setup)
+            media.LoadTranscript(setup);
+    }
+
+    private TranscriptionSetup? TranscriptionSetup()
+    {
+        if (Settings.ActiveModel is not { } model)
+            return null;
+        var setup = new TranscriptionSetup(model, Settings.DirectoryOf(model), Settings.LanguageCode ?? ModelCatalog.OnlyLanguage(model));
+        return RecognizerFactory is { } factory ? setup with { CreateRecognizer = () => factory(setup) } : setup;
     }
 
     /// <summary>Opens the file in the player; until it is ready (or if it fails) playback is simulated.</summary>
@@ -606,7 +646,8 @@ public sealed partial class EditorViewModel : ViewModelBase
     private void RaiseProjectReplaced()
     {
         foreach (string name in (string[])[nameof(ProjectName), nameof(WindowTitle), nameof(ProjectTitle), nameof(MediaInfoText),
-                     nameof(HasSilenceData), nameof(HasSceneData), nameof(HasFile), nameof(IsEmpty), nameof(TransportDurationText),
+                     nameof(HasSilenceData), nameof(HasSceneData), nameof(CanToggleScenes), nameof(ScenesOn), nameof(HasFile), nameof(IsEmpty),
+                     nameof(TransportDurationText),
                      nameof(Duration), nameof(DurationText), nameof(SourceLengthText), nameof(FrameRate), nameof(FrameText),
                      nameof(StatusRight)])
             OnPropertyChanged(name);

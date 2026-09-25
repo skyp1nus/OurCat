@@ -114,8 +114,19 @@ public sealed class RealMediaTests : IDisposable
         Assert.True(preview.AudioPeak(0, 1, 2) > 0.5);
         Assert.Null(preview.AnalysisError);
         Assert.Equal(video, Assert.Single(editor.RecentFiles).Path);
-        Assert.Matches(@"^keyframes \d+\.\d s · thumbnails \d+\.\d s · waveform \d+\.\d s · scenes \d+\.\d s$", preview.AnalysisTimes);
+        Assert.Matches(@"^keyframes \d+\.\d s · thumbnails \d+\.\d s · waveform \d+\.\d s$", preview.AnalysisTimes);
         Assert.Contains("Analysis keyframes ", editor.Settings.DiagnosticsText(), StringComparison.Ordinal);
+        // Nothing that reads the whole video starts by itself.
+        Assert.False(preview.ScenesRequested);
+        Assert.Equal(TranscriptState.None, preview.TranscriptState);
+        Assert.Null(preview.Activity);
+        // Claude asking for scene changes starts the detection; it says to come back until it is done.
+        var tools = new OurCut.Mcp.EditorTools(new EditorMcpHost(editor));
+        var scenes = await tools.FindSceneChanges();
+        Assert.False(scenes.Complete);
+        Assert.StartsWith("Scene detection is 0% done", scenes.Note, StringComparison.Ordinal);
+        await preview.ScenesTask.WaitAsync(TimeSpan.FromSeconds(60), Ct);
+        Assert.True((await tools.FindSceneChanges()).Complete);
 
         MarkTwoClips(editor);
         editor.ZoomLevel = 0.3;
@@ -145,10 +156,23 @@ public sealed class RealMediaTests : IDisposable
         ], null, Ct), Ct);
 
         var (editor, window) = await OpenAsync(video);
-        await PumpUntil(() => editor.HasSceneData && editor.HasSilenceData);
+        var preview = (MediaPreview)editor.Media!;
+        // Scene detection waits for the Scenes chip (or Claude).
+        Assert.False(editor.HasSceneData);
+        Assert.Equal("Find scene changes (reads every frame, so it takes a while)", editor.ScenesTip);
+        Assert.True(editor.CanToggleScenes);
+        Assert.False(editor.ScenesOn);
+
+        editor.ToggleScenesCommand.Execute(null);
+        Assert.True(editor.ScenesOn);
+        await preview.ScenesTask.WaitAsync(TimeSpan.FromSeconds(60), Ct);
+        await PumpUntil(() => editor.HasSceneData && editor.HasSilenceData && editor.Media!.ScenesComplete);
 
         Assert.Equal("Silence bands: 2 pauses of a second or more", editor.SilenceTip);
         Assert.Equal("Scene changes: 3", editor.ScenesTip);
+        Assert.Matches(@" · scenes \d+\.\d s$", preview.AnalysisTimes);
+        editor.ToggleScenesCommand.Execute(null);
+        Assert.False(editor.ScenesOn);
         var silences = editor.Media!.Silences;
         Assert.Equal([2.0, 7.0], silences.Select(r => Math.Round(r.Start)));
         Assert.Equal([3.0, 6.0, 9.0], editor.Media.SceneChanges.Select(t => Math.Round(t, 1)));
@@ -206,6 +230,7 @@ public sealed class RealMediaTests : IDisposable
         FakeRecognizer.Pieces = 0;
         void Prepare(EditorViewModel e)
         {
+            e.Settings.TranscribeOnOpen = true;
             e.Settings.ModelsFolder = models;
             e.RecognizerFactory = _ => new FakeRecognizer();
         }
@@ -229,8 +254,12 @@ public sealed class RealMediaTests : IDisposable
         Assert.StartsWith("Removed word1", cut.Result, StringComparison.Ordinal);
         window.Close();
 
-        // Opened again: read from the cache, not recognized again.
-        var (again, w2) = await OpenAsync(video, Prepare);
+        // Opened again, with "transcribe when opened" off: shown from the cache, not recognized again.
+        var (again, w2) = await OpenAsync(video, e =>
+        {
+            Prepare(e);
+            e.Settings.TranscribeOnOpen = false;
+        });
         await PumpUntil(() => again.Media!.TranscriptState == TranscriptState.Done);
         Assert.Equal(["word1"], again.Media!.Transcript!.Words.Select(w => w.Text));
         Assert.Equal(1, FakeRecognizer.Pieces);
@@ -262,7 +291,11 @@ public sealed class RealMediaTests : IDisposable
             "-shortest", "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-y", video,
         ], null, Ct), Ct);
 
-        var (editor, window) = await OpenAsync(video, e => e.Settings.ModelsFolder = models!);
+        var (editor, window) = await OpenAsync(video, e =>
+        {
+            e.Settings.TranscribeOnOpen = true;
+            e.Settings.ModelsFolder = models!;
+        });
         await PumpUntil(() => editor.Media!.TranscriptState is TranscriptState.Done or TranscriptState.Failed, 1500);
 
         var transcript = editor.Media!.Transcript!;
@@ -277,14 +310,19 @@ public sealed class RealMediaTests : IDisposable
     {
         string video = await SampleAsync();
         var (first, w1) = await OpenAsync(video);
+        var a = (MediaPreview)first.Media!;
+        a.DetectScenes();
+        await a.ScenesTask.WaitAsync(TimeSpan.FromSeconds(60), Ct);
         w1.Close();
         var (second, w2) = await OpenAsync(video);
-        var a = (MediaPreview)first.Media!;
         var b = (MediaPreview)second.Media!;
         Assert.Equal(a.Keyframes, b.Keyframes);
         Assert.Equal(a.ThumbnailCount, b.ThumbnailCount);
         Assert.Equal(a.Waveform.Filled, b.Waveform.Filled);
+        // Scene changes found before are shown again without asking.
         Assert.Equal("keyframes cached · thumbnails cached · waveform cached · scenes cached", b.AnalysisTimes);
+        Assert.True(b.ScenesRequested && b.ScenesComplete);
+        Assert.True(second.ScenesOn);
         w2.Close();
     }
 
