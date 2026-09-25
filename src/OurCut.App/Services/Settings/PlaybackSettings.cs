@@ -25,5 +25,8 @@ public sealed record PlaybackSettings(
     double? Speed = null)
 {
     /// <summary>mpv's hwdec value for this choice (a method, so it is not written into settings.json).</summary>
-    public string MpvHardwareDecoding() => HardwareDecoding == HardwareDecodingMode.Off ? "no" : "auto-copy";
+    public string MpvHardwareDecoding() => MpvHardwareDecoding(HardwareDecoding);
+
+    /// <summary>mpv's hwdec value: copy-back decoding, which works with every renderer, or none.</summary>
+    public static string MpvHardwareDecoding(HardwareDecodingMode mode) => mode == HardwareDecodingMode.Off ? "no" : "auto-copy";
 }

@@ -24,13 +24,12 @@ public partial class App : Application
         {
             var args = desktop.Args ?? [];
             var demo = ParseDemoScreen(args);
-            // Read before the player and the video view exist: decoding and the renderer are chosen at start.
+            // Read before the player exists: it starts with the saved decoding and audio device.
             var store = demo is null ? new AppSettingsStore(AppSettingsStore.DefaultFile) : null;
             var saved = store?.Load() ?? AppSettings.Default;
             var playback = saved.Playback ?? new PlaybackSettings();
-            VideoView.PreferOpenGl &= playback.Renderer != VideoRendererMode.Software;
             var player = MpvPlaybackEngine.TryCreate(out string? playbackError,
-                new MpvPlayerOptions { HardwareDecoding = playback.MpvHardwareDecoding() });
+                new MpvPlayerOptions { HardwareDecoding = playback.MpvHardwareDecoding(), AudioDevice = playback.AudioDevice });
             var editor = CreateEditor(demo, new FfmpegMediaOpener(new MediaCache()),
                 demo is null ? new RecentFilesStore(RecentFilesStore.DefaultFile) : null, player, playbackError);
             EditorMcpServer? mcp = null;

@@ -54,6 +54,10 @@ internal sealed class FakePlayer : IPlayer
     public void SetVolume(double volume) => Calls.Add(FormattableString.Invariant($"volume {volume:0.##}"));
     public void SetSpeed(double speed) => Calls.Add(FormattableString.Invariant($"speed {speed:0.##}"));
     public void SetAudioTracks(IReadOnlyList<bool> enabled) => Calls.Add("tracks " + string.Concat(enabled.Select(e => e ? '1' : '0')));
+    public IReadOnlyList<OurCut.Media.Playback.AudioOutputDevice> Devices { get; set; } = [];
+    public IReadOnlyList<OurCut.Media.Playback.AudioOutputDevice> AudioDevices() => Devices;
+    public void SetAudioDevice(string? name) => Calls.Add("device " + (name ?? "default"));
+    public void SetHardwareDecoding(HardwareDecodingMode mode) => Calls.Add("hwdec " + mode);
     public void Dispose() => Calls.Add("dispose");
 }
 
@@ -242,6 +246,55 @@ public class PlaybackTests
     }
 
     [AvaloniaFact]
+    public async Task Playback_settings_reach_the_running_player()
+    {
+        var (editor, player) = await OpenAsync();
+        player.Devices = [new("wasapi/{1}", "Speakers (Realtek)"), new("wasapi/{2}", "Headphones")];
+        var settings = editor.Settings;
+
+        settings.Open();
+
+        Assert.Equal(["System default", "Speakers (Realtek)", "Headphones"], settings.AudioDevices);
+        settings.AudioDevice = "Headphones";
+        Assert.Equal("device wasapi/{2}", player.Calls[^1]);
+        Assert.Equal("wasapi/{2}", settings.Current.Playback!.AudioDevice);
+        settings.AudioDevice = "System default";
+        Assert.Equal("device default", player.Calls[^1]);
+        Assert.Null(settings.Current.Playback!.AudioDevice);
+
+        settings.HardwareDecoding = HardwareDecodingMode.Off;
+        Assert.Equal("hwdec Off", player.Calls[^1]);
+        settings.Close();
+
+        // A saved device that is unplugged stays chosen, shown by its name; plugged in again, by its description.
+        player.Devices = [player.Devices[0]];
+        settings.Load(AppSettings.Default with { Playback = new PlaybackSettings(AudioDevice: "wasapi/{2}") });
+        Assert.Equal("wasapi/{2}", settings.AudioDevice);
+        Assert.Equal(["System default", "Speakers (Realtek)", "wasapi/{2}"], settings.AudioDevices);
+        Assert.Equal("device wasapi/{2}", player.Calls[^1]);
+        player.Devices = [.. player.Devices, new("wasapi/{2}", "Headphones")];
+        settings.Load(AppSettings.Default with { Playback = new PlaybackSettings(AudioDevice: "wasapi/{2}") });
+        Assert.Equal("Headphones", settings.AudioDevice);
+    }
+
+    [AvaloniaFact]
+    public void The_video_view_follows_the_renderer_setting()
+    {
+        var editor = App.CreateEditor(null, player: new FakePlayer());
+        var window = new MainWindow { DataContext = editor, Width = 1440, Height = 900 };
+        window.Show();
+        var view = window.GetVisualDescendants().OfType<VideoView>().Single();
+        Assert.False(view.SoftwareOnly);
+
+        editor.Settings.Renderer = VideoRendererMode.Software;
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(view.SoftwareOnly);
+        Assert.Equal(VideoRendererMode.Software, editor.Settings.Current.Playback!.Renderer);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public void Without_a_file_the_video_view_shows_nothing()
     {
         var editor = App.CreateEditor(null, player: new FakePlayer());
@@ -322,8 +375,20 @@ public sealed class RealPlaybackTests : IDisposable
 
         // The frame is drawn: SMPTE bars have a bright yellow second bar.
         await PumpUntil(() => HasYellow(window), 5);
-        using var frame = window.CaptureRenderedFrame();
-        frame!.Save(Path.Combine(Screenshots.Directory, "playback.png"), new PngBitmapEncoderOptions());
+        using (var frame = window.CaptureRenderedFrame())
+            frame!.Save(Path.Combine(Screenshots.Directory, "playback.png"), new PngBitmapEncoderOptions());
+
+        // Settings → Playback while the video is open: the view is rebuilt and draws again; decoding and the
+        // audio device change in mpv.
+        var before = view.Child;
+        editor.Settings.Renderer = VideoRendererMode.Software;
+        await PumpUntil(() => view.Child is not null && !ReferenceEquals(view.Child, before));
+        editor.SetTime(2.0);
+        await PumpUntil(() => HasYellow(window), 5);
+        editor.Settings.HardwareDecoding = HardwareDecodingMode.Off;
+        await PumpUntil(() => engine.Mpv.GetPropertyString("hwdec") == "no");
+        editor.Settings.Open();
+        Assert.Equal("System default", editor.Settings.AudioDevices[0]);
         window.Close();
     }
 

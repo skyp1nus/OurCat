@@ -23,12 +23,18 @@ public sealed class VideoView : Decorator
     public static readonly StyledProperty<IPlayer?> PlayerProperty =
         AvaloniaProperty.Register<VideoView, IPlayer?>(nameof(Player));
 
+    /// <summary>Settings → Playback → Renderer: Software. Changing it rebuilds the view while the video plays on.</summary>
+    public static readonly StyledProperty<bool> SoftwareOnlyProperty =
+        AvaloniaProperty.Register<VideoView, bool>(nameof(SoftwareOnly));
+
     /// <summary>How long OpenGL may take to start before the software renderer is used instead.</summary>
     private static readonly TimeSpan OpenGlStartTimeout = TimeSpan.FromSeconds(2);
 
     private DispatcherTimer? _fallbackTimer;
 
     public IPlayer? Player { get => GetValue(PlayerProperty); set => SetValue(PlayerProperty, value); }
+
+    public bool SoftwareOnly { get => GetValue(SoftwareOnlyProperty); set => SetValue(SoftwareOnlyProperty, value); }
 
     /// <summary>
     /// Try OpenGL first. Off in headless tests; <c>OURCUT_VIDEO=software</c> turns it off as well.
@@ -47,7 +53,7 @@ public sealed class VideoView : Decorator
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == PlayerProperty)
+        if (change.Property == PlayerProperty || change.Property == SoftwareOnlyProperty)
             Rebuild();
     }
 
@@ -70,7 +76,7 @@ public sealed class VideoView : Decorator
         Child = null;
         if (VisualRoot is null || Player is not MpvPlaybackEngine engine)
             return;
-        if (!PreferOpenGl)
+        if (!PreferOpenGl || SoftwareOnly)
         {
             Child = new SoftwareVideoView(engine.Mpv);
             return;

@@ -145,6 +145,44 @@ public sealed class MpvPlayerTests(SampleMediaFixture media) : IClassFixture<Sam
     }
 
     [Fact]
+    public async Task Decoding_and_the_audio_device_change_while_playing()
+    {
+        var player = await LoadAsync();
+
+        player.SetHardwareDecoding("auto-copy");
+        await WaitUntil(() => player.GetPropertyString("hwdec") == "auto-copy");
+        player.SetHardwareDecoding("no");
+        await WaitUntil(() => player.GetPropertyString("hwdec") == "no");
+
+        // mpv lists devices of every audio output it has, even with ao=null; "auto" is the system default.
+        var devices = player.AudioDevices();
+        Assert.DoesNotContain(devices, d => d.Name == "auto");
+        if (devices.Count > 0)
+        {
+            player.SetAudioDevice(devices[0].Name);
+            await WaitUntil(() => player.GetPropertyString("audio-device") == devices[0].Name);
+        }
+        player.SetAudioDevice(null);
+        await WaitUntil(() => player.GetPropertyString("audio-device") == "auto");
+        Assert.Equal(media.Mp4, player.LoadedPath);
+    }
+
+    [Fact]
+    public void The_device_list_is_read_from_mpvs_json()
+    {
+        const string json = """
+            [{"name":"auto","description":"Autoselect device"},{"name":"wasapi/{0.0.0}","description":"Speakers (Realtek)"},
+             {"name":"pulse/hdmi"},{"description":"no name"}]
+            """;
+
+        Assert.Equal([new("wasapi/{0.0.0}", "Speakers (Realtek)"), new AudioOutputDevice("pulse/hdmi", "pulse/hdmi")],
+            MpvPlayer.ParseAudioDevices(json));
+        Assert.Empty(MpvPlayer.ParseAudioDevices(null));
+        Assert.Empty(MpvPlayer.ParseAudioDevices("not json"));
+        Assert.Empty(MpvPlayer.ParseAudioDevices("{}"));
+    }
+
+    [Fact]
     public async Task A_file_mpv_cannot_play_fails_to_load()
     {
         media.SkipIfUnavailable();
