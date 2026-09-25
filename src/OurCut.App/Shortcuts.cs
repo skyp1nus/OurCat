@@ -3,7 +3,7 @@ using OurCut.App.ViewModels;
 
 namespace OurCut.App;
 
-/// <summary>Keyboard shortcuts of the editor window (same keys as the design's status bar).</summary>
+/// <summary>Keyboard shortcuts of the editor window: the dialogs' own keys, then the key map of Settings → Keyboard.</summary>
 public static class Shortcuts
 {
     public static bool Handle(EditorViewModel editor, Key key, KeyModifiers mods)
@@ -15,7 +15,6 @@ public static class Shortcuts
             return true;
         }
 
-        bool ctrl = mods.HasFlag(KeyModifiers.Control);
         var export = editor.Export;
         if (export.IsDialogOpen)
         {
@@ -44,75 +43,83 @@ public static class Shortcuts
             return false;
         }
 
-        // STUB: run editor.Settings.KeyMap.Find(KeyCombo.From(key, mods)) instead of the fixed keys below, and show its labels in the hints.
-        bool shift = mods.HasFlag(KeyModifiers.Shift);
-        if (ctrl && key == Key.O)
+        // The editor's own shortcuts: whatever Settings → Keyboard gives the key.
+        return KeyCombo.From(key, mods) is { } combo && editor.Settings.KeyMap.Find(combo) is { } action && Run(editor, action);
+    }
+
+    /// <summary>Runs a shortcut's action; false when it does not apply now (all but opening need a video).</summary>
+    public static bool Run(EditorViewModel editor, ShortcutAction action)
+    {
+        switch (action)
         {
-            if (shift)
-                editor.OpenProjectCommand.Execute(null);
-            else
+            case ShortcutAction.OpenVideo:
                 editor.OpenFileCommand.Execute(null);
-            return true;
+                return true;
+            case ShortcutAction.OpenProject:
+                editor.OpenProjectCommand.Execute(null);
+                return true;
         }
         if (!editor.HasFile)
             return false;
-        if (ctrl)
+        switch (action)
         {
-            switch (key)
-            {
-                case Key.E:
-                    export.Open();
-                    return true;
-                case Key.Z when shift:
-                case Key.Y:
-                    editor.Redo();
-                    return true;
-                case Key.Z:
-                    editor.Undo();
-                    return true;
-                case Key.S when shift:
-                    editor.SaveProjectAsCommand.Execute(null);
-                    return true;
-                case Key.S:
-                    editor.SaveProjectCommand.Execute(null);
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        switch (key)
-        {
-            case Key.Space:
+            case ShortcutAction.PlayPause:
                 editor.TogglePlay();
-                return true;
-            case Key.Left or Key.Right:
-                int dir = key == Key.Left ? -1 : 1;
-                if (mods.HasFlag(KeyModifiers.Shift))
-                    editor.Jump(dir);
-                else
-                    editor.SetTime(editor.Time + dir / editor.FrameRate);
-                return true;
-            case Key.I:
+                break;
+            case ShortcutAction.PreviousFrame or ShortcutAction.NextFrame:
+                editor.SetTime(editor.Time + (action == ShortcutAction.PreviousFrame ? -1 : 1) / editor.FrameRate);
+                break;
+            case ShortcutAction.JumpBack:
+                editor.Jump(-1);
+                break;
+            case ShortcutAction.JumpForward:
+                editor.Jump(1);
+                break;
+            case ShortcutAction.SetIn:
                 editor.MarkIn();
-                return true;
-            case Key.O:
+                break;
+            case ShortcutAction.SetOut:
                 editor.MarkOut();
-                return true;
-            case Key.Delete or Key.Back:
-                editor.DeleteClip();
-                return true;
-            case Key.E:
-                editor.ToggleExclude();
-                return true;
-            case Key.V:
-                editor.Tool = TimelineTool.Select;
-                return true;
-            case Key.S:
+                break;
+            case ShortcutAction.Split:
                 editor.Split();
-                return true;
+                break;
+            case ShortcutAction.ToggleExclude:
+                editor.ToggleExclude();
+                break;
+            case ShortcutAction.DeleteClip:
+                editor.DeleteClip();
+                break;
+            case ShortcutAction.SelectTool:
+                editor.Tool = TimelineTool.Select;
+                break;
+            case ShortcutAction.Undo:
+                editor.Undo();
+                break;
+            case ShortcutAction.Redo:
+                editor.Redo();
+                break;
+            case ShortcutAction.Save:
+                editor.SaveProjectCommand.Execute(null);
+                break;
+            case ShortcutAction.SaveAs:
+                editor.SaveProjectAsCommand.Execute(null);
+                break;
+            case ShortcutAction.Export:
+                editor.Export.Open();
+                break;
+            case ShortcutAction.ZoomIn:
+                editor.ZoomInCommand.Execute(null);
+                break;
+            case ShortcutAction.ZoomOut:
+                editor.ZoomOutCommand.Execute(null);
+                break;
+            case ShortcutAction.FitTimeline:
+                editor.ZoomFitCommand.Execute(null);
+                break;
             default:
                 return false;
         }
+        return true;
     }
 }

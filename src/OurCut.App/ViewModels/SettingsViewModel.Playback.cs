@@ -45,9 +45,6 @@ public sealed partial class SettingsViewModel
     [ObservableProperty]
     public partial bool RememberVolumeAndSpeed { get; set; } = true;
 
-    // STUB: show KeyMap's JumpBack/JumpForward keys once Shortcuts dispatches through the map.
-    public string JumpBackKeys { get; } = "Shift ←";
-    public string JumpForwardKeys { get; } = "Shift →";
 
     partial void OnHardwareDecodingChanged(HardwareDecodingMode value)
     {

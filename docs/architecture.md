@@ -247,8 +247,9 @@ bind to view models and never change the project themselves.
 - **Key map**: `KeyMap` (each `ShortcutAction`'s `KeyCombo`s; the defaults are `KeyMap.Catalog`) is what Settings →
   Keyboard (`KeyboardSettingsViewModel`) edits: search, recording (while `IsRecording`, `Shortcuts.Handle` hands every
   key to `Record`), conflicts (Replace takes the key from the other action, so no key runs two actions) and reset.
-  It is saved as `KeyboardSettings`: only the actions that differ from the defaults, by enum name. The editor's
-  shortcuts still use the default keys (see below).
+  It is saved as `KeyboardSettings`: only the actions that differ from the defaults, by enum name. The editor runs
+  whatever the map gives a key (`Shortcuts.Handle` → `KeyMap.Find` → `Shortcuts.Run`), and the hints (status bar,
+  empty screen, mark buttons, the Jump chips) show the map's keys (`SettingsViewModel.Keys`, `ShortcutLabels`).
 - **Demo mode**: `--demo <screen>` loads the design's sample (`DesignSample`, `DesignTranscript`,
   `DesignSettingsSample`) for a `DesignScreen`. `DemoScenario.Apply` does the common setup, then one partial hook per
   area (`ApplyTranscriptionMcp`, `ApplyTranscript`, `ApplyClaude`, `ApplyGeneralPlaybackExport`, `ApplyKeyboard`).
@@ -259,9 +260,7 @@ bind to view models and never change the project themselves.
 Places where the UI and the setting exist but the behaviour does not are marked with a one-line `// STUB:` comment
 (`grep -rn "// STUB:" src`):
 
-- **Shortcuts**: `Shortcuts.Handle` dispatches fixed keys instead of `KeyMap.Find(KeyCombo.From(key, mods))`.
-- **Playback**: hardware decoding and the renderer apply at the next start; the audio device list and output; the
-  Jump chips show fixed keys.
+- **Playback**: hardware decoding and the renderer apply at the next start; the audio device list and output.
 - **General**: the startup action, the recent files limit, the cache size and Clear cache.
 - **Transcription**: the Transcript tab's status says CPU until transcription runs on a GPU.
 

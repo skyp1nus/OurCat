@@ -28,7 +28,7 @@
             <Button Classes="soft" Height="28" Padding="12,0,8,0" HorizontalAlignment="Center" Command="{Binding OpenFileCommand}">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <TextBlock Text="Browse files" VerticalAlignment="Center" />
-                <Border Classes="kbd"><TextBlock Text="Ctrl O" /></Border>
+                <Border Classes="kbd"><TextBlock Text="{Binding Settings.Keys.OpenVideo}" /></Border>
               </StackPanel>
             </Button>
             <TextBlock Text="Or ask Claude: “open the latest recording in Videos”" FontSize="11" Foreground="{StaticResource MutedBrush}"
@@ -111,14 +111,14 @@
                 ToolTip.Tip="Set in-point (I)" Command="{Binding MarkInCommand}">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock Text="Set in" VerticalAlignment="Center" />
-            <Border Classes="kbd"><TextBlock Text="I" /></Border>
+            <Border Classes="kbd"><TextBlock Text="{Binding Settings.Keys.SetIn}" /></Border>
           </StackPanel>
         </Button>
         <Button Classes="soft" Height="26" Padding="10,0,6,0" FontSize="11.5" Foreground="{StaticResource Text2Brush}"
                 ToolTip.Tip="Set out-point (O)" Command="{Binding MarkOutCommand}">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock Text="Set out" VerticalAlignment="Center" />
-            <Border Classes="kbd"><TextBlock Text="O" /></Border>
+            <Border Classes="kbd"><TextBlock Text="{Binding Settings.Keys.SetOut}" /></Border>
           </StackPanel>
         </Button>
       </StackPanel>

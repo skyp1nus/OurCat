@@ -39,8 +39,8 @@
         </Border>
         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <TextBlock Text="with" FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-          <Border Classes="kbd key"><TextBlock Text="{Binding JumpBackKeys}" /></Border>
-          <Border Classes="kbd key"><TextBlock Text="{Binding JumpForwardKeys}" /></Border>
+          <Border Classes="kbd key"><TextBlock Text="{Binding Keys.JumpBack}" /></Border>
+          <Border Classes="kbd key"><TextBlock Text="{Binding Keys.JumpForward}" /></Border>
         </StackPanel>
       </StackPanel>
     </Grid></Border>
