@@ -123,6 +123,13 @@ public static class WaveformExtractor
 
     private const int MaxStretches = 8;
 
+    /// <summary>
+    /// A seek into compressed audio can land a few milliseconds off (ffmpeg 9 lands AAC 14 ms late), so a stretch may
+    /// end a bucket or two short. Up to this many missing buckets still count as the whole stretch decoded; the peaks
+    /// cannot show the difference, and silence detection must not stop at the gap.
+    /// </summary>
+    private const int SeekSlack = 10;
+
     public static WaveformData Create(MediaInfo info) => new(info.Audio.Length, info.Duration);
 
     /// <summary>How many stretches a file of <paramref name="duration"/> seconds is decoded in on <paramref name="cores"/> cores.</summary>
@@ -236,7 +243,7 @@ public static class WaveformExtractor
                     target.Set(s, first + bucket, peaks[s]);
                 bucket++;
             }
-            report(buckets is { } limit ? Math.Min(bucket, limit) : bucket);
+            report(buckets is { } limit ? (bucket >= limit - SeekSlack ? limit : bucket) : bucket);
         }, cancellationToken);
     }
 

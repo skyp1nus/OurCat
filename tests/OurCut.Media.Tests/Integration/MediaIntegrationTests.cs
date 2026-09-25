@@ -138,11 +138,22 @@ public class MediaIntegrationTests(SampleMediaFixture media) : IClassFixture<Sam
         Assert.Equal(whole.Filled, parts.Filled);
         Assert.Equal(whole.Decoded, parts.Decoded);
         Assert.True(chunks >= 3);
+        int firstStretch = (int)Math.Ceiling(whole.Capacity / 3.0);
         for (int s = 0; s < 2; s++)
         {
-            for (int b = 0; b < whole.Filled; b++)
+            // The first stretch starts at 0 like the single pass: the same peaks.
+            for (int b = 0; b < firstStretch; b++)
                 Assert.True(Math.Abs(whole[s, b] - parts[s, b]) < 0.02, $"stream {s}, bucket {b}: {whole[s, b]} vs {parts[s, b]}");
+            // The others start with a seek, which may land a few ms off (ffmpeg 9: 14 ms): the peaks match within 30 ms.
+            for (int b = firstStretch; b < whole.Filled; b++)
+            {
+                Assert.True(parts[s, b] <= Loudest(whole, s, b) + 0.02, $"stream {s}, bucket {b}: {parts[s, b]} louder than one pass");
+                Assert.True(whole[s, b] <= Loudest(parts, s, b) + 0.02, $"stream {s}, bucket {b}: {whole[s, b]} missing");
+            }
         }
+
+        static float Loudest(WaveformData data, int stream, int bucket) =>
+            Enumerable.Range(Math.Max(0, bucket - 3), 7).Where(b => b < data.Capacity).Max(b => data[stream, b]);
     }
 
     [Fact]
