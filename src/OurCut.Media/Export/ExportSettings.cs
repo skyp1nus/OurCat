@@ -78,6 +78,9 @@ public sealed record ExportSettings
     public bool Overwrite { get; init; }
 
     public VideoEncoding Video { get; init; } = VideoEncoding.H264Quality;
+
+    /// <summary>Re-encodes <see cref="Video"/> on this GPU encoder instead of the CPU; the CPU takes over if it fails.</summary>
+    public GpuEncoder? GpuEncoder { get; init; }
     public AudioEncoding Audio { get; init; } = AudioEncoding.Copy;
 
     public string Extension => Container switch

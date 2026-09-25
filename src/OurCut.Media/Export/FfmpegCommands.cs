@@ -185,10 +185,17 @@ public static class FfmpegCommands
         if (source.Video is { } v)
         {
             var enc = settings.Video;
-            yield return $"-c:v {enc.Codec} -preset {enc.Preset} -crf {enc.Crf.ToString(CultureInfo.InvariantCulture)}";
-            // Players expect 8-bit 4:2:0.
-            if (!string.Equals(v.PixelFormat, "yuv420p", StringComparison.Ordinal))
-                yield return "-pix_fmt yuv420p";
+            if (settings.GpuEncoder is { } gpu)
+            {
+                yield return gpu.Arguments(enc);
+            }
+            else
+            {
+                yield return $"-c:v {enc.Codec} -preset {enc.Preset} -crf {enc.Crf.ToString(CultureInfo.InvariantCulture)}";
+                // Players expect 8-bit 4:2:0.
+                if (!string.Equals(v.PixelFormat, "yuv420p", StringComparison.Ordinal))
+                    yield return "-pix_fmt yuv420p";
+            }
             if (settings.IsMovLike && enc.Codec == "libx265")
                 yield return "-tag:v hvc1";
         }

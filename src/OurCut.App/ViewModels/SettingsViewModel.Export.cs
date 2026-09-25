@@ -109,7 +109,11 @@ public sealed partial class SettingsViewModel
     public partial bool UseGpuEncoder { get; set; } = true;
 
     [ObservableProperty]
-    public partial string GpuEncoderNote { get; set; } = GpuNote(DetectGpuEncoder());
+    public partial string GpuEncoderNote { get; set; } = GpuNote(null);
+
+    /// <summary>The GPU encoder found on this computer (<see cref="DetectGpuEncoderAsync"/>); null for none.</summary>
+    [ObservableProperty]
+    public partial GpuEncoderSupport? GpuEncoder { get; private set; }
 
     [ObservableProperty]
     public partial FileExistsAction IfFileExists { get; set; } = FileExistsAction.AddNumber;
@@ -247,9 +251,25 @@ public sealed partial class SettingsViewModel
         SeparateNamePreview = [.. labels.Take(4).Select((label, i) => ExportFileNames.Fill(FileNamePattern, project, i + 1, label, date, merged: false) + ext)];
     }
 
-    // STUB: probe ffmpeg for NVENC, QSV, AMF or VideoToolbox.
-    private static string? DetectGpuEncoder() => null;
+    /// <summary>
+    /// Looks for a GPU encoder (a few seconds of test encodes at most) and hands it to the Export dialog. The app runs it
+    /// once at start.
+    /// </summary>
+    /// <param name="detect">Finds the encoder; <see cref="GpuEncoderProbe.DetectAsync"/> by default.</param>
+    public async Task DetectGpuEncoderAsync(Func<CancellationToken, Task<GpuEncoderSupport?>>? detect = null,
+        CancellationToken cancellationToken = default)
+    {
+        GpuEncoderNote = "Looking for a GPU encoder…";
+        var found = await (detect ?? (ct => GpuEncoderProbe.DetectAsync(cancellationToken: ct)))(cancellationToken).ConfigureAwait(true);
+        GpuEncoder = found;
+        GpuEncoderNote = GpuNote(found);
+        _editor.Export.Gpu = found;
+    }
 
-    private static string GpuNote(string? encoder) =>
-        encoder is null ? "No GPU encoder found. Re-encoding uses the CPU." : "Detected: " + encoder;
+    private static string GpuNote(GpuEncoderSupport? found) => found switch
+    {
+        null => "No GPU encoder found. Re-encoding uses the CPU.",
+        { Hevc: false } => $"Detected: {found.Encoder.Name}. H.265 still uses the CPU.",
+        _ => "Detected: " + found.Encoder.Name,
+    };
 }
