@@ -80,6 +80,13 @@ parallel (or reads them from the cache) and raises `Changed` as results arrive; 
 keyframes are handed to the editing session for snapping. How long each part took, or that it came from the cache,
 is in Copy diagnostics ("Analysis keyframes 0.2 s · thumbnails 0.3 s · …").
 
+While that runs for more than 0.4 s, a processing screen covers the editor below the title bar (`ProcessingOverlay`,
+design "OurCut — екран обробки", X1): a slowly changing blob (`BlobView`, drawn every frame while shown), the file,
+a progress line and "Reading the audio · 72% · about 8 s left". The part named is the one furthest behind
+(`MediaPreview.AnalysisStage`); the time left comes from the rate of the last few seconds, smoothed so it counts down
+(`TimeLeftEstimator`). It fades and settles in, and fades out growing a little into the editor; a file read from the
+cache never shows it.
+
 ### Lossless cuts
 
 With `-ss` before `-i` and `-c copy`, ffmpeg starts every stream at a keyframe. OurCut makes that explicit:

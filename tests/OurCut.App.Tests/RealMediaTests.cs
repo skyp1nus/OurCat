@@ -116,6 +116,11 @@ public sealed class RealMediaTests : IDisposable
         Assert.Equal(video, Assert.Single(editor.RecentFiles).Path);
         Assert.Matches(@"^keyframes \d+\.\d s · thumbnails \d+\.\d s · waveform \d+\.\d s$", preview.AnalysisTimes);
         Assert.Contains("Analysis keyframes ", editor.Settings.DiagnosticsText(), StringComparison.Ordinal);
+        // The processing screen (if the analysis took long enough to show it) is gone.
+        Assert.False(preview.IsAnalysing);
+        Assert.Null(preview.AnalysisStage);
+        Assert.Equal(1, preview.AnalysisProgress);
+        await PumpUntil(() => !editor.Processing.IsVisible);
         // Nothing that reads the whole video starts by itself.
         Assert.False(preview.ScenesRequested);
         Assert.Equal(TranscriptState.None, preview.TranscriptState);

@@ -94,6 +94,9 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     /// <summary>The settings dialog (Settings → Transcription).</summary>
     public SettingsViewModel Settings { get; }
+
+    /// <summary>The screen over the editor while a file is prepared.</summary>
+    public ProcessingViewModel Processing { get; } = new();
     public ObservableCollection<ClipViewModel> Clips { get; } = [];
     public ObservableCollection<AudioLaneViewModel> AudioLanes { get; } = [];
     public ObservableCollection<RecentFileViewModel> RecentFiles { get; } = [];
@@ -204,6 +207,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         foreach (string name in (string[])[nameof(HasSilenceData), nameof(HasSceneData), nameof(SilenceTip), nameof(ScenesTip),
                      nameof(CanToggleScenes), nameof(ScenesOn)])
             OnPropertyChanged(name);
+        Processing.Update();
         if (media.AnalysisError is { } error && !_previewErrorShown)
         {
             _previewErrorShown = true;
@@ -534,6 +538,7 @@ public sealed partial class EditorViewModel : ViewModelBase
             StartTranscription();
         else
             LoadCachedTranscript();
+        Processing.Track(IsDemo ? null : media, MediaFileName, info, project.SourceDuration);
     }
 
     /// <summary>Makes the recognizer (tests use a fake); sherpa-onnx if null.</summary>
@@ -662,6 +667,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         Export.Close();
         Select(null);
         Media = null;
+        Processing.Track(null);
         MediaFileName = "";
         MediaInfo = "";
         ProjectPath = null;
