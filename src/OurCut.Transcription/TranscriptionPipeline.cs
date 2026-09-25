@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using OurCut.Core.Transcripts;
 
 namespace OurCut.Transcription;
 

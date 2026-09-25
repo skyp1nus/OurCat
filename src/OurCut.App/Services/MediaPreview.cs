@@ -5,6 +5,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using OurCut.Core.Model;
+using OurCut.Core.Transcripts;
 using OurCut.Media.Analysis;
 using OurCut.Media.Caching;
 using OurCut.Media.Previews;

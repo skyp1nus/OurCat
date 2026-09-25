@@ -1,5 +1,6 @@
 using OurCut.Core.Editing;
 using OurCut.Core.Model;
+using OurCut.Core.Transcripts;
 
 namespace OurCut.Mcp;
 
@@ -47,6 +48,12 @@ public interface IEditorContext
 
     /// <summary>What is still being analysed, e.g. "analysing 45%"; null when done.</summary>
     string? AnalysisStatus { get; }
+
+    /// <summary>What is said in the video, as far as it has been transcribed, and how far that is.</summary>
+    TranscriptStatus TranscriptStatus { get; }
+
+    /// <summary>Starts transcribing if it has not started. Returns why it cannot (e.g. no model installed), or null.</summary>
+    string? StartTranscription();
 
     /// <summary>
     /// Starts exporting the included clips with the Export dialog's settings, changed where
@@ -102,3 +109,9 @@ public sealed record ExportRequest(string? Mode = null, string? Container = null
 /// <param name="Files">The files it writes (while running) or wrote.</param>
 /// <param name="Settings">e.g. "Lossless copy · MP4 · merged".</param>
 public sealed record ExportState(string Status, double Progress, IReadOnlyList<string> Files, string? Error, string Settings);
+
+/// <summary>The transcript of the open video.</summary>
+/// <param name="State"><c>none</c> (not started), <c>waiting</c> (for the rest of the analysis), <c>running</c>, <c>done</c> or <c>failed</c>.</param>
+/// <param name="Progress">Part of the audio transcribed, 0..1.</param>
+/// <param name="Transcript">What has been transcribed so far; null before it starts.</param>
+public sealed record TranscriptStatus(string State, double Progress, Transcript? Transcript, string? Error);

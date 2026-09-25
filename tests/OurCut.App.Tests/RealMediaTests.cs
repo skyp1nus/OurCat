@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using OurCut.App.Services;
 using OurCut.App.ViewModels;
 using OurCut.App.Views;
+using OurCut.Core.Transcripts;
 using OurCut.Media;
 using OurCut.Media.Caching;
 using OurCut.Media.Probing;
@@ -214,6 +215,16 @@ public sealed class RealMediaTests : IDisposable
         Assert.Equal("parakeet-tdt-0.6b-v3", transcript.Model);
         Assert.Equal(["word1"], transcript.Words.Select(w => w.Text));
         Assert.Equal(1, FakeRecognizer.Pieces);
+
+        // Claude reads it through the editor's MCP host, and can cut by it.
+        var tools = new OurCut.Mcp.EditorTools(new EditorMcpHost(editor));
+        var read = await tools.GetTranscript();
+        Assert.Equal("done", read.Status);
+        Assert.Equal(["00:00.500–00:01.000 word1"], read.Lines);
+        Assert.Equal(1, (await tools.SearchTranscript("WORD1")).Count);
+        var cut = await tools.CutRanges([new OurCut.Mcp.CutRange(0.5, 1.0)], "Removed word1");
+        Assert.Equal(2, editor.Clips.Count);
+        Assert.StartsWith("Removed word1", cut.Result, StringComparison.Ordinal);
         window.Close();
 
         // Opened again: read from the cache, not recognized again.

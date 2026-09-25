@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Media;
+using OurCut.Core.Transcripts;
 using OurCut.Media.Analysis;
 using OurCut.Transcription;
 

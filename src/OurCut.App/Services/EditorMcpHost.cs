@@ -41,6 +41,12 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
             : null;
     public string? AnalysisStatus => editor.Media?.Activity;
 
+    public TranscriptStatus TranscriptStatus => editor.Media is { } media
+        ? new TranscriptStatus(media.TranscriptState.ToString().ToLowerInvariant(), media.TranscriptProgress, media.Transcript, media.TranscriptError)
+        : new TranscriptStatus("none", 0, null, null);
+
+    public string? StartTranscription() => editor.StartTranscription();
+
     public string? StartExport(ExportRequest request) =>
         editor.Export.StartForClaude(
             request.Mode switch { "lossless" => ExportMode.Copy, "reencode" => ExportMode.Encode, _ => null },

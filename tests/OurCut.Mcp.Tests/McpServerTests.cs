@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using OurCut.Core.Editing;
 using OurCut.Core.Model;
+using OurCut.Core.Transcripts;
 
 namespace OurCut.Mcp.Tests;
 
@@ -68,6 +69,27 @@ internal sealed class FakeEditor : IEditorHost, IEditorContext, IDisposable
 
     public SceneReport? FindSceneChanges(double threshold) =>
         Scenes is { } s ? s with { Times = threshold > 20 ? [.. s.Times.Take(1)] : s.Times } : null;
+
+    public TranscriptStatus TranscriptStatus { get; set; } = new("done", 1, new Transcript("parakeet-tdt-0.6b-v3", "auto",
+    [
+        new("Welcome", 10.0, 10.4), new("to", 10.5, 10.6), new("the", 10.7, 10.8), new("keynote.", 10.9, 11.4),
+        new("Um,", 12.0, 12.3), new("so", 12.5, 12.7), new("today", 12.8, 13.1), new("we", 13.2, 13.3), new("export", 13.4, 13.8),
+        new("videos.", 13.9, 14.4), new("Uh", 105.0, 105.3), new("the", 105.5, 105.6), new("export", 105.7, 106.1), new("dialog.", 106.2, 106.7),
+    ]), null);
+
+    /// <summary>Why transcription cannot start (null: it starts and is done at once).</summary>
+    public string? TranscriptionRefusal { get; set; }
+
+    public int TranscriptionStarts { get; private set; }
+
+    public string? StartTranscription()
+    {
+        TranscriptionStarts++;
+        if (TranscriptionRefusal is { } refusal)
+            return refusal;
+        TranscriptStatus = TranscriptStatus with { State = "waiting" };
+        return null;
+    }
 
     /// <summary>Why an export cannot start (null: it starts).</summary>
     public string? ExportRefusal { get; set; }
@@ -185,10 +207,10 @@ public class McpToolListTests
 {
     private static readonly string[] Expected =
     [
-        "add_segment", "cancel_export", "cut_silences", "edit_timeline", "export", "find_keyframes", "find_scene_changes",
-        "find_silences", "get_export_status", "get_history", "get_project", "list_videos", "move_segment", "open_file", "redo",
-        "remove_segment", "revert_action", "save_project", "seek", "set_included", "set_label", "set_playing", "split_segment",
-        "trim_segment", "undo",
+        "add_segment", "cancel_export", "cut_filler_words", "cut_ranges", "cut_silences", "edit_timeline", "export",
+        "find_filler_words", "find_keyframes", "find_scene_changes", "find_silences", "get_export_status", "get_history", "get_project",
+        "get_transcript", "list_videos", "move_segment", "open_file", "redo", "remove_segment", "revert_action", "save_project",
+        "search_transcript", "seek", "set_included", "set_label", "set_playing", "split_segment", "trim_segment", "undo",
     ];
 
     [Fact]
@@ -596,6 +618,122 @@ public class McpAnalysisTests
         Assert.True(result.IsError);
         Assert.Contains("analysing 40%", result.Text(), StringComparison.Ordinal);
         Assert.Empty(editor.Session.History.Entries);
+    }
+}
+
+/// <summary>Reading, searching and cutting by the transcript.</summary>
+public class McpTranscriptTests
+{
+    private static readonly string[] So = ["so"];
+
+    [Fact]
+    public async Task Get_transcript_gives_timed_sentences_and_words()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var all = (await c.Client.Call("get_transcript")).Json();
+        Assert.Equal("done", all.GetProperty("status").GetString());
+        Assert.Equal("parakeet-tdt-0.6b-v3", all.GetProperty("model").GetString());
+        Assert.Equal(
+        [
+            "00:10.000–00:11.400 Welcome to the keynote.",
+            "00:12.000–00:14.400 Um, so today we export videos.",
+            "01:45.000–01:46.700 Uh the export dialog.",
+        ], all.GetProperty("lines").EnumerateArray().Select(l => l.GetString()));
+        Assert.False(all.TryGetProperty("words", out _));
+
+        var part = (await c.Client.Call("get_transcript", new { start = 100, words = true })).Json();
+        Assert.Single(part.GetProperty("lines").EnumerateArray());
+        Assert.Equal(["Uh", "the", "export", "dialog."], part.GetProperty("words").EnumerateArray().Select(w => w.GetProperty("text").GetString()));
+        Assert.Equal("done", (await c.Client.Call("get_project")).Json().GetProperty("transcript").GetString());
+    }
+
+    [Fact]
+    public async Task Get_transcript_starts_transcription_and_reports_progress()
+    {
+        var editor = new FakeEditor();
+        editor.TranscriptStatus = new TranscriptStatus("none", 0, null, null);
+        await using var c = await Connection.OpenAsync(editor);
+
+        var waiting = (await c.Client.Call("get_transcript")).Json();
+        Assert.Equal(1, editor.TranscriptionStarts);
+        Assert.Equal("waiting for the rest of the analysis", waiting.GetProperty("status").GetString());
+        Assert.Empty(waiting.GetProperty("lines").EnumerateArray());
+
+        editor.TranscriptStatus = new TranscriptStatus("running", 0.4, new Transcript("m", "auto", [new("Hi.", 1, 1.3)]), null);
+        var running = (await c.Client.Call("get_transcript")).Json();
+        Assert.Equal("transcribing 40%", running.GetProperty("status").GetString());
+        Assert.Contains("still running", running.GetProperty("note").GetString(), StringComparison.Ordinal);
+
+        editor.TranscriptStatus = new TranscriptStatus("none", 0, null, null);
+        editor.TranscriptionRefusal = "No transcription model is installed.";
+        Assert.Contains("No transcription model", (await c.Client.Call("get_transcript")).Text(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Search_finds_words_and_phrases_ignoring_case_and_punctuation()
+    {
+        await using var c = await Connection.OpenAsync(new FakeEditor());
+
+        var export = (await c.Client.Call("search_transcript", new { text = "EXPORT" })).Json();
+        Assert.Equal(2, export.GetProperty("count").GetInt32());
+        var first = export.GetProperty("matches")[0];
+        Assert.Equal((13.4, "export", "Um, so today we export videos."),
+            (first.GetProperty("start").GetDouble(), first.GetProperty("text").GetString(), first.GetProperty("context").GetString()));
+
+        var phrase = (await c.Client.Call("search_transcript", new { text = "the export dialog" })).Json();
+        Assert.Equal("01:45.500–01:46.700", Assert.Single(phrase.GetProperty("matches").EnumerateArray()).GetProperty("range").GetString());
+
+        var none = (await c.Client.Call("search_transcript", new { text = "smart cut" })).Json();
+        Assert.Equal(0, none.GetProperty("count").GetInt32());
+        Assert.Contains("not in the transcript", none.GetProperty("note").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Filler_words_are_found_and_cut_as_one_edit()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var fillers = (await c.Client.Call("find_filler_words")).Json();
+        Assert.Equal(["Um,", "Uh"], fillers.GetProperty("matches").EnumerateArray().Select(m => m.GetProperty("text").GetString()));
+        Assert.Equal(0.6, fillers.GetProperty("total").GetDouble(), 6);
+        Assert.Equal(1, (await c.Client.Call("find_filler_words", new { words = So })).Json().GetProperty("count").GetInt32());
+
+        var cut = (await c.Client.Call("cut_filler_words", new { padding = 0 })).Json();
+
+        Assert.StartsWith("Removed 2 filler words", cut.GetProperty("result").GetString(), StringComparison.Ordinal);
+        Assert.Equal([(10.0, 12.0), (12.3, 40.0), (100.0, 105.0), (105.3, 200.0), (300.0, 360.0)], cut.GetProperty("clips").EnumerateArray()
+            .Select(x => (x.GetProperty("start").GetDouble(), x.GetProperty("end").GetDouble())));
+        Assert.Equal("cut_filler_words", Assert.Single(editor.Session.History.Entries).Command.Name);
+    }
+
+    [Fact]
+    public async Task Cut_ranges_cuts_what_claude_picked_and_checks_the_ranges()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        var cut = (await c.Client.Call("cut_ranges", new { ranges = new[] { new { start = 12.0, end = 14.4 } }, description = "Removed the aside" })).Json();
+
+        Assert.StartsWith("Removed the aside", cut.GetProperty("result").GetString(), StringComparison.Ordinal);
+        Assert.Equal("Removed the aside", Assert.Single(editor.Session.History.Entries).Description);
+        Assert.True((await c.Client.Call("cut_ranges", new { ranges = new[] { new { start = 5.0, end = 4.0 } }, description = "x" })).IsError);
+        var outside = (await c.Client.Call("cut_ranges", new { ranges = new[] { new { start = 60.0, end = 70.0 } }, description = "x" })).Json();
+        Assert.Contains("nothing changed", outside.GetProperty("result").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Cutting_filler_words_waits_for_the_whole_transcript()
+    {
+        var editor = new FakeEditor();
+        editor.TranscriptStatus = editor.TranscriptStatus with { State = "running", Progress = 0.5 };
+        await using var c = await Connection.OpenAsync(editor);
+
+        var result = await c.Client.Call("cut_filler_words");
+        Assert.True(result.IsError);
+        Assert.Contains("transcribing 50%", result.Text(), StringComparison.Ordinal);
     }
 }
 

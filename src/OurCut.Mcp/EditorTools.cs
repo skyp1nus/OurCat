@@ -10,6 +10,7 @@ using ModelContextProtocol.Server;
 using OurCut.Core.Editing;
 using OurCut.Core.Editing.Commands;
 using OurCut.Core.Model;
+using OurCut.Core.Transcripts;
 using OurCut.Core.Time;
 
 namespace OurCut.Mcp;
@@ -37,7 +38,8 @@ public sealed record ProjectInfo(
     bool Playing,
     [property: Description("Total length of the included clips, in seconds.")] double OutputDuration,
     [property: Description("In output order.")] IReadOnlyList<ClipInfo> Clips,
-    [property: Description("Background analysis still running, e.g. \"analysing 45%\".")] string? Analysis);
+    [property: Description("Background analysis still running, e.g. \"analysing 45%\".")] string? Analysis,
+    [property: Description("Transcript: done, transcribing 34%, not started (and why)…; read it with get_transcript.")] string? Transcript = null);
 
 public sealed record EditResult(
     [property: Description("Id of the edit in the history (for revert_action); null if nothing changed.")] long? Action,
@@ -57,6 +59,34 @@ public sealed record ExportResult(
     string? Error,
     [property: Description("Mode, container and whether the clips are merged, e.g. \"Lossless copy · MP4 · merged\".")] string Settings,
     string? Note);
+
+public sealed record TranscriptWordInfo(string Text, double Start, double End);
+
+public sealed record TranscriptResult(
+    [property: Description("done, or how far transcription is, e.g. \"transcribing 34%\".")] string Status,
+    string? Model,
+    [property: Description("True when word times are estimated (Whisper models): good to about half a second.")] bool ApproximateTimes,
+    [property: Description("One per sentence or phrase: \"MM:SS.mmm–MM:SS.mmm text\".")] IReadOnlyList<string> Lines,
+    [property: Description("Every word with its time, when asked for.")] IReadOnlyList<TranscriptWordInfo>? Words,
+    [property: Description("More follows: call again with start = nextStart.")] double? NextStart,
+    string? Note);
+
+public sealed record TranscriptMatch(
+    double Start,
+    double End,
+    [property: Description("Start–end as MM:SS.mmm.")] string Range,
+    [property: Description("The words found.")] string Text,
+    [property: Description("The sentence around them.")] string Context);
+
+public sealed record MatchesResult(
+    IReadOnlyList<TranscriptMatch> Matches,
+    int Count,
+    [property: Description("Seconds the matches take together.")] double Total,
+    [property: Description("done, or how far transcription is: only the part done so far was searched.")] string Status,
+    string? Note);
+
+/// <summary>A source range to cut.</summary>
+public sealed record CutRange([property: Description("Seconds.")] double Start, [property: Description("Seconds.")] double End);
 
 public sealed record SilenceInfo(double Start, double End, double Duration,
     [property: Description("Start–end as MM:SS.mmm, as the editor shows it.")] string Range);
@@ -108,6 +138,11 @@ public sealed class EditorTools(IEditorHost host)
         You cannot see or hear the video, but find_silences shows where the speaker pauses and
         find_scene_changes where the picture changes (a cut, a new slide or window); both are analysed in
         the background after a video is opened. cut_silences removes pauses in one step.
+
+        get_transcript gives what is said, as timed sentences (OurCut transcribes locally once a model is
+        installed in Settings → Transcription); search_transcript finds words or phrases, find_filler_words the
+        ums and uhs. Use the times to add, trim or split clips, label clips after what is said, or cut words and
+        sentences out with cut_ranges or cut_filler_words.
 
         Everything you change appears in OurCut's Claude panel, highlighted, and the user can undo it. For
         several related changes use edit_timeline with a short description, so they form one undo step.
@@ -298,30 +333,53 @@ public sealed class EditorTools(IEditorHost host)
                 throw new McpException("The audio is still being analysed" + (ctx.AnalysisStatus is { } a ? $" ({a})" : "") + ". Try again shortly.");
             var cuts = report.Ranges.Select(r => new TimeRange(r.Start + padding, r.End - padding))
                 .Where(r => r.End - r.Start >= 0.05).ToList();
-            var project = ctx.Session.Project;
-            var steps = new List<IEditCommand>();
-            if (clips is null && project.Clips.IsEmpty)
-                steps.Add(new AddClipCommand(0, project.SourceDuration, project.Name));
-            IReadOnlyList<TimeRange> targets = clips is not null
-                ? [.. clips.Select(id => project.Find(id) ?? throw new McpException($"Clip {id} does not exist.")).Select(c => new TimeRange(c.Start, c.End))]
-                : project.Clips.IsEmpty ? [new TimeRange(0, project.SourceDuration)]
-                : [.. project.IncludedClips.Select(c => new TimeRange(c.Start, c.End))];
-            var hit = cuts.Where(r => targets.Any(c => r.End > c.Start && r.Start < c.End)).ToList();
-            if (hit.Count == 0)
-            {
-                return Task.FromResult(new EditResult(null,
-                    $"No pauses of {minDuration:0.##} s or more below {report.ThresholdDb:0.#} dBFS in those clips; nothing changed.",
-                    Clips(project), Round(project.OutputDuration)));
-            }
-            string description = $"Removed {hit.Count} silence{(hit.Count == 1 ? "" : "s")}";
-            steps.Add(new CutRangesCommand(hit, clips, "cut_silences", description));
-            IEditCommand command = steps.Count == 1 ? steps[0] : new BatchCommand("cut_silences", description, steps);
-            var entry = Guard(() => ctx.Session.Execute(command, EditOrigin.Assistant));
-            var result = Result(ctx, entry);
-            return Task.FromResult(result with
-            {
-                Result = $"{description}: {Round(project.OutputDuration - ctx.Session.Project.OutputDuration)} s shorter.",
-            });
+            return Task.FromResult(CutOut(ctx, cuts, clips, "cut_silences",
+                n => $"Removed {n} silence{(n == 1 ? "" : "s")}",
+                $"No pauses of {minDuration:0.##} s or more below {report.ThresholdDb:0.#} dBFS in those clips; nothing changed."));
+        });
+
+    [McpServerTool(Name = "cut_ranges", Title = "Cut out ranges")]
+    [Description("Cuts source ranges (e.g. words or sentences found in the transcript) out of the included clips, or the " +
+                 "given clips, as one undo step, trimming or splitting the clips they touch. With no clips yet, it first keeps " +
+                 "the whole video.")]
+    public Task<EditResult> CutRanges(
+        [Description("Ranges of the source to remove, in seconds.")] IReadOnlyList<CutRange> ranges,
+        [Description("What the cut removes, in a few words; shown to the user, e.g. \"Removed the false start\".")] string description,
+        [Description("Clip ids to cut; every included clip if omitted.")] IReadOnlyList<int>? clips = null) =>
+        host.RunAsync(ctx =>
+        {
+            RequireFile(ctx);
+            if (ranges.Count == 0)
+                throw new McpException("Give at least one range.");
+            if (ranges.Any(r => !double.IsFinite(r.Start) || !double.IsFinite(r.End) || r.End <= r.Start))
+                throw new McpException("Each range needs a start before its end, in seconds.");
+            string text = string.IsNullOrWhiteSpace(description) ? $"Cut {ranges.Count} ranges" : description.Trim();
+            return Task.FromResult(CutOut(ctx, [.. ranges.Select(r => new TimeRange(r.Start, r.End))], clips, "cut_ranges",
+                _ => text, "None of the ranges is inside those clips; nothing changed."));
+        });
+
+    [McpServerTool(Name = "cut_filler_words", Title = "Cut out filler words")]
+    [Description("Cuts filler words (um, uh, er…; е-е, ну, типу…) or the given words out of the included clips, or the " +
+                 "given clips, as one undo step. Needs the finished transcript.")]
+    public Task<EditResult> CutFillerWords(
+        [Description("Words or short phrases to cut instead of the usual fillers.")] IReadOnlyList<string>? words = null,
+        [Description("Seconds added before and after each word (default 0.02).")] double padding = 0.02,
+        [Description("Clip ids to cut; every included clip if omitted.")] IReadOnlyList<int>? clips = null) =>
+        host.RunAsync(ctx =>
+        {
+            var (status, transcript) = RequireTranscript(ctx);
+            if (status.State != "done")
+                throw new McpException($"The transcript is not finished ({StatusText(status)}). Try again when it is.");
+            if (padding is < 0 or > 1)
+                throw new McpException("The padding goes from 0 to 1 second.");
+            var matches = FindAll(transcript, words ?? DefaultFillers);
+            var cuts = matches.Select(m => new TimeRange(Math.Max(0, m.Start - padding), m.End + padding)).ToList();
+            var result = CutOut(ctx, cuts, clips, "cut_filler_words",
+                n => $"Removed {n} filler word{(n == 1 ? "" : "s")}",
+                "No filler words in those clips; nothing changed.");
+            return Task.FromResult(transcript.ApproximateTimes
+                ? result with { Result = result.Result + " Word times are estimated with this model; check the cuts." }
+                : result);
         });
 
     [McpServerTool(Name = "revert_action", Title = "Revert an edit")]
@@ -399,6 +457,156 @@ public sealed class EditorTools(IEditorHost host)
                 throw new McpException(error);
             return $"Saved to {ctx.ProjectPath}.";
         });
+
+    // ---- Transcript ----------------------------------------------------------------------
+
+    /// <summary>Fillers looked for by default: English and Ukrainian hesitation sounds and words.</summary>
+    internal static readonly string[] DefaultFillers =
+        ["um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "hmm", "mm", "е", "ее", "еее", "е-е", "ем", "мм", "ну", "типу", "короче"];
+
+    [McpServerTool(Name = "get_transcript", Title = "Read the transcript", ReadOnly = true)]
+    [Description("What is said in the video, as timed lines, one per sentence or phrase: \"MM:SS.mmm–MM:SS.mmm text\". " +
+                 "OurCut transcribes after the video is opened (and starts now if it has not); while it runs, the part done so " +
+                 "far is returned. A long transcript comes in parts: call again with start = nextStart.")]
+    public Task<TranscriptResult> GetTranscript(
+        [Description("Seconds; from the beginning if omitted.")] double? start = null,
+        [Description("Seconds; to the end if omitted.")] double? end = null,
+        [Description("Also list every word with its time (for exact cuts).")] bool words = false) =>
+        host.RunAsync(ctx =>
+        {
+            var (status, transcript) = RequireTranscript(ctx);
+            double from = start ?? 0, to = end ?? double.MaxValue;
+            double? next = null;
+            List<TranscriptWordInfo>? wordList = null;
+            if (words)
+            {
+                const int MaxWords = 500;
+                var inRange = transcript.Between(from, to).ToList();
+                if (inRange.Count > MaxWords)
+                {
+                    next = inRange[MaxWords].Start;
+                    inRange = inRange[..MaxWords];
+                }
+                wordList = [.. inRange.Select(w => new TranscriptWordInfo(w.Text, Round(w.Start), Round(w.End)))];
+            }
+            const int MaxChars = 20_000;
+            var lines = new List<string>();
+            int chars = 0;
+            foreach (var phrase in transcript.Phrases())
+            {
+                if (phrase.End <= from || phrase.Start >= Math.Min(to, next ?? double.MaxValue))
+                    continue;
+                string line = $"{RangeText(phrase.Start, phrase.End)} {phrase.Text}";
+                if (chars + line.Length > MaxChars)
+                {
+                    next = Math.Min(next ?? double.MaxValue, phrase.Start);
+                    break;
+                }
+                lines.Add(line);
+                chars += line.Length + 1;
+            }
+            string? note = status.State != "done" ? "Transcription is still running; call again later for the rest."
+                : lines.Count == 0 ? "Nothing is said in this range." : null;
+            return Task.FromResult(new TranscriptResult(StatusText(status), transcript.Model.Length > 0 ? transcript.Model : null,
+                transcript.ApproximateTimes, lines, wordList, next is { } n ? Round(n) : null, note));
+        });
+
+    [McpServerTool(Name = "search_transcript", Title = "Search the transcript", ReadOnly = true)]
+    [Description("Finds a word or phrase in the transcript (ignoring case and punctuation) and gives each place with its " +
+                 "time and the sentence around it.")]
+    public Task<MatchesResult> SearchTranscript(
+        [Description("Word or phrase to find.")] string text,
+        [Description("How many places at most (default 50).")] int limit = 50) =>
+        host.RunAsync(ctx =>
+        {
+            var (status, transcript) = RequireTranscript(ctx);
+            if (Tokens(text).Length == 0)
+                throw new McpException("Give a word or phrase to find.");
+            var matches = FindAll(transcript, [text]);
+            return Task.FromResult(Matches(matches, limit, status,
+                matches.Count == 0 ? $"“{text}” is not in the transcript{(status.State == "done" ? "" : " so far")}." : null));
+        });
+
+    [McpServerTool(Name = "find_filler_words", Title = "Find filler words", ReadOnly = true)]
+    [Description("Filler words and sounds (um, uh, er…; Ukrainian е-е, ну, типу…) with their times; or the words you give. " +
+                 "Speech models often leave out ums and uhs, so short pauses (find_silences with a small minDuration) can " +
+                 "show where they were.")]
+    public Task<MatchesResult> FindFillerWords(
+        [Description("Words or short phrases to find instead of the usual fillers.")] IReadOnlyList<string>? words = null,
+        [Description("How many at most (default 200).")] int limit = 200) =>
+        host.RunAsync(ctx =>
+        {
+            var (status, transcript) = RequireTranscript(ctx);
+            var matches = FindAll(transcript, words ?? DefaultFillers);
+            return Task.FromResult(Matches(matches, limit, status,
+                matches.Count == 0 ? "No filler words in the transcript; speech models often leave them out." : null));
+        });
+
+    /// <summary>The transcript, starting transcription if it has not started (or failed before).</summary>
+    private static (TranscriptStatus Status, Transcript Transcript) RequireTranscript(IEditorContext ctx)
+    {
+        RequireFile(ctx);
+        var status = ctx.TranscriptStatus;
+        if (status.State is "none" or "failed")
+        {
+            if (ctx.StartTranscription() is { } why)
+                throw new McpException(status.State == "failed" ? $"Transcription failed: {status.Error}" : why);
+            status = ctx.TranscriptStatus;
+        }
+        return (status, status.Transcript ?? new Transcript("", "auto", []));
+    }
+
+    private static string StatusText(TranscriptStatus status) => status.State switch
+    {
+        "done" => "done",
+        "running" => $"transcribing {Math.Floor(status.Progress * 100).ToString(CultureInfo.InvariantCulture)}%",
+        "waiting" => "waiting for the rest of the analysis",
+        "failed" => "failed: " + status.Error,
+        _ => "not started",
+    };
+
+    /// <summary>Lower-case words without surrounding punctuation.</summary>
+    private static string[] Tokens(string text) =>
+        [.. text.Split((char[])[' ', '\t', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.Trim().Trim(Punctuation).ToLowerInvariant())
+            .Where(t => t.Length > 0)];
+
+    private static readonly char[] Punctuation = ['.', ',', '!', '?', ';', ':', '"', '“', '”', '«', '»', '(', ')', '…', '—', '–', '\''];
+
+    /// <summary>Every place one of <paramref name="phrases"/> is said, in time order.</summary>
+    private static List<TranscriptMatch> FindAll(Transcript transcript, IEnumerable<string> phrases)
+    {
+        var words = transcript.Words;
+        var normal = words.Select(w => Tokens(w.Text) is [var t, ..] ? t : "").ToArray();
+        var phraseList = transcript.Phrases();
+        var found = new List<TranscriptMatch>();
+        var taken = new HashSet<int>();
+        foreach (var query in phrases.Select(Tokens).Where(q => q.Length > 0).Distinct(new SequenceComparer()))
+        {
+            for (int i = 0; i + query.Length <= words.Count; i++)
+            {
+                if (taken.Contains(i) || !query.Select((t, k) => normal[i + k] == t).All(x => x))
+                    continue;
+                taken.Add(i);
+                var first = words[i];
+                var last = words[i + query.Length - 1];
+                string context = phraseList.FirstOrDefault(p => i >= p.FirstWord && i < p.FirstWord + p.WordCount)?.Text ?? "";
+                found.Add(new TranscriptMatch(Round(first.Start), Round(last.End), RangeText(first.Start, last.End),
+                    string.Join(' ', words.Skip(i).Take(query.Length).Select(w => w.Text)), context));
+            }
+        }
+        return [.. found.OrderBy(m => m.Start)];
+    }
+
+    private static MatchesResult Matches(List<TranscriptMatch> matches, int limit, TranscriptStatus status, string? note) =>
+        new([.. matches.Take(Math.Clamp(limit, 1, 1000))], matches.Count, Round(matches.Sum(m => m.End - m.Start)), StatusText(status),
+            note ?? (matches.Count > limit ? $"Only the first {limit} are listed." : null));
+
+    private sealed class SequenceComparer : IEqualityComparer<string[]>
+    {
+        public bool Equals(string[]? x, string[]? y) => x is not null && y is not null && x.SequenceEqual(y);
+        public int GetHashCode(string[] obj) => string.Join(' ', obj).GetHashCode(StringComparison.Ordinal);
+    }
 
     // ---- Export --------------------------------------------------------------------------
 
@@ -529,6 +737,34 @@ public sealed class EditorTools(IEditorHost host)
             throw new McpException($"“{path}” is not a full path; give the whole path, e.g. from list_videos.");
     }
 
+    /// <summary>
+    /// Cuts <paramref name="cuts"/> out of the chosen clips (all included ones if null; the whole video, kept first, if
+    /// there are no clips) as one undo step. <paramref name="describe"/> gets how many ranges touch those clips.
+    /// </summary>
+    private static EditResult CutOut(IEditorContext ctx, IReadOnlyList<TimeRange> cuts, IReadOnlyList<int>? clips, string name,
+        Func<int, string> describe, string nothing)
+    {
+        var project = ctx.Session.Project;
+        var steps = new List<IEditCommand>();
+        if (clips is null && project.Clips.IsEmpty)
+            steps.Add(new AddClipCommand(0, project.SourceDuration, project.Name));
+        IReadOnlyList<TimeRange> targets = clips is not null
+            ? [.. clips.Select(id => project.Find(id) ?? throw new McpException($"Clip {id} does not exist.")).Select(c => new TimeRange(c.Start, c.End))]
+            : project.Clips.IsEmpty ? [new TimeRange(0, project.SourceDuration)]
+            : [.. project.IncludedClips.Select(c => new TimeRange(c.Start, c.End))];
+        var hit = cuts.Where(r => targets.Any(c => r.End > c.Start && r.Start < c.End)).ToList();
+        if (hit.Count == 0)
+            return new EditResult(null, nothing, Clips(project), Round(project.OutputDuration));
+        string description = describe(hit.Count);
+        steps.Add(new CutRangesCommand(hit, clips, name, description));
+        IEditCommand command = steps.Count == 1 ? steps[0] : new BatchCommand(name, description, steps);
+        var entry = Guard(() => ctx.Session.Execute(command, EditOrigin.Assistant));
+        return Result(ctx, entry) with
+        {
+            Result = $"{description}: {Round(project.OutputDuration - ctx.Session.Project.OutputDuration)} s shorter.",
+        };
+    }
+
     private static SilenceReport Silences(IEditorContext ctx, double minDuration, double? thresholdDb, IReadOnlyList<int>? tracks)
     {
         RequireFile(ctx);
@@ -576,7 +812,8 @@ public sealed class EditorTools(IEditorHost host)
                 [.. s.AudioTracks.Select((t, i) => new AudioTrackInfo(i + 1, t.Label))])
             : null;
         return new ProjectInfo(project.Name, source, ctx.ProjectPath, Round(ctx.Playhead), ctx.SelectedClipId, ctx.IsPlaying,
-            Round(project.OutputDuration), source is null ? [] : Clips(project), ctx.AnalysisStatus);
+            Round(project.OutputDuration), source is null ? [] : Clips(project), ctx.AnalysisStatus,
+            source is null ? null : StatusText(ctx.TranscriptStatus));
     }
 
     private static List<ClipInfo> Clips(Project project) =>
