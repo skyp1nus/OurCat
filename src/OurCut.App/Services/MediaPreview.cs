@@ -112,20 +112,27 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     }
 
     /// <summary>Analysis progress 0..1 (keyframes, waveform and thumbnails weigh the same).</summary>
-    public double Progress
+    public double Progress => Parts() is { Count: > 0 } parts ? parts.Average(p => p.Done) : 1;
+
+    public bool IsAnalysing => _analysing;
+
+    public double AnalysisProgress => Progress;
+
+    public string? AnalysisStage => !_analysing ? null
+        : Parts().Where(p => p.Done < 1).OrderBy(p => p.Done).Select(p => p.Name).FirstOrDefault() ?? "Finishing";
+
+    /// <summary>Each part of the analysis with how far it is, 0..1.</summary>
+    private List<(string Name, double Done)> Parts()
     {
-        get
+        var parts = new List<(string, double)>(3);
+        if (Info.Video is not null)
         {
-            var parts = new List<double>(3);
-            if (Info.Video is not null)
-            {
-                parts.Add(Volatile.Read(ref _keyframeProgress));
-                parts.Add(_thumbnailsDone ? 1 : Math.Min(1, (double)ThumbnailCount / Math.Max(1, _expectedThumbnails)));
-            }
-            if (Info.Audio.Length > 0)
-                parts.Add(Waveform.IsComplete ? 1 : (double)Waveform.Decoded / Math.Max(1, Waveform.Capacity));
-            return parts.Count == 0 ? 1 : parts.Average();
+            parts.Add(("Finding keyframes", Volatile.Read(ref _keyframeProgress)));
+            parts.Add(("Making thumbnails", _thumbnailsDone ? 1 : Math.Min(1, (double)ThumbnailCount / Math.Max(1, _expectedThumbnails))));
         }
+        if (Info.Audio.Length > 0)
+            parts.Add(("Reading the audio", Waveform.IsComplete ? 1 : (double)Waveform.Decoded / Math.Max(1, Waveform.Capacity)));
+        return parts;
     }
 
     public string? AnalysisTimes =>

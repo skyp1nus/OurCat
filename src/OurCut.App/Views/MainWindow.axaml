@@ -32,6 +32,9 @@
 
       <v:TimelinePanel Grid.Row="2" />
       <v:StatusBar Grid.Row="3" />
+
+      <!-- Over everything but the title bar, so the window still moves and closes while a file is prepared. -->
+      <v:ProcessingOverlay Grid.Row="1" Grid.RowSpan="3" DataContext="{Binding Processing}" />
     </Grid>
 
     <v:ExportDialog DataContext="{Binding Export}" IsVisible="{Binding IsDialogOpen}" />

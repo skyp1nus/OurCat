@@ -91,6 +91,15 @@ public interface IMediaPreview
     /// </summary>
     string? Activity { get; }
 
+    /// <summary>Keyframes, thumbnails and the waveform are still being read (the processing screen shows meanwhile).</summary>
+    bool IsAnalysing => false;
+
+    /// <summary>How far that reading is, 0..1.</summary>
+    double AnalysisProgress => 1;
+
+    /// <summary>The part the reading waits on most, e.g. "Reading the audio"; null when it is done.</summary>
+    string? AnalysisStage => null;
+
     /// <summary>
     /// How long each part of the analysis took, for Copy diagnostics: "keyframes 0.3 s · thumbnails 0.4 s · waveform
     /// cached"; null before any part is done.
