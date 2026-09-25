@@ -39,6 +39,7 @@ public partial class App : Application
                 editor.Settings.Load(saved);
                 editor.Settings.Store = store;
                 editor.Settings.Installer = new ModelInstaller(ModelInstaller.CreateHttpClient());
+                editor.RevealInFolder = FileManager.Reveal;
                 // Claude connects through "OurCut mcp" (Settings → MCP server).
                 mcp = new EditorMcpServer(editor);
                 mcp.Start();

@@ -60,10 +60,10 @@ public class ExportPlannerTests
     }
 
     [Fact]
-    public void Separate_files_are_named_after_their_clips()
+    public void Separate_files_are_numbered_by_the_default_pattern()
     {
         var plan = Plan(Settings(merge: false));
-        Assert.Equal([Out("demo-1-intro.mp4"), Out("demo-2-demo-import.mp4")], plan.Outputs);
+        Assert.Equal([Out("demo-cut-01.mp4"), Out("demo-cut-02.mp4")], plan.Outputs);
         Assert.All(plan.Steps, s => Assert.Equal(ExportStepKind.Cut, s.Kind));
         Assert.All(plan.Steps, s => Assert.False(s.IsTemporary));
         Assert.Null(plan.ConcatListPath);
@@ -111,9 +111,44 @@ public class ExportPlannerTests
         {
             Clips = [new Clip(1, "Take", 1, 2), new Clip(2, "Take", 3, 4)],
         };
-        var taken = new HashSet<string> { Out("demo-2-take.mp4") };
-        var plan = Plan(Settings(merge: false) with { BaseName = "demo" }, project, fileExists: taken.Contains);
-        Assert.Equal([Out("demo-1-take.mp4"), Out("demo-2-take (2).mp4")], plan.Outputs);
+        var taken = new HashSet<string> { Out("demo-take.mp4") };
+        // Without {n} the pattern gives both clips one name.
+        var plan = Plan(Settings(merge: false) with { FileNamePattern = "{project}-{label}" }, project, fileExists: taken.Contains);
+        Assert.Equal([Out("demo-take (2).mp4"), Out("demo-take (3).mp4")], plan.Outputs);
+
+        var replacing = Plan(Settings(merge: false) with { FileNamePattern = "{project}-{label}", Overwrite = true }, project,
+            fileExists: taken.Contains);
+        Assert.Equal([Out("demo-take.mp4"), Out("demo-take (2).mp4")], replacing.Outputs);
+    }
+
+    [Fact]
+    public void Names_follow_the_pattern()
+    {
+        var settings = Settings(merge: false) with { FileNamePattern = "{date} {label} {n}", Date = new DateOnly(2026, 9, 25) };
+        Assert.Equal([Out("2026-09-25 intro 01.mp4"), Out("2026-09-25 demo-import 02.mp4")], Plan(settings).Outputs);
+        Assert.Equal(Plan(settings).Outputs, ExportPlanner.OutputNames(SampleProject, settings));
+
+        // A merged file has no number or label.
+        var merged = Settings() with { FileNamePattern = "{project}_{n}_{label}_final" };
+        Assert.Equal([Out("demo_final.mp4")], Plan(merged).Outputs);
+    }
+
+    [Fact]
+    public void An_existing_file_is_replaced_only_once_the_new_one_is_written()
+    {
+        var taken = new HashSet<string> { Out("demo-cut.mp4") };
+        var plan = Plan(Settings() with { Overwrite = true }, fileExists: taken.Contains);
+
+        Assert.Equal([Out("demo-cut.mp4")], plan.Outputs);
+        var concat = plan.Steps[^1];
+        Assert.Equal(Out(".ourcut-tmp-t1-new001.mp4"), concat.OutputPath);
+        Assert.Equal(Out("demo-cut.mp4"), plan.Replacements![concat.OutputPath]);
+        Assert.Contains(concat.OutputPath, plan.TemporaryFiles);
+
+        // A name that is free is written directly.
+        var fresh = Plan(Settings() with { Overwrite = true });
+        Assert.Null(fresh.Replacements);
+        Assert.Equal(Out("demo-cut.mp4"), fresh.Steps[^1].OutputPath);
     }
 
     [Fact]

@@ -120,6 +120,7 @@ public sealed partial class ExportViewModel : ViewModelBase
     private (ExportMode, string, bool, string, bool, bool, VideoEncoding, AudioChoice)? _beforeClaude;
     private List<(int Step, double From, double To)> _rowWindows = [];
     private IReadOnlyList<string> _written = [];
+    private bool _overwrite;
     private DateTime _started;
     private DateTime? _finished;
 
@@ -161,7 +162,7 @@ public sealed partial class ExportViewModel : ViewModelBase
     public partial IReadOnlyList<AudioChoice> AudioChoices { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDialogOpen), nameof(IsConfiguring), nameof(IsExporting), nameof(IsInProgress))]
+    [NotifyPropertyChangedFor(nameof(IsDialogOpen), nameof(IsConfiguring), nameof(IsExporting), nameof(IsInProgress), nameof(ShowExportButton))]
     public partial ExportStage Stage { get; set; }
 
     [ObservableProperty]
@@ -250,17 +251,30 @@ public sealed partial class ExportViewModel : ViewModelBase
     public string BaseName => SafeFileName(_editor.ProjectName);
 
     /// <summary>The merged file's name before the planner makes it unique: "keynote-cut.mp4".</summary>
-    private string MergedFileName => $"{BaseName}-cut.{Extension}";
+    private string MergedFileName => FileName(1, "", merged: true);
+
+    /// <summary>Settings → Export → File names.</summary>
+    private string Pattern => string.IsNullOrWhiteSpace(Defaults.FileNamePattern) ? ExportFileNames.DefaultPattern : Defaults.FileNamePattern;
+
+    /// <summary>The pattern's {date}: today, or the design's day for its sample.</summary>
+    private DateOnly Today => _editor.IsDemo ? new DateOnly(2026, 9, 25) : DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>An output's name from the pattern, before the planner makes it unique.</summary>
+    private string FileName(int number, string label, bool merged) =>
+        ExportFileNames.Fill(Pattern, BaseName, number, label, Today, merged) + "." + Extension;
+
+    /// <summary>Separate files: the pattern with the project filled in, "keynote-cut-{n}.mp4".</summary>
+    private string SeparateFilesPattern => Pattern.Replace("{project}", BaseName, StringComparison.Ordinal) + "." + Extension;
 
     public string OutputPath
     {
         get
         {
             if (_plan is not null && !IsSimulated)
-                return Merge ? _plan.Outputs[0] : Path.Join(OutputFolder, $"{BaseName}-{{n}}-{{label}}.{Extension}");
+                return Merge ? _plan.Outputs[0] : Path.Join(OutputFolder, SeparateFilesPattern);
             string path = Merge
                 ? Path.Join(OutputFolder, MergedFileName)
-                : Path.Join(OutputFolder, $"{BaseName}-{{n}}-{{label}}.{Extension}");
+                : Path.Join(OutputFolder, SeparateFilesPattern);
             // The design shows a Windows path.
             return IsSimulated ? path.Replace('/', '\\') : path;
         }
@@ -287,8 +301,8 @@ public sealed partial class ExportViewModel : ViewModelBase
             return on.Count switch
             {
                 0 => "",
-                1 => $"{BaseName}-1-{ExportPlanner.Slug(on[0].Label)}.{Extension}",
-                _ => $"{BaseName}-1-{ExportPlanner.Slug(on[0].Label)}.{Extension} … {BaseName}-{on.Count}-{ExportPlanner.Slug(on[^1].Label)}.{Extension}",
+                1 => FileName(1, on[0].Label, merged: false),
+                _ => $"{FileName(1, on[0].Label, merged: false)} … {FileName(on.Count, on[^1].Label, merged: false)}",
             };
         }
     }
@@ -438,6 +452,7 @@ public sealed partial class ExportViewModel : ViewModelBase
     }
 
     partial void OnModeChanged(ExportMode value) => RefreshChoices();
+    partial void OnOutputFolderChanged(string value) => ExistingFiles = [];
     partial void OnContainerChanged(string value) => RefreshChoices();
     partial void OnMergeChanged(bool value) => RefreshChoices();
 
@@ -453,6 +468,7 @@ public sealed partial class ExportViewModel : ViewModelBase
 
     private void RefreshChoices()
     {
+        ExistingFiles = [];
         foreach (var m in Modes)
             m.Refresh();
         foreach (var c in Containers)
@@ -516,6 +532,7 @@ public sealed partial class ExportViewModel : ViewModelBase
         StopTimer();
         StopStatsTimer();
         StopRunning();
+        ExistingFiles = [];
         Stage = ExportStage.Closed;
         Progress = 0;
         ErrorText = null;
@@ -576,7 +593,50 @@ public sealed partial class ExportViewModel : ViewModelBase
             Start(0);
             return;
         }
+        _overwrite = Defaults.IfExists == FileExistsAction.Overwrite;
+        // Settings → Export → If the file exists: Ask. The dialog asks before anything is written.
+        if (Defaults.IfExists == FileExistsAction.Ask
+            && ExportPlanner.OutputNames(_editor.Session.Project, BuildSettings(Preview!.Info)).Where(File.Exists)
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList() is { Count: > 0 } existing)
+        {
+            ExistingFiles = existing;
+            return;
+        }
         await RunAsync(Preview!).ConfigureAwait(true);
+    }
+
+    /// <summary>Files the export would replace, while the dialog asks what to do about them.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAskingAboutExisting), nameof(ExistingFilesText), nameof(ShowExportButton))]
+    public partial IReadOnlyList<string> ExistingFiles { get; private set; } = [];
+
+    public bool IsAskingAboutExisting => ExistingFiles.Count > 0;
+
+    /// <summary>The footer's question: "keynote-cut.mp4 already exists." or "3 of the files already exist."</summary>
+    public string ExistingFilesText => ExistingFiles.Count switch
+    {
+        0 => "",
+        1 => $"{Path.GetFileName(ExistingFiles[0])} already exists.",
+        var n => $"{n} of the files already exist.",
+    };
+
+    public bool ShowExportButton => IsConfiguring && !IsAskingAboutExisting;
+
+    /// <summary>Answer to <see cref="ExistingFiles"/>: replace them.</summary>
+    [RelayCommand]
+    private Task Overwrite() => StartAfterAskingAsync(overwrite: true);
+
+    /// <summary>Answer to <see cref="ExistingFiles"/>: " (2)" is added to the new names.</summary>
+    [RelayCommand]
+    private Task AddNumber() => StartAfterAskingAsync(overwrite: false);
+
+    private async Task StartAfterAskingAsync(bool overwrite)
+    {
+        if (!IsAskingAboutExisting || Preview is not { } preview)
+            return;
+        ExistingFiles = [];
+        _overwrite = overwrite;
+        await RunAsync(preview).ConfigureAwait(true);
     }
 
     /// <summary>Starts the simulated export at <paramref name="progress"/> (demo screens); Claude's runs hidden.</summary>
@@ -690,8 +750,6 @@ public sealed partial class ExportViewModel : ViewModelBase
     {
         var tracks = _editor.Session.Project.Source?.AudioTracks ?? [];
         // STUB: re-encode with the detected GPU encoder when Defaults.UseGpuEncoder.
-        // STUB: name outputs with ExportFileNames.Fill(Defaults.FileNamePattern, …) in ExportPlanner, MergedFileName and the per-clip names here.
-        // STUB: ExportPlanner always adds " (2)"; honour Defaults.IfExists (Overwrite, Ask).
         return new ExportSettings
         {
             Mode = Mode switch { ExportMode.Copy => CutMode.Lossless, ExportMode.Smart => CutMode.SmartCut, _ => CutMode.Reencode },
@@ -703,6 +761,10 @@ public sealed partial class ExportViewModel : ViewModelBase
             AudioStreamIndexes = [.. _editor.AudioLanes.Where(l => !l.IsMuted && l.Stream < tracks.Length).Select(l => tracks[l.Stream].Index)],
             OutputFolder = OutputFolder,
             BaseName = BaseName,
+            FileNamePattern = Pattern,
+            Date = Today,
+            // Claude's exports never replace a file.
+            Overwrite = _overwrite && !IsByClaude,
             Video = Video,
             Audio = Audio.Encoding,
         };
@@ -749,7 +811,9 @@ public sealed partial class ExportViewModel : ViewModelBase
             _finished = DateTime.UtcNow;
             ApplyProgress(new ExportProgress(plan.Steps.Count - 1, 1, 1));
             Outcome = ExportOutcome.Done;
-            // STUB: reveal the output when Defaults.AfterExport is ShowInFolder.
+            // Claude's card has its own Show in folder; the user's export shows its file (Settings → Export → After export).
+            if (!IsByClaude && Defaults.AfterExport == AfterExportAction.ShowInFolder && _written.Count > 0)
+                _editor.RevealInFolder?.Invoke(_written[0]);
             _editor.ShowMessage(_written.Count == 1 ? $"Exported {Path.GetFileName(_written[0])}" : $"Exported {_written.Count} files");
         }
         catch (OperationCanceledException)
@@ -843,7 +907,7 @@ public sealed partial class ExportViewModel : ViewModelBase
         {
             string name = Merge
                 ? $"{i + 1} · {on[i].Label}"
-                : $"{BaseName}-{i + 1}-{ExportPlanner.Slug(on[i].Label)}.{Extension}";
+                : FileName(i + 1, on[i].Label, merged: false);
             Rows.Add(new ExportRowViewModel(name));
         }
         if (Merge)

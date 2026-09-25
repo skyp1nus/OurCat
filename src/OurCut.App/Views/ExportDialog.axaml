@@ -157,12 +157,20 @@
         <!-- Footer -->
         <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="20,14,16,16">
           <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Text="{Binding EstimateLine}" FontSize="11.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding EstimateLine}" IsVisible="{Binding !IsAskingAboutExisting}" FontSize="11.5"
+                       Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <!-- Settings → Export → If the file exists: Ask. -->
+            <TextBlock Name="ExistingQuestion" Text="{Binding ExistingFilesText}" IsVisible="{Binding IsAskingAboutExisting}" FontSize="11.5"
+                       Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding ExistingFilesText}" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
               <Button Classes="soft" IsVisible="{Binding IsConfiguring}" Height="30" Padding="14,0" CornerRadius="10" FontSize="12.5"
                       Content="Cancel" Command="{Binding CloseCommand}" />
-              <Button Classes="bone" IsVisible="{Binding IsConfiguring}" Height="30" Padding="18,0" Content="Export"
+              <Button Classes="soft" IsVisible="{Binding IsAskingAboutExisting}" Height="30" Padding="14,0" CornerRadius="10" FontSize="12.5"
+                      Content="Add a number" Command="{Binding AddNumberCommand}" />
+              <Button Classes="bone" IsVisible="{Binding IsAskingAboutExisting}" Height="30" Padding="18,0" Content="Overwrite"
+                      Command="{Binding OverwriteCommand}" />
+              <Button Classes="bone" IsVisible="{Binding ShowExportButton}" Height="30" Padding="18,0" Content="Export"
                       ToolTip.Tip="Export (Enter)" Command="{Binding StartCommand}" />
               <Button Classes="soft risky" Height="30" Padding="14,0" CornerRadius="10" FontSize="12.5"
                       Content="Cancel export" Command="{Binding CancelExportCommand}">

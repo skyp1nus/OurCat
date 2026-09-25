@@ -43,7 +43,7 @@ public class FfmpegCommandsTests
     public void Separate_lossless_files_get_faststart()
     {
         var plan = Plan(Settings(merge: false));
-        Assert.EndsWith($"-movflags +faststart -f mp4 {Q(Out("demo-1-intro.mp4"))} -y", Args(plan, 0), StringComparison.Ordinal);
+        Assert.EndsWith($"-movflags +faststart -f mp4 {Q(Out("demo-cut-01.mp4"))} -y", Args(plan, 0), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class FfmpegCommandsTests
         var plan = Plan(Settings(CutMode.Reencode, merge: false));
         Assert.Equal(
             $"-ss 1.500000 -i {Q(SourcePath)} -t 1.700000 -map 0:0 -map 0:1 -map 0:2 -map 0:3 -c:v libx264 -preset medium -crf 18 " +
-            $"-c:a copy -c:s copy -copypriorss 0 -map_metadata 0 -movflags +faststart -f mp4 {Q(Out("demo-1-intro.mp4"))} -y",
+            $"-c:a copy -c:s copy -copypriorss 0 -map_metadata 0 -movflags +faststart -f mp4 {Q(Out("demo-cut-01.mp4"))} -y",
             Args(plan, 0));
     }
 

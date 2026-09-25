@@ -293,6 +293,8 @@ public sealed class RealMediaTests : IDisposable
         MarkTwoClips(editor);
         editor.AudioLanes[0].IsMuted = true;
         string outDir = Directory.CreateDirectory(Path.Combine(_dir, "out")).FullName;
+        var revealed = new List<string>();
+        editor.RevealInFolder = revealed.Add;
 
         var export = editor.Export;
         export.Open();
@@ -310,6 +312,8 @@ public sealed class RealMediaTests : IDisposable
         string output = Path.Combine(outDir, "sample-cut.mp4");
         Assert.Equal([output], Directory.GetFiles(outDir));
         Assert.Equal("Exported sample-cut.mp4", editor.StatusMessage);
+        // Settings → Export → After export: Show in folder.
+        Assert.Equal([output], revealed);
 
         var result = await MediaProbe.ProbeAsync(output, Ct);
         Assert.Equal(["Music"], result.Audio.Select(a => a.Label));
@@ -326,6 +330,10 @@ public sealed class RealMediaTests : IDisposable
         MarkTwoClips(editor);
         string outDir = Path.Combine(_dir, "by-claude");
         var tools = new OurCut.Mcp.EditorTools(new EditorMcpHost(editor));
+        var revealed = new List<string>();
+        editor.RevealInFolder = revealed.Add;
+        // Claude's exports never replace a file, whatever the user's own exports do.
+        editor.Settings.IfFileExists = FileExistsAction.Overwrite;
 
         // Export: Ask (the default) shows the request; "Always allow" lets this and later exports run.
         var asked = tools.Export(container: "mkv", folder: outDir);
@@ -348,6 +356,8 @@ public sealed class RealMediaTests : IDisposable
         var second = await tools.Export(container: "mkv", folder: outDir);
         Assert.Equal([Path.Combine(outDir, "sample-cut (2).mkv")], second.Files);
         Assert.Equal("Exported sample-cut (2).mkv", editor.Claude.Export.Title);
+        // Its card has Show in folder; nothing opens by itself.
+        Assert.Empty(revealed);
         Assert.Equal("done", (await tools.GetExportStatus()).Status);
         window.Close();
     }
@@ -400,6 +410,57 @@ public sealed class RealMediaTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task When_the_file_exists_the_dialog_can_ask_first()
+    {
+        string video = await SampleAsync();
+        var (editor, window) = await OpenAsync(video);
+        MarkTwoClips(editor);
+        string outDir = Directory.CreateDirectory(Path.Combine(_dir, "exists")).FullName;
+        string output = Path.Combine(outDir, "sample-cut.mp4");
+        await File.WriteAllTextAsync(output, "old", Ct);
+        editor.Settings.IfFileExists = FileExistsAction.Ask;
+        editor.Settings.AfterExport = AfterExportAction.Nothing;
+        var export = editor.Export;
+        export.Open();
+        export.OutputFolder = outDir;
+
+        await export.StartAsync();
+
+        // Nothing is written until the user answers.
+        Assert.True(export.IsConfiguring);
+        Assert.True(export.IsAskingAboutExisting);
+        Assert.False(export.ShowExportButton);
+        Assert.Equal("sample-cut.mp4 already exists.", export.ExistingFilesText);
+        Assert.Equal("old", await File.ReadAllTextAsync(output, Ct));
+        // Another folder is another question.
+        export.OutputFolder = _dir;
+        Assert.False(export.IsAskingAboutExisting);
+        export.OutputFolder = outDir;
+        await export.StartAsync();
+
+        await export.OverwriteCommand.ExecuteAsync(null);
+        Assert.True(export.IsDone, export.ErrorText);
+        Assert.Equal([output], Directory.GetFiles(outDir));
+        Assert.NotEqual("old", await File.ReadAllTextAsync(output, Ct));
+
+        export.Open();
+        await export.StartAsync();
+        await export.AddNumberCommand.ExecuteAsync(null);
+        Assert.True(export.IsDone, export.ErrorText);
+        Assert.Equal([Path.Combine(outDir, "sample-cut (2).mp4")], export.OutputFiles);
+
+        // Overwrite in Settings replaces without asking. (Changed settings start the dialog from them, folder too.)
+        editor.Settings.IfFileExists = FileExistsAction.Overwrite;
+        export.Open();
+        export.OutputFolder = outDir;
+        await export.StartAsync();
+        Assert.True(export.IsDone, export.ErrorText);
+        Assert.Equal([output], export.OutputFiles);
+        Assert.Equal(2, Directory.GetFiles(outDir).Length);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public async Task Reencoding_into_separate_files_shows_one_row_per_file()
     {
         string video = await SampleAsync();
@@ -417,8 +478,8 @@ public sealed class RealMediaTests : IDisposable
         await export.StartAsync();
 
         Assert.True(export.IsDone, export.ErrorText);
-        Assert.Equal(["sample-1-clip-1.mkv", "sample-2-clip-2.mkv"], export.Rows.Select(r => r.Name));
-        var first = await MediaProbe.ProbeAsync(Path.Combine(outDir, "sample-1-clip-1.mkv"), Ct);
+        Assert.Equal(["sample-cut-01.mkv", "sample-cut-02.mkv"], export.Rows.Select(r => r.Name));
+        var first = await MediaProbe.ProbeAsync(Path.Combine(outDir, "sample-cut-01.mkv"), Ct);
         Assert.Equal(1.7, first.Duration, 0.1);
         window.Close();
     }

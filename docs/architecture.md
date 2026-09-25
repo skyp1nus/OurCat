@@ -87,10 +87,17 @@ A re-encoded merge is one ffmpeg pass: each clip is its own frame-accurately see
 filter. Re-encoding one clip per file copies audio when asked, dropping packets before the in-point
 (`-copypriorss 0`).
 
-Output names: `{project}-cut.{ext}` when merged, `{project}-{n}-{label}.{ext}` otherwise; existing files are never
-overwritten (" (2)" is added) and an export never writes over its source. Settings → Export's file name pattern
-(`ExportFileNames.Fill`) is not used by the planner yet. Temporary files
-(`.ourcut-tmp-*`) and any half-written output are removed on failure or cancel.
+Output names come from Settings → Export's file name pattern (`ExportSettings.FileNamePattern`, filled by
+`ExportFileNames.Fill`; `ExportPlanner.OutputNames`): `{project}-cut-{n}` by default, which a merged file reads as
+`{project}-cut`. A name that is taken gets " (2)"; with `ExportSettings.Overwrite` the output is written under a
+temporary name and moved over the old file once complete (`ExportPlan.Replacements`), so a failed or cancelled
+export leaves the old file as it was. Outputs never share a name, and an export never writes over its source.
+Temporary files (`.ourcut-tmp-*`) and any half-written output are removed on failure or cancel.
+
+In the app, "If the file exists" decides `Overwrite`: Add a number, Overwrite, or Ask, where the Export dialog lists
+the files that exist (`ExportViewModel.ExistingFiles`) and waits for Add a number or Overwrite before anything is
+written. Claude's exports always add a number. "After export: Show in folder" reveals the user's export
+(`EditorViewModel.RevealInFolder`); Claude's card has its own Show in folder.
 
 ## Playback
 
@@ -251,8 +258,7 @@ Places where the UI and the setting exist but the behaviour does not are marked 
 - **Shortcuts**: `Shortcuts.Handle` dispatches fixed keys instead of `KeyMap.Find(KeyCombo.From(key, mods))`.
 - **Playback**: hardware decoding and the renderer apply at the next start; the audio device list and output; the
   Jump chips show fixed keys.
-- **Export defaults**: the GPU encoder, the file name pattern, "if the file exists" and "after export" are saved but
-  not used by the export; GPU encoder detection.
+- **Export defaults**: the GPU encoder is saved but not used by the export; GPU encoder detection.
 - **General**: the startup action, the recent files limit, the cache size and Clear cache.
 - **Transcription**: the Transcript tab's status says CPU until transcription runs on a GPU.
 

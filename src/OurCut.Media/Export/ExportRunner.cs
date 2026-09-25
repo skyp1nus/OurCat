@@ -19,7 +19,8 @@ public static class ExportRunner
 
     /// <summary>
     /// Runs every step in order. Temporary files are always removed; on failure or cancellation the
-    /// output being written is removed too, so no half-written file is left behind.
+    /// output being written is removed too, so no half-written file is left behind. A file being replaced
+    /// (<see cref="ExportPlan.Replacements"/>) is only touched once its new version is complete.
     /// </summary>
     /// <returns>The files written.</returns>
     /// <exception cref="MediaToolException">ffmpeg failed; the message has its last error line.</exception>
@@ -97,7 +98,15 @@ public static class ExportRunner
 
                 done += step.Weight;
                 if (!step.IsTemporary)
-                    written.Add(step.OutputPath);
+                {
+                    string output = step.OutputPath;
+                    if (plan.Replacements is { } replacements && replacements.TryGetValue(output, out string? old))
+                    {
+                        File.Move(output, old, overwrite: true);
+                        output = old;
+                    }
+                    written.Add(output);
+                }
                 current = null;
                 progress?.Report(new ExportProgress(i, 1, Math.Min(1, done)));
             }
@@ -109,7 +118,8 @@ public static class ExportRunner
                 await TryDeleteAsync(current).ConfigureAwait(false);
             if (plan.Settings.Merge)
             {
-                foreach (string o in plan.Outputs)
+                // Not a file that was to be replaced: it is still the old one.
+                foreach (string o in plan.Outputs.Except(plan.Replacements?.Values ?? [], StringComparer.OrdinalIgnoreCase))
                     await TryDeleteAsync(o).ConfigureAwait(false);
             }
             throw;
