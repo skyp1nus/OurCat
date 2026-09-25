@@ -32,29 +32,30 @@ public static class ExportRunner
         var options = new FFOptions { BinaryFolder = Path.GetDirectoryName(ffmpeg)!, UseCache = true };
 
         Directory.CreateDirectory(plan.Settings.OutputFolder);
-        if (plan.ConcatListPath is not null)
-        {
-            var parts = plan.Steps.Where(s => s.Kind == ExportStepKind.Cut && s.IsTemporary).Select(s => s.OutputPath);
-            await File.WriteAllTextAsync(plan.ConcatListPath, FfmpegFiles.ConcatList(parts), Utf8, cancellationToken).ConfigureAwait(false);
-        }
-        // A re-encoded merge is frame-accurate, so the planned durations are exact. Lossless cuts come out
-        // a little longer than planned (ffmpeg ends a stream copy by decode time), so their chapters are
-        // written from the cut files just before they are joined.
-        if (plan.ChaptersPath is not null && plan.ConcatListPath is null)
-            await WriteChaptersAsync(plan, plan.Clips.Select(c => c.OutputDuration).ToList(), cancellationToken).ConfigureAwait(false);
-
         var written = new List<string>();
         string? current = null;
         double done = 0;
+        // Everything that writes a file, temporary ones included, is inside the try: whenever the export stops,
+        // the finally removes the temporary files from the output folder.
         try
         {
+            if (plan.ConcatListPath is not null)
+            {
+                var parts = plan.Steps.Where(s => s.Kind == ExportStepKind.Cut && s.IsTemporary).Select(s => s.OutputPath);
+                await File.WriteAllTextAsync(plan.ConcatListPath, FfmpegFiles.ConcatList(parts), Utf8, CancellationToken.None).ConfigureAwait(false);
+            }
+            // A re-encoded merge is frame-accurate, so the planned durations are exact. Lossless cuts come out
+            // a little longer than planned (ffmpeg ends a stream copy by decode time), so their chapters are
+            // written from the cut files just before they are joined.
+            if (plan.ChaptersPath is not null && plan.ConcatListPath is null)
+                await WriteChaptersAsync(plan, plan.Clips.Select(c => c.OutputDuration).ToList()).ConfigureAwait(false);
+
             for (int i = 0; i < plan.Steps.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var step = plan.Steps[i];
                 if (step.Kind == ExportStepKind.Concat && plan.ChaptersPath is not null)
-                    await WriteChaptersAsync(plan, await CutDurationsAsync(plan, cancellationToken).ConfigureAwait(false), cancellationToken)
-                        .ConfigureAwait(false);
+                    await WriteChaptersAsync(plan, await CutDurationsAsync(plan, cancellationToken).ConfigureAwait(false)).ConfigureAwait(false);
                 current = step.OutputPath;
                 int index = i;
                 double before = done;
@@ -120,9 +121,10 @@ public static class ExportRunner
         }
     }
 
-    private static Task WriteChaptersAsync(ExportPlan plan, IReadOnlyList<double> durations, CancellationToken cancellationToken) =>
+    /// <summary>Writes the chapters file whole (it is small); cancellation is checked between steps instead.</summary>
+    private static Task WriteChaptersAsync(ExportPlan plan, IReadOnlyList<double> durations) =>
         File.WriteAllTextAsync(plan.ChaptersPath!, FfmpegFiles.Chapters(plan.Clips.Select((c, i) => (c.Label, durations[i]))),
-            Utf8, cancellationToken);
+            Utf8, CancellationToken.None);
 
     /// <summary>Real durations of the temporary cut files, which the concat demuxer uses as offsets.</summary>
     private static async Task<IReadOnlyList<double>> CutDurationsAsync(ExportPlan plan, CancellationToken cancellationToken)
