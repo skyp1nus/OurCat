@@ -342,7 +342,6 @@ public sealed class TimelineControl : Control
             ctx.FillRectangle(MinorTick, new Rect(Math.Floor(x), RulerHeight - 4, 1, 4));
         }
 
-        var font = MonoFace(FontWeight.Normal);
         int firstMajor = (int)Math.Max(0, Math.Floor(T(visible.Left - 80) / step));
         for (int k = firstMajor; ; k++)
         {
@@ -351,7 +350,7 @@ public sealed class TimelineControl : Control
             if (t > Duration + 1e-9 || x > visible.Right + 1)
                 break;
             ctx.FillRectangle(MajorTick, new Rect(Math.Floor(x), RulerHeight - 8, 1, 8));
-            var label = Text(RulerLabel(t, step), font, 10, RulerText);
+            var label = RulerLabelText(RulerLabel(t, step));
             ctx.DrawText(label, new Point(Math.Floor(x) + 4, 3 + (12 - label.Height) / 2 + 1));
         }
 
@@ -377,6 +376,18 @@ public sealed class TimelineControl : Control
                 ctx.DrawGeometry(SceneDiamond, null, geo);
             }
         }
+    }
+
+    /// <summary>Ruler labels come back frame after frame (every frame while playing), so each is laid out once.</summary>
+    private readonly Dictionary<string, FormattedText> _rulerLabels = [];
+
+    private FormattedText RulerLabelText(string label)
+    {
+        if (_rulerLabels.TryGetValue(label, out var text))
+            return text;
+        if (_rulerLabels.Count > 500)
+            _rulerLabels.Clear();
+        return _rulerLabels[label] = Text(label, MonoFace(FontWeight.Normal), 10, RulerText);
     }
 
     private static string RulerLabel(double t, double step)
@@ -483,22 +494,39 @@ public sealed class TimelineControl : Control
                 break;
             double top = AudioTop + 6 + lane * laneHeight;
             using var fade = ctx.PushOpacity(lane < editor.AudioLanes.Count && editor.AudioLanes[lane].IsMuted ? 0.3 : 1);
-            for (int k = first; k < count; k++)
+            // Hundreds of bars a lane: one shape for those in a clip and one for the rest, rather than a draw call each.
+            var barsIn = new StreamGeometry();
+            var barsOut = new StreamGeometry();
+            using (var gIn = barsIn.Open())
+            using (var gOut = barsOut.Open())
             {
-                double x = k * pitch;
-                if (x > visible.Right)
-                    break;
-                double t0 = k * Duration / count, t1 = (k + 1) * Duration / count;
-                double level = media.AudioPeak(lane, t0, t1);
-                double h = Math.Round(level * 1000) / 1000 * laneHeight;
-                if (h <= 0)
-                    continue;
-                double mid = (t0 + t1) / 2;
-                bool inClip = included.Any(c => mid >= c.Start && mid <= c.End);
-                ctx.DrawRectangle(inClip ? BarIn : BarOut, null,
-                    new RoundedRect(new Rect(x, top + (laneHeight - h) / 2, bw, h), Math.Min(1, bw / 2)));
+                for (int k = first; k < count; k++)
+                {
+                    double x = k * pitch;
+                    if (x > visible.Right)
+                        break;
+                    double t0 = k * Duration / count, t1 = (k + 1) * Duration / count;
+                    double level = media.AudioPeak(lane, t0, t1);
+                    double h = Math.Round(level * 1000) / 1000 * laneHeight;
+                    if (h <= 0)
+                        continue;
+                    double mid = (t0 + t1) / 2;
+                    bool inClip = included.Any(c => mid >= c.Start && mid <= c.End);
+                    AddRectangle(inClip ? gIn : gOut, new Rect(x, top + (laneHeight - h) / 2, bw, h));
+                }
             }
+            ctx.DrawGeometry(BarIn, null, barsIn);
+            ctx.DrawGeometry(BarOut, null, barsOut);
         }
+    }
+
+    private static void AddRectangle(StreamGeometryContext g, Rect r)
+    {
+        g.BeginFigure(r.TopLeft, true);
+        g.LineTo(r.TopRight);
+        g.LineTo(r.BottomRight);
+        g.LineTo(r.BottomLeft);
+        g.EndFigure(true);
     }
 
     private Rect SegmentRect(ClipViewModel clip)

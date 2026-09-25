@@ -60,8 +60,10 @@ single right answer, so the command refuses with an `EditException` and the UI s
   only a few percent of the file is read; with B-frames ffmpeg 6.x's MOV demuxer gets the times of skipped samples
   wrong, so those files, like every other container, are read through with ffprobe. Times are relative to the
   file's start time, like everything else in OurCut.
-- **Previews**: `WaveformExtractor` decodes every audio stream in one pass to 8 kHz mono and keeps one peak per
-  10 ms (`WaveformData`, drawn on a dB scale). `ThumbnailExtractor` reads (`-discard nokey`, where the container
+- **Previews**: `WaveformExtractor` decodes every audio stream to 8 kHz mono and keeps one peak per 10 ms
+  (`WaveformData`, drawn on a dB scale). Audio decodes on one core per ffmpeg, so a long file is split into
+  stretches of at least 30 s (up to one per core, at most 8), decoded at once and filling in side by side; the timeline
+  draws each lane's bars as two shapes (in and out of clips) and lays out ruler labels once. `ThumbnailExtractor` reads (`-discard nokey`, where the container
   allows) and decodes (`-skip_frame nokey`) only keyframes, to raw BGRA, at most about 300 per file. Both stream
   their results as they arrive.
   Thumbnails and scene detection decode on the GPU when there is one (`FfmpegText.GpuDecoding`, `-hwaccel auto`,
