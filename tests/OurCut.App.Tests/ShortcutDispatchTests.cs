@@ -25,6 +25,10 @@ public class ShortcutDispatchTests
         Assert.True(Shortcuts.Handle(editor, Key.K, KeyModifiers.Control));
         Assert.Equal(clips + 1, editor.Clips.Count);
 
+        // Shift and a key without an action of its own: the key's action.
+        Assert.True(Shortcuts.Handle(editor, Key.K, KeyModifiers.Control | KeyModifiers.Shift));
+        Assert.Equal(clips + 1, editor.Clips.Count);
+
         // A key taken from another action now runs the new one.
         editor.Settings.KeyMap.Assign(ShortcutAction.Undo, new KeyCombo(Key.Space, KeyModifiers.None));
         bool playing = editor.IsPlaying;

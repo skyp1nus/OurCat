@@ -43,8 +43,14 @@ public static class Shortcuts
             return false;
         }
 
-        // The editor's own shortcuts: whatever Settings → Keyboard gives the key.
-        return KeyCombo.From(key, mods) is { } combo && editor.Settings.KeyMap.Find(combo) is { } action && Run(editor, action);
+        // The editor's own shortcuts: whatever Settings → Keyboard gives the key. With Shift and no action of its own, a key
+        // does what it does alone (Shift+Del deletes, as it always has).
+        if (KeyCombo.From(key, mods) is not { } combo)
+            return false;
+        var map = editor.Settings.KeyMap;
+        var action = map.Find(combo)
+            ?? (combo.Modifiers.HasFlag(KeyModifiers.Shift) ? map.Find(combo with { Modifiers = combo.Modifiers & ~KeyModifiers.Shift }) : null);
+        return action is { } a && Run(editor, a);
     }
 
     /// <summary>Runs a shortcut's action; false when it does not apply now (all but opening need a video).</summary>
