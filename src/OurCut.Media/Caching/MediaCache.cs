@@ -18,8 +18,12 @@ public sealed class MediaCache
 
     public MediaCache(string? root = null)
     {
-        Root = root ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OurCut", "cache");
+        Root = root ?? DefaultRoot;
     }
+
+    /// <summary>Where the app keeps its cache.</summary>
+    public static string DefaultRoot { get; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OurCut", "cache");
 
     public string Root { get; }
 

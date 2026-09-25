@@ -20,11 +20,23 @@ public partial class ClaudePanel : UserControl
     private void Attach(ClaudePanelViewModel? vm)
     {
         if (_vm is not null)
+        {
             _vm.Log.CollectionChanged -= OnLogChanged;
+            _vm.Export.PropertyChanged -= OnExportChanged;
+        }
         _vm = vm;
         if (_vm is not null)
+        {
             _vm.Log.CollectionChanged += OnLogChanged;
+            _vm.Export.PropertyChanged += OnExportChanged;
+        }
         ScrollToTop();
+    }
+
+    private void OnExportChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ClaudeExportViewModel.Stage))
+            ScrollToTop();
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

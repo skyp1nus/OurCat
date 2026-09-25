@@ -6,23 +6,12 @@ using OurCut.Core.Model;
 
 namespace OurCut.App.Demo;
 
-/// <summary>The screens of the design, used for demo mode and UI tests.</summary>
-public enum DesignScreen
-{
-    Empty,
-    Editing,
-    Ai,
-    Export,
-    Exporting,
-    Settings,
-}
-
 /// <summary>
 /// The sample project from design/project/OurCut.dc.html ("interview_final_v3.mp4"): its clips,
 /// silence and scene markers, a keyframe every 4 s and the prototype's generated waveform, so demo
 /// screenshots can be compared with the design.
 /// </summary>
-public sealed class DesignSample : IMediaPreview
+public sealed partial class DesignSample : IMediaPreview
 {
     public const double SampleDuration = 872.48;
 
@@ -94,13 +83,6 @@ public sealed class DesignSample : IMediaPreview
 
     public string? Activity => null;
     public string? AnalysisError => null;
-
-    /// <summary>The sample is complete from the start.</summary>
-    public event EventHandler? Changed
-    {
-        add { }
-        remove { }
-    }
 
     /// <summary>The prototype's bar height (0..1) for bar <paramref name="i"/> of <see cref="WaveformBars"/>.</summary>
     public static double BarLevel(int i)

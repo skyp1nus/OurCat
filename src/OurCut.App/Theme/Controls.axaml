@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:c="using:OurCut.App.Controls">
+        xmlns:c="using:OurCut.App.Controls"
+        xmlns:vm="using:OurCut.App.ViewModels">
   <Styles.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
@@ -207,6 +208,43 @@
           <Setter Property="Fill" Value="#FFFFFF" />
         </Style>
       </ControlTheme>
+
+      <!-- Settings switch with its label (Content): 28 × 16 track, 12 px knob, 10 px gap, no hover. -->
+      <ControlTheme x:Key="SettingSwitch" TargetType="CheckBox">
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="FontFamily" Value="{StaticResource SansFont}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="10" Background="Transparent">
+              <Border Name="track" Width="28" Height="16" CornerRadius="8" Background="{StaticResource FieldBrush}" VerticalAlignment="Center">
+                <Ellipse Name="knob" Width="12" Height="12" Fill="#71717A" HorizontalAlignment="Left" Margin="2,0,0,0" VerticalAlignment="Center" />
+              </Border>
+              <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" VerticalAlignment="Center" />
+            </StackPanel>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:checked /template/ Border#track">
+          <Setter Property="Background" Value="#4DFFFFFF" />
+        </Style>
+        <Style Selector="^:checked /template/ Ellipse#knob">
+          <Setter Property="Fill" Value="#FFFFFF" />
+          <Setter Property="HorizontalAlignment" Value="Right" />
+          <Setter Property="Margin" Value="0,0,2,0" />
+        </Style>
+      </ControlTheme>
+
+      <!-- Segmented control over ChoiceOptions: <Border Classes="segs"><ItemsControl ItemsPanel=SegPanel ItemTemplate=SegItem /></Border>. -->
+      <ItemsPanelTemplate x:Key="SegPanel">
+        <StackPanel Orientation="Horizontal" Spacing="2" />
+      </ItemsPanelTemplate>
+      <DataTemplate x:Key="SegItem" x:DataType="vm:ChoiceOption">
+        <Button Classes="seg" Classes.on="{Binding IsSelected}" Height="26" Padding="12,0" Content="{Binding Label}"
+                Command="{Binding PickCommand}" />
+      </DataTemplate>
     </ResourceDictionary>
   </Styles.Resources>
 
@@ -252,6 +290,15 @@
   </Style>
   <Style Selector="Border.kbd.status > TextBlock">
     <Setter Property="FontSize" Value="9.5" />
+  </Style>
+  <!-- Shortcut chip in Settings (Keyboard rows, Playback "Shift ←"): 18 px, 10.5 px. -->
+  <Style Selector="Border.kbd.key">
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Padding" Value="6,0" />
+  </Style>
+  <Style Selector="Border.kbd.key > TextBlock">
+    <Setter Property="FontSize" Value="10.5" />
+    <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
   </Style>
 
   <!-- Soft ghost button: 5 % white, 9 % on hover (Open file, Set in, Browse, Cancel…). -->
@@ -484,5 +531,102 @@
   </Style>
   <Style Selector="TextBox.bare:disabled /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!-- Editable field (File name pattern): Border.field's look, white mono text, blue focus ring. -->
+  <Style Selector="TextBox.field">
+    <Setter Property="Height" Value="30" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+    <Setter Property="FontSize" Value="11.5" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    <Setter Property="CaretBrush" Value="{StaticResource TextBrush}" />
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="SelectionBrush" Value="#553B82F6" />
+  </Style>
+  <Style Selector="TextBox.field /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+  </Style>
+  <Style Selector="TextBox.field:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource OutlineStrongBrush}" />
+  </Style>
+  <Style Selector="TextBox.field:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource FocusRingBrush}" />
+    <Setter Property="BorderThickness" Value="1.5" />
+  </Style>
+
+  <!-- Search box: room on the left for an IconSearch12 laid over it (Keyboard, Transcript). -->
+  <Style Selector="TextBox.search">
+    <Setter Property="Height" Value="30" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="30,0,10,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="FontFamily" Value="{StaticResource SansFont}" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="PlaceholderForeground" Value="{StaticResource Muted2Brush}" />
+    <Setter Property="CaretBrush" Value="{StaticResource TextBrush}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBox.search:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource OutlineBrush}" />
+  </Style>
+  <Style Selector="TextBox.search:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource FieldBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource FocusRingBrush}" />
+    <Setter Property="BorderThickness" Value="1.5" />
+  </Style>
+
+  <!-- Pattern token chip ({project}, {n}…). -->
+  <Style Selector="Button.token">
+    <Setter Property="Height" Value="22" />
+    <Setter Property="Padding" Value="7,0" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource SelectedBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
+    <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Button.token:pointerover">
+    <Setter Property="Background" Value="{StaticResource ControlHoverBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+  </Style>
+
+  <!-- Settings: helper text under a control, and group headers ("Cache", "Permissions") with an optional note. -->
+  <Style Selector="TextBlock.help">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="LineHeight" Value="16" />
+    <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="Border.group">
+    <Setter Property="Padding" Value="0,24,0,8" />
+    <Setter Property="BorderBrush" Value="{StaticResource DividerSoftBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+  <Style Selector="TextBlock.groupTitle">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="LetterSpacing" Value="0.22" />
+    <Setter Property="Foreground" Value="{StaticResource Text4Brush}" />
+  </Style>
+  <Style Selector="TextBlock.groupNote">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
   </Style>
 </Styles>

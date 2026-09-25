@@ -16,6 +16,9 @@
   <StreamGeometry x:Key="IconPause14">M3 2.5h2.6v9H3zM8.4 2.5h2.6v9H8.4z</StreamGeometry>
   <!-- 12×12 and 10×10 view boxes. -->
   <StreamGeometry x:Key="IconChevron12">M3 4.5l3 3 3-3</StreamGeometry>
+  <StreamGeometry x:Key="IconSearch12">M1.5 5.2a3.7 3.7 0 1 0 7.4 0a3.7 3.7 0 1 0 -7.4 0zM8 8l2.8 2.8</StreamGeometry>
+  <StreamGeometry x:Key="IconChevronUp10">M2 6.5L5 3.5l3 3</StreamGeometry>
+  <StreamGeometry x:Key="IconChevronDown10">M2 3.5l3 3 3-3</StreamGeometry>
   <StreamGeometry x:Key="IconClose10">M1 1l8 8M9 1L1 9</StreamGeometry>
   <StreamGeometry x:Key="IconRemove10">M1.5 1.5l7 7M8.5 1.5l-7 7</StreamGeometry>
   <StreamGeometry x:Key="IconMinimize10">M0 5h10</StreamGeometry>

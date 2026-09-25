@@ -3,6 +3,7 @@ using OurCut.App.ViewModels;
 using OurCut.Core.Editing;
 using OurCut.Media.Export;
 using OurCut.Mcp;
+using Fillers = OurCut.Core.Transcripts.FillerWords;
 
 namespace OurCut.App.Services;
 
@@ -41,28 +42,65 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
             : null;
     public string? AnalysisStatus => editor.Media?.Activity;
 
+    // STUB: expose through IEditorContext so find/cut_filler_words default to the user's list.
+    /// <summary>Settings → Transcription → Filler words, every language.</summary>
+    public IReadOnlyList<string> FillerWords => Fillers.All(editor.Settings.FillerWords);
+
     public TranscriptStatus TranscriptStatus => editor.Media is { } media
         ? new TranscriptStatus(media.TranscriptState.ToString().ToLowerInvariant(), media.TranscriptProgress, media.Transcript, media.TranscriptError)
         : new TranscriptStatus("none", 0, null, null);
 
     public string? StartTranscription() => editor.StartTranscription();
 
-    public string? StartExport(ExportRequest request) =>
-        editor.Export.StartForClaude(
-            request.Mode switch { "lossless" => ExportMode.Copy, "reencode" => ExportMode.Encode, _ => null },
-            request.Container?.ToUpperInvariant(),
-            request.Merge,
-            request.Folder,
-            request.Chapters,
-            request.AllTracks,
-            request.Video switch
+    public async Task<string?> StartExportAsync(ExportRequest request, CancellationToken cancellationToken)
+    {
+        var export = editor.Export;
+        var claude = editor.Claude.Export;
+        if (claude.IsAsking)
+            return "An export is already waiting for the user's answer.";
+        if (export.PrepareForClaude(
+                request.Mode switch { "lossless" => ExportMode.Copy, "reencode" => ExportMode.Encode, _ => null },
+                request.Container?.ToUpperInvariant(),
+                request.Merge,
+                request.Folder,
+                request.Chapters,
+                request.AllTracks,
+                request.Video switch
+                {
+                    "h264" => VideoEncoding.H264Quality,
+                    "h264_fast" => VideoEncoding.H264Fast,
+                    "h265" => VideoEncoding.H265,
+                    _ => null,
+                },
+                request.Audio is null ? null : request.Audio == "copy") is { } error)
+            return error;
+        bool started = false;
+        try
+        {
+            if (await AskToExportAsync(export.ClaudeTarget(), cancellationToken).ConfigureAwait(true) == ClaudeExportAnswer.Deny)
+                return "The user declined the export.";
+            if (export.StartPreparedForClaude() is { } refused)
             {
-                "h264" => VideoEncoding.H264Quality,
-                "h264_fast" => VideoEncoding.H264Fast,
-                "h265" => VideoEncoding.H265,
-                _ => null,
-            },
-            request.Audio is null ? null : request.Audio == "copy");
+                claude.Clear();
+                return refused;
+            }
+            started = true;
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            return "The export request was withdrawn.";
+        }
+        finally
+        {
+            if (!started)
+                export.AbandonPreparedForClaude();
+        }
+    }
+
+    // STUB: pick by editor.Settings.ExportPermission: Allow → Allow, Ask → editor.Claude.Export.AskAsync(target, ct), Never → refuse with its own message.
+    private static Task<ClaudeExportAnswer> AskToExportAsync(ClaudeExportTarget target, CancellationToken cancellationToken) =>
+        Task.FromResult(ClaudeExportAnswer.Allow);
 
     public ExportState? Export => editor.Export switch
     {
@@ -75,7 +113,7 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
     {
         if (editor.Export.Outcome != ExportOutcome.Running)
             return false;
-        editor.Export.Close();
+        editor.Export.CancelExport();
         return true;
     }
 
@@ -89,38 +127,9 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
             editor.TogglePlay();
     }
 
+    // STUB: honour Settings.OpenFilesPermission; Ask needs a request like the export one.
     public Task<string?> OpenAsync(string path) => editor.OpenForClaudeAsync(path);
 
+    // STUB: honour Settings.SaveProjectPermission; Ask needs a request like the export one.
     public Task<string?> SaveAsync(string? path) => editor.SaveForClaudeAsync(path);
-}
-
-/// <summary>Runs the editor's MCP server and shows its state in the title bar and the Claude panel.</summary>
-public sealed class EditorMcpServer : IAsyncDisposable
-{
-    private readonly McpPipeServer _server;
-    private readonly EditorViewModel _editor;
-
-    public EditorMcpServer(EditorViewModel editor, string? pipeName = null)
-    {
-        _editor = editor;
-        _server = new McpPipeServer(new EditorMcpHost(editor), pipeName);
-        _server.StateChanged += (_, _) => Dispatcher.UIThread.Post(Refresh);
-    }
-
-    public string PipeName => _server.PipeName;
-
-    public void Start()
-    {
-        _server.Start();
-        Refresh();
-    }
-
-    private void Refresh()
-    {
-        _editor.Claude.IsListening = _server.IsListening;
-        _editor.Claude.IsServedElsewhere = _server.IsInUseElsewhere;
-        _editor.Claude.IsConnected = _server.Sessions > 0;
-    }
-
-    public ValueTask DisposeAsync() => _server.DisposeAsync();
 }

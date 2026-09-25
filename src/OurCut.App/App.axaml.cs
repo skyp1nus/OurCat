@@ -2,12 +2,14 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
+using OurCut.App.Controls;
 using OurCut.App.Demo;
 using OurCut.App.Services;
 using OurCut.App.ViewModels;
 using OurCut.App.Views;
 using OurCut.Media;
 using OurCut.Media.Caching;
+using OurCut.Media.Playback;
 using OurCut.Transcription.Models;
 
 namespace OurCut.App;
@@ -22,15 +24,20 @@ public partial class App : Application
         {
             var args = desktop.Args ?? [];
             var demo = ParseDemoScreen(args);
-            var player = MpvPlaybackEngine.TryCreate(out string? playbackError);
+            // Read before the player and the video view exist: decoding and the renderer are chosen at start.
+            var store = demo is null ? new AppSettingsStore(AppSettingsStore.DefaultFile) : null;
+            var saved = store?.Load() ?? AppSettings.Default;
+            var playback = saved.Playback ?? new PlaybackSettings();
+            VideoView.PreferOpenGl &= playback.Renderer != VideoRendererMode.Software;
+            var player = MpvPlaybackEngine.TryCreate(out string? playbackError,
+                new MpvPlayerOptions { HardwareDecoding = playback.MpvHardwareDecoding() });
             var editor = CreateEditor(demo, new FfmpegMediaOpener(new MediaCache()),
                 demo is null ? new RecentFilesStore(RecentFilesStore.DefaultFile) : null, player, playbackError);
             EditorMcpServer? mcp = null;
             if (demo is null)
             {
-                var settings = new AppSettingsStore(AppSettingsStore.DefaultFile);
-                editor.Settings.Load(settings.Load());
-                editor.Settings.Store = settings;
+                editor.Settings.Load(saved);
+                editor.Settings.Store = store;
                 editor.Settings.Installer = new ModelInstaller(ModelInstaller.CreateHttpClient());
                 // Claude connects through "OurCut mcp" (Settings → MCP server).
                 mcp = new EditorMcpServer(editor);
@@ -87,15 +94,18 @@ public partial class App : Application
             editor.ToolStatus += " · no playback (libmpv unavailable)";
     }
 
-    /// <summary>Reads <c>--demo &lt;empty|editing|ai|export|exporting|settings&gt;</c> from the command line.</summary>
+    /// <summary>
+    /// Reads <c>--demo &lt;screen&gt;</c> from the command line: a <see cref="DesignScreen"/> name in any case,
+    /// or kebab-case (<c>claude-export-failed</c>).
+    /// </summary>
     public static DesignScreen? ParseDemoScreen(IReadOnlyList<string> args)
     {
         for (int i = 0; i < args.Count; i++)
         {
             if (args[i] != "--demo")
                 continue;
-            string value = i + 1 < args.Count ? args[i + 1] : "editing";
-            return Enum.TryParse<DesignScreen>(value, ignoreCase: true, out var screen) ? screen : DesignScreen.Editing;
+            string value = i + 1 < args.Count ? args[i + 1].Replace("-", "", StringComparison.Ordinal) : "editing";
+            return Enum.TryParse<DesignScreen>(value, ignoreCase: true, out var screen) && Enum.IsDefined(screen) ? screen : DesignScreen.Editing;
         }
         return null;
     }

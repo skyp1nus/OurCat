@@ -88,7 +88,8 @@ filter. Re-encoding one clip per file copies audio when asked, dropping packets 
 (`-copypriorss 0`).
 
 Output names: `{project}-cut.{ext}` when merged, `{project}-{n}-{label}.{ext}` otherwise; existing files are never
-overwritten (" (2)" is added) and an export never writes over its source. Temporary files
+overwritten (" (2)" is added) and an export never writes over its source. Settings → Export's file name pattern
+(`ExportFileNames.Fill`) is not used by the planner yet. Temporary files
 (`.ourcut-tmp-*`) and any half-written output are removed on failure or cancel.
 
 ## Playback
@@ -150,10 +151,11 @@ Claude ──stdio──> OurCut.exe mcp (McpBridge) ──named pipe──> Our
   launch without OurCut popping up. The first tool call connects to the editor's pipe, starting the editor
   (`EditorLauncher`) if it is not running, and every call is forwarded as is. If the editor was closed since,
   the next call starts it again.
-- **The pipe server** runs in the editor (not in `--demo` runs). The pipe is `ourcut-mcp-<user>`, created with
+- **The pipe server** runs in the editor while Settings → MCP server → "Let Claude connect" is on (not in `--demo`
+  runs; `EditorMcpServer` stops and restarts it). The pipe is `ourcut-mcp-<user>`, created with
   `PipeOptions.CurrentUserOnly`, so only the same user account can connect. One editor serves it: the one that
   holds `<temp>/ourcut-mcp-<user>.lock` (released by the system when that editor exits, even if it crashes). A
-  second window shows "MCP · in another window" and takes over when the first one closes. On Windows the first pipe
+  second window shows "MCP · In another window" and takes over when the first one closes. On Windows the first pipe
   instance is also created with `FirstPipeInstance`.
 - **The host** (`EditorMcpHost` in the App) runs each tool call on the UI thread, where the session and the view
   models live, so a tool call never lands in the middle of a user edit. Edits go through `EditorSession.Execute`
@@ -178,10 +180,75 @@ Claude ──stdio──> OurCut.exe mcp (McpBridge) ──named pipe──> Our
 | `revert_action`, `undo`, `redo` | Take edits back |
 | `seek`, `set_playing` | Show a frame or play |
 | `open_file`, `save_project` | Open a video or project; save as `.ourcut.json` (full paths only) |
-| `export`, `get_export_status`, `cancel_export` | Export like the Export button (the dialog shows the progress); choices left out keep the dialog's; waits up to 20 s, then Claude polls |
+| `export`, `get_export_status`, `cancel_export` | Export like the Export button (runs in the background; the Claude panel shows it); choices left out keep the dialog's; waits up to 20 s, then Claude polls |
 
 A refused edit (`EditException`, e.g. "Clip 7 does not exist") goes back to Claude as a tool error it can act on.
 Results are JSON; times are seconds, rounded to milliseconds, with `MM:SS.mmm` ranges for talking to the user.
+
+## App
+
+`OurCut.App` is MVVM (CommunityToolkit.Mvvm). `EditorViewModel` owns the session, the player and the panels; views
+bind to view models and never change the project themselves.
+
+- **Sidebar tabs**: `EditorViewModel.Tab` switches between Clips and Transcript (`EditorViewModel.Transcript.cs`).
+  `TranscriptPanelViewModel` follows the open file's transcript as it arrives, lays it out in paragraphs
+  (`TranscriptLayout`, Core), searches it (`TranscriptSearch`, Core: case and punctuation ignored, phrases across
+  words) and marks the filler words of `SettingsViewModel.FillerWords` (defaults: `Core.Transcripts.FillerWords`).
+  Clicking a word seeks. A selection can be played (`PlayRange` pauses at its end), kept as a clip (`KeepWords`) or
+  cut out (`CutWords`, a `CutRangesCommand`), each one undo step through `EditorSession`. Without a model the tab
+  offers Parakeet's download (Retry after a failed one, and why it does not fit when there is no space) and transcribes
+  the video once it is installed.
+- **Transcript lane**: the timeline's TX row (`ShowTranscriptLane`) is drawn by `TimelineControl.DrawTranscriptLane`,
+  words packed by width from the start of each chunk. A click there seeks to a word; it never splits or trims.
+- **Claude's export**: `IEditorContext.StartExportAsync` (`EditorMcpHost`) fills the export settings from the request
+  (`ExportViewModel.PrepareForClaude`, which starts from Settings → Export like the dialog does, and refuses while the
+  user has the dialog open), asks (`AskToExportAsync`, the permission seam), then runs it with the dialog hidden
+  (`StartPreparedForClaude`: `IsByClaude`, `IsHidden`). When it does not start (denied, withdrawn, refused),
+  `AbandonPreparedForClaude` puts the dialog's own choices back. `ClaudeExportViewModel` (`ClaudePanelViewModel.Export`) drives the request banner over
+  the preview (Allow, Deny, Always allow: `AskAsync`) and the card at the top of the Claude log (running, done,
+  failed, denied, cancelled). The Export button reads "Exporting 45%" over a progress strip. ✕ and Esc on the
+  export dialog hide a running export (`Dismiss`), and the button or Ctrl+E shows it again. `cancel_export` and the
+  card's Cancel call `ExportViewModel.CancelExport`.
+- **MCP status**: `ClaudePanelViewModel.Status` (`McpStatus`: Off, Waiting, Connected, Editing, OtherWindow) follows
+  `IsServerOn` ("Let Claude connect"), `IsConnected`, `IsWorking`, `IsListening` and `IsServedElsewhere`. The title
+  bar badge (`McpText`, `IsMcpOn`) and the status card in Settings → MCP server show it. `EditorMcpServer` starts
+  and stops the pipe server when `IsServerOn` changes, one switch at a time.
+- **Settings dialog**: `SettingsViewModel` is split by section (`SettingsViewModel.<Section>.cs`, views in
+  `Views/Settings/<Section>Section.axaml`, shared styles in `Theme/Controls.axaml`). Every change goes through
+  `UpdateSettings(change)`, which applies it to `Current` and saves. Segmented controls use `ChoiceSet<T>`.
+- **Settings file**: `AppSettings(Transcription, General?, Playback?, Export?, Keyboard?, Mcp?)` (records and enums
+  in `Services/Settings/`), saved by `AppSettingsStore` to `%LOCALAPPDATA%\OurCut\settings.json` with
+  source-generated JSON, enums by name (`LenientEnumConverter`). A section missing from the file (an older version
+  wrote it, or it is at its defaults) reads as null and means the defaults; a value this version does not know falls
+  back to its default, and the rest of the file is kept.
+  Playback is read before the player is created, since the renderer and hardware decoding are chosen at start.
+- **Key map**: `KeyMap` (each `ShortcutAction`'s `KeyCombo`s; the defaults are `KeyMap.Catalog`) is what Settings →
+  Keyboard (`KeyboardSettingsViewModel`) edits: search, recording (while `IsRecording`, `Shortcuts.Handle` hands every
+  key to `Record`), conflicts (Replace takes the key from the other action, so no key runs two actions) and reset.
+  It is saved as `KeyboardSettings`: only the actions that differ from the defaults, by enum name. The editor's
+  shortcuts still use the default keys (see below).
+- **Demo mode**: `--demo <screen>` loads the design's sample (`DesignSample`, `DesignTranscript`,
+  `DesignSettingsSample`) for a `DesignScreen`. `DemoScenario.Apply` does the common setup, then one partial hook per
+  area (`ApplyTranscriptionMcp`, `ApplyTranscript`, `ApplyClaude`, `ApplyGeneralPlaybackExport`, `ApplyKeyboard`).
+  `DesignScreensTests` renders every screen to `artifacts/screenshots/<screen>.png`.
+
+### Not wired up yet
+
+Places where the UI and the setting exist but the behaviour does not are marked with a one-line `// STUB:` comment
+(`grep -rn "// STUB:" src`):
+
+- **Permissions**: `EditorMcpHost.AskToExportAsync` always allows (it should follow `Settings.ExportPermission` and
+  use `ClaudeExportViewModel.AskAsync` for Ask; Always allow already sets Allow); `OpenAsync` and `SaveAsync` ignore
+  their permissions.
+- **Shortcuts**: `Shortcuts.Handle` dispatches fixed keys instead of `KeyMap.Find(KeyCombo.From(key, mods))`.
+- **MCP**: the connected client's name and the project in the other window (`ClaudePanelViewModel.ClientName`,
+  `OtherWindowProject`); `find_filler_words` and `cut_filler_words` keep their own list instead of the user's.
+- **Playback**: hardware decoding and the renderer apply at the next start; the audio device list and output; the
+  Jump chips show fixed keys.
+- **Export defaults**: the GPU encoder, the file name pattern, "if the file exists" and "after export" are saved but
+  not used by the export; GPU encoder detection.
+- **General**: the startup action, the recent files limit, the cache size and Clear cache.
+- **Transcription**: the Transcript tab's status says CPU until transcription runs on a GPU.
 
 ## Extension points
 - **Smart cut**: `CutMode.SmartCut` exists in the export settings; the planner rejects it for now. It becomes
@@ -207,10 +274,11 @@ and Whisper large-v3-turbo, small and base.en (99 languages; base.en English onl
   approximate.
 - **Data**: `Word`, `Phrase` and `Transcript` live in Core (`OurCut.Core.Transcripts`), so the MCP tools use them
   without the engine. Phrases end at . ! ? … or pauses of 0.8 s.
-- **In the editor** (`MediaPreview`): transcription starts when a file is opened and a model is installed, after
-  keyframes, waveform and thumbnails (it may overlap scene detection), on half the cores. The status bar shows
-  "transcribing 34%", the transcript fills in piece by piece and is cached per model and language
-  (`transcript-<model>-<language>.json`). Installing a model or changing the model or language starts it.
+- **In the editor** (`MediaPreview`): transcription starts when a file is opened (unless "Transcribe when a video is
+  opened" is off) and a model is installed, after keyframes, waveform and thumbnails (it may overlap scene
+  detection), on half the cores. The status bar shows "transcribing 34%", the transcript fills in piece by piece
+  and is cached per model and language (`transcript-<model>-<language>.json`). Installing a model or changing the
+  model or language starts it (with "Transcribe when a video is opened" off, only a transcript already asked for).
 
 - `ModelInstaller` downloads into `<models folder>/<id>.partial`, continuing an interrupted download with an HTTP
   range request, unpacks archives there (SharpZipLib's bzip2 + `System.Formats.Tar`, without the archive's top

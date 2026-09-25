@@ -2,14 +2,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:OurCut.App.ViewModels"
              xmlns:c="using:OurCut.App.Controls"
+             xmlns:s="using:OurCut.App.Views.Settings"
              x:Class="OurCut.App.Views.SettingsDialog"
              x:DataType="vm:SettingsViewModel">
-  <!-- 780 × 580: section list on the left, the chosen section (Transcription, MCP server) on the right. -->
+  <!-- 780 × 580: section list on the left, the chosen section (Views/Settings/*Section) on the right. -->
   <Border Background="{StaticResource ScrimBrush}">
     <Border Width="780" Height="580" CornerRadius="12" Background="{StaticResource DialogBrush}" ClipToBounds="True"
             HorizontalAlignment="Center" VerticalAlignment="Center"
             BoxShadow="inset 0 1 0 0 #17FFFFFF, 0 0 0 1 #1AFFFFFF, 0 16 36 0 #66000000">
-      <Grid ColumnDefinitions="188,*">
+      <!-- The design's 188 px list is content-box: 208 with its padding. -->
+      <Grid ColumnDefinitions="208,*">
         <Border Background="{StaticResource PanelDeepBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,0,1,0"
                 Padding="10,16">
           <StackPanel Spacing="2">
@@ -35,7 +37,8 @@
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Spacing="4">
                 <TextBlock Text="{Binding Section}" FontSize="14" FontWeight="Medium" LetterSpacing="-0.3" Foreground="{StaticResource TextBrush}" />
-                <TextBlock Text="{Binding SectionNote}" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SectionNote}" FontSize="12" LineHeight="17.4" Foreground="{StaticResource MutedBrush}"
+                           TextWrapping="Wrap" />
               </StackPanel>
               <Button Grid.Column="1" Classes="ghost bright" Width="26" Height="26" CornerRadius="6" VerticalAlignment="Top"
                       Foreground="{StaticResource Text4Brush}" ToolTip.Tip="Close (Esc)" Command="{Binding CloseCommand}">
@@ -44,184 +47,17 @@
             </Grid>
           </Border>
 
-          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsTranscription}">
-            <StackPanel Margin="24,8,24,20">
-              <Border Classes="row"><Grid ColumnDefinitions="120,16,*">
-                <TextBlock Classes="label" Text="Engine" />
-                <Border Grid.Column="2" Classes="segs" VerticalAlignment="Center">
-                  <ItemsControl ItemsSource="{Binding EngineOptions}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="2" />
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:ChoiceOption">
-                        <Button Classes="seg" Classes.on="{Binding IsSelected}" Height="26" Padding="12,0" Content="{Binding Label}"
-                                Command="{Binding PickCommand}" />
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </Border>
-              </Grid></Border>
-
-              <Border Classes="row"><Grid ColumnDefinitions="120,16,*">
-                <TextBlock Classes="label" Text="Model" />
-                <ComboBox Grid.Column="2" Classes="field" Width="320" HorizontalAlignment="Left" VerticalAlignment="Center"
-                          ItemsSource="{Binding ModelOptions}" SelectedItem="{Binding Model}">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ModelOption">
-                      <TextBlock Text="{Binding Label}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </Grid></Border>
-
-              <Border Classes="row"><Grid ColumnDefinitions="120,16,*">
-                <TextBlock Classes="label" Text="Device" />
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                  <Border Classes="segs">
-                    <ItemsControl ItemsSource="{Binding DeviceOptions}">
-                      <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                          <StackPanel Orientation="Horizontal" Spacing="2" />
-                        </ItemsPanelTemplate>
-                      </ItemsControl.ItemsPanel>
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ChoiceOption">
-                          <Button Classes="seg" Classes.on="{Binding IsSelected}" Height="26" Padding="12,0" Content="{Binding Label}"
-                                  Command="{Binding PickCommand}" />
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </Border>
-                  <TextBlock Text="{Binding DeviceNote}" FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
-                </StackPanel>
-              </Grid></Border>
-
-              <Border Classes="row"><Grid ColumnDefinitions="120,16,*">
-                <TextBlock Classes="label" Text="Language" />
-                <ComboBox Grid.Column="2" Classes="field" Width="200" HorizontalAlignment="Left" VerticalAlignment="Center"
-                          ItemsSource="{x:Static vm:SettingsViewModel.Languages}" SelectedItem="{Binding Language}" />
-              </Grid></Border>
-
-              <Border Classes="row last" MinHeight="52"><Grid ColumnDefinitions="120,16,*">
-                <TextBlock Classes="label" Text="Models folder" />
-                <Grid Grid.Column="2" ColumnDefinitions="*,8,Auto,8,Auto" VerticalAlignment="Center">
-                  <Border Classes="field" ToolTip.Tip="{Binding ModelsFolder}">
-                    <TextBlock Text="{Binding ModelsFolder}" />
-                  </Border>
-                  <Button Grid.Column="2" Classes="soft" Height="30" Padding="12,0" Content="Change" Command="{Binding ChangeFolderCommand}" />
-                  <Button Grid.Column="4" Classes="link" Content="Open" Command="{Binding OpenFolderCommand}" VerticalAlignment="Center" />
-                </Grid>
-              </Grid></Border>
-
-              <!-- Models table. -->
-              <Border Margin="0,4,0,0" CornerRadius="8.77" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" ClipToBounds="True">
-                <StackPanel>
-                  <Border Height="26" Padding="12,0" Background="{StaticResource PanelDeepBrush}" BorderBrush="{StaticResource DividerSoftBrush}"
-                          BorderThickness="0,0,0,1">
-                    <Grid ColumnDefinitions="*,12,60,12,56,12,128">
-                      <TextBlock Classes="colhead" Text="Model" />
-                      <TextBlock Grid.Column="2" Classes="colhead" Text="Engine" />
-                      <TextBlock Grid.Column="4" Classes="colhead" Text="Size" HorizontalAlignment="Right" />
-                      <TextBlock Grid.Column="6" Classes="colhead" Text="{Binding DiskFreeText}" HorizontalAlignment="Right" />
-                    </Grid>
-                  </Border>
-                  <ItemsControl ItemsSource="{Binding Models}">
-                    <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:TranscriptionModelViewModel">
-                        <Border Height="40" Padding="12,0" BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,0,0,1">
-                          <Grid ColumnDefinitions="*,12,60,12,56,12,128">
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                              <TextBlock Classes="mono" Text="{Binding Id}" FontSize="11.5" Foreground="{StaticResource TextBrush}"
-                                         TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding Languages}" />
-                              <Border IsVisible="{Binding IsInstalled}" Height="16" Padding="5,0" CornerRadius="4" BorderThickness="1"
-                                      BorderBrush="#804ADE80" VerticalAlignment="Center">
-                                <TextBlock Text="Installed" FontSize="9.5" FontWeight="Medium" Foreground="{StaticResource StatusOnBrush}"
-                                           VerticalAlignment="Center" />
-                              </Border>
-                            </StackPanel>
-                            <TextBlock Grid.Column="2" Text="{Binding Engine}" FontSize="11.5" Foreground="{StaticResource Text4Brush}"
-                                       VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="4" Classes="mono" Text="{Binding Size}" FontSize="11" Foreground="{StaticResource Text2Brush}"
-                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Center">
-                              <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsDownloading}">
-                                <ProgressBar Width="64" MinWidth="0" Height="3" MinHeight="3" CornerRadius="2" Minimum="0" Maximum="1" Value="{Binding Progress}"
-                                             Background="{StaticResource FieldBrush}" Foreground="{StaticResource Text2Brush}" VerticalAlignment="Center" />
-                                <TextBlock Classes="mono" Text="{Binding PercentText}" FontSize="10.5" Width="28" TextAlignment="Right"
-                                           Foreground="{StaticResource Text4Brush}" VerticalAlignment="Center" />
-                                <Button Classes="ghost bright" Width="20" Height="20" CornerRadius="5" Foreground="{StaticResource MutedBrush}"
-                                        ToolTip.Tip="Cancel download" Command="{Binding CancelDownloadCommand}">
-                                  <c:SvgIcon Data="{StaticResource IconClose10}" ViewBox="10" StrokeWidth="1.2" LineCap="Flat" Width="9" Height="9" />
-                                </Button>
-                              </StackPanel>
-                              <Button Classes="danger" IsVisible="{Binding IsInstalled}" IsEnabled="{Binding CanManage}" Height="24" Padding="10,0"
-                                      CornerRadius="6" FontSize="11.5" FontWeight="Normal" Content="Delete" Command="{Binding DeleteCommand}"
-                                      ToolTip.Tip="Delete the model files" />
-                              <Button Classes="soft" IsVisible="{Binding IsNotInstalled}" IsEnabled="{Binding CanManage}" Height="24" Padding="10,0"
-                                      CornerRadius="6" FontSize="11.5" Content="Download" Command="{Binding DownloadCommand}"
-                                      ToolTip.Tip="{Binding Error}" />
-                            </StackPanel>
-                          </Grid>
-                        </Border>
-                      </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
-                </StackPanel>
-              </Border>
-            </StackPanel>
+          <!-- One scroller for every section; it goes back to the top when the section changes. -->
+          <ScrollViewer Name="Scroll" Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <Panel Margin="24,8,24,20">
+              <s:GeneralSection IsVisible="{Binding IsGeneral}" />
+              <s:PlaybackSection IsVisible="{Binding IsPlayback}" />
+              <s:ExportSection IsVisible="{Binding IsExport}" />
+              <s:TranscriptionSection IsVisible="{Binding IsTranscription}" />
+              <s:KeyboardSection IsVisible="{Binding IsKeyboard}" />
+              <s:McpSection IsVisible="{Binding IsMcp}" />
+            </Panel>
           </ScrollViewer>
-
-          <!-- MCP server: status, and how to add OurCut to Claude Code and Claude Desktop. -->
-          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsMcp}">
-            <StackPanel Margin="24,8,24,20">
-              <Border Classes="row"><Grid ColumnDefinitions="120,16,*">
-                <TextBlock Classes="label" Text="Status" />
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <Ellipse Name="McpDot" Width="6" Height="6" VerticalAlignment="Center" Classes.on="{Binding Claude.IsConnected}"
-                           Classes.ready="{Binding Claude.IsListening}" />
-                  <TextBlock Text="{Binding Claude.McpText}" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" />
-                </StackPanel>
-              </Grid></Border>
-
-              <Border Classes="row"><Grid ColumnDefinitions="120,16,*" Margin="0,12">
-                <TextBlock Classes="label" Text="Claude Code" VerticalAlignment="Top" Margin="0,6,0,0" />
-                <StackPanel Grid.Column="2" Spacing="8">
-                  <Grid ColumnDefinitions="*,8,Auto">
-                    <Border Classes="code">
-                      <SelectableTextBlock Text="{Binding ClaudeCodeCommand}" TextWrapping="Wrap" />
-                    </Border>
-                    <Button Grid.Column="2" Classes="soft" Height="30" Padding="12,0" Content="Copy" VerticalAlignment="Top"
-                            Command="{Binding CopyClaudeCodeCommand}" />
-                  </Grid>
-                  <TextBlock Classes="hint" Text="Run once in a terminal. Claude Code then has OurCut in every project." />
-                </StackPanel>
-              </Grid></Border>
-
-              <Border Classes="row last"><Grid ColumnDefinitions="120,16,*" Margin="0,12">
-                <TextBlock Classes="label" Text="Claude Desktop" VerticalAlignment="Top" Margin="0,6,0,0" />
-                <StackPanel Grid.Column="2" Spacing="8">
-                  <Grid ColumnDefinitions="*,8,Auto">
-                    <Border Classes="code">
-                      <SelectableTextBlock Text="{Binding ClaudeDesktopConfig}" TextWrapping="Wrap" />
-                    </Border>
-                    <Button Grid.Column="2" Classes="soft" Height="30" Padding="12,0" Content="Copy" VerticalAlignment="Top"
-                            Command="{Binding CopyClaudeDesktopCommand}" />
-                  </Grid>
-                  <TextBlock Classes="hint" TextWrapping="Wrap">
-                    <Run Text="Add to" />
-                    <Run Classes="path" Text="{x:Static vm:SettingsViewModel.ClaudeDesktopConfigPath}" />
-                    <Run Text="(Settings → Developer → Edit Config) and restart Claude Desktop. OurCut starts when Claude first uses it." />
-                  </TextBlock>
-                </StackPanel>
-              </Grid></Border>
-            </StackPanel>
-          </ScrollViewer>
-
-          <TextBlock Grid.Row="1" Margin="24,20" IsVisible="{Binding IsEmptySection}" Text="These settings come in a later version."
-                     Foreground="{StaticResource MutedBrush}" />
 
           <Border Grid.Row="2" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="24,0,16,0">
             <Grid ColumnDefinitions="*,Auto">
@@ -256,37 +92,6 @@
       <Setter Property="BorderBrush" Value="#D93B82F6" />
       <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
     </Style>
-    <Style Selector="Border.code">
-      <Setter Property="Padding" Value="10,7" />
-      <Setter Property="CornerRadius" Value="8" />
-      <Setter Property="Background" Value="{StaticResource WindowBrush}" />
-      <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}" />
-      <Setter Property="BorderThickness" Value="1" />
-    </Style>
-    <Style Selector="Border.code SelectableTextBlock">
-      <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="LineHeight" Value="16" />
-      <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
-    </Style>
-    <Style Selector="TextBlock.hint">
-      <Setter Property="FontSize" Value="11.5" />
-      <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
-      <Setter Property="TextWrapping" Value="Wrap" />
-    </Style>
-    <Style Selector="Run.path">
-      <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
-      <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
-    </Style>
-    <Style Selector="Ellipse#McpDot">
-      <Setter Property="Fill" Value="{StaticResource StatusOffBrush}" />
-    </Style>
-    <Style Selector="Ellipse#McpDot.ready">
-      <Setter Property="Fill" Value="{StaticResource Text4Brush}" />
-    </Style>
-    <Style Selector="Ellipse#McpDot.on">
-      <Setter Property="Fill" Value="{StaticResource StatusOnBrush}" />
-    </Style>
     <Style Selector="Border.row">
       <Setter Property="MinHeight" Value="48" />
       <Setter Property="BorderBrush" Value="{StaticResource DividerSoftBrush}" />
@@ -298,6 +103,11 @@
     <Style Selector="Border.row TextBlock.label">
       <Setter Property="Foreground" Value="{StaticResource Text2Brush}" />
       <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- Label of a row whose control is taller than one line (control, then help text). -->
+    <Style Selector="Border.row TextBlock.label.top">
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="0,16,0,0" />
     </Style>
     <Style Selector="TextBlock.colhead">
       <Setter Property="FontSize" Value="10" />

@@ -80,18 +80,16 @@ public sealed partial class ClaudeLogItemViewModel : ViewModelBase
     public partial DateTimeOffset Now { get; set; }
 
     /// <summary>"now" for work in progress, otherwise "just now", "42s ago" or "18 min ago".</summary>
-    public string WhenText
+    public string WhenText => IsLive ? "now" : Ago(At, Now);
+
+    /// <summary>"just now", "42s ago", "18 min ago", or the time of day after an hour.</summary>
+    internal static string Ago(DateTimeOffset at, DateTimeOffset now)
     {
-        get
-        {
-            if (IsLive)
-                return "now";
-            double s = Math.Max(0, Math.Round((Now - At).TotalSeconds));
-            return s < 5 ? "just now"
-                : s < 60 ? $"{s:0}s ago"
-                : s < 3600 ? $"{Math.Round(s / 60):0} min ago"
-                : At.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.CurrentCulture);
-        }
+        double s = Math.Max(0, Math.Round((now - at).TotalSeconds));
+        return s < 5 ? "just now"
+            : s < 60 ? $"{s:0}s ago"
+            : s < 3600 ? $"{Math.Round(s / 60):0} min ago"
+            : at.ToLocalTime().ToString("HH:mm", System.Globalization.CultureInfo.CurrentCulture);
     }
 
     public event EventHandler? UndoToggled;
@@ -144,22 +142,22 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
 
     /// <summary>Claude (its MCP client, through <c>OurCut mcp</c>) is connected to the editor.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsComposerEnabled), nameof(McpText))]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsComposerEnabled), nameof(McpText), nameof(Status))]
     public partial bool IsConnected { get; set; }
 
     /// <summary>The editor's MCP server is waiting for connections (every run but the demo).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(McpText))]
+    [NotifyPropertyChangedFor(nameof(McpText), nameof(Status))]
     public partial bool IsListening { get; set; }
 
     /// <summary>Another OurCut window has the MCP server; this one gets it when that one closes.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(McpText))]
+    [NotifyPropertyChangedFor(nameof(McpText), nameof(Status))]
     public partial bool IsServedElsewhere { get; set; }
 
     /// <summary>Claude used a tool in the last <see cref="ActiveFor"/>.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(McpText), nameof(StatusLine), nameof(IsWorking))]
+    [NotifyPropertyChangedFor(nameof(McpText), nameof(StatusLine), nameof(IsWorking), nameof(Status), nameof(IsStatusLive))]
     public partial bool IsActive { get; set; }
 
     /// <summary>A media file is open (Claude needs one to edit).</summary>
@@ -173,11 +171,17 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
 
     /// <summary>Work in progress is shown in the log (the demo's scripted cards).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusLine), nameof(McpText), nameof(IsWorking))]
+    [NotifyPropertyChangedFor(nameof(StatusLine), nameof(McpText), nameof(IsWorking), nameof(Status), nameof(IsStatusLive))]
     public partial bool IsBusy { get; set; }
 
-    /// <summary>Claude is editing right now: the header's pulsing dot.</summary>
-    public bool IsWorking => IsBusy || IsActive;
+    /// <summary>Claude is editing right now. Its own export's polling shows as Exporting, not editing.</summary>
+    public bool IsWorking => IsBusy || (IsActive && !Export.IsLive);
+
+    /// <summary>The header's pulsing dot and white status.</summary>
+    public bool IsStatusLive => IsWorking || Export.IsLive;
+
+    /// <summary>Claude's export: the request banner and the card on top of the log.</summary>
+    public ClaudeExportViewModel Export { get; }
 
     [ObservableProperty]
     public partial int ChangeCount { get; set; }
@@ -188,29 +192,57 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
     public bool ShowIntro => !HasMedia && Log.Count == 0;
 
     /// <summary>Nothing to show in the log yet.</summary>
-    public bool HasNoCards => !Log.Any(a => a.IsCard);
+    public bool HasNoCards => !Log.Any(a => a.IsCard) && !Export.HasCard;
 
     /// <summary>The MCP badge in the title bar.</summary>
-    public string McpText => IsConnected ? (IsWorking ? "MCP · Claude editing" : "MCP · Claude connected")
-        : IsListening ? "MCP · waiting for Claude"
-        : IsServedElsewhere ? "MCP · in another window"
-        : "MCP · not running";
+    public string McpText => Status switch
+    {
+        McpStatus.Waiting => "MCP · Waiting for Claude",
+        McpStatus.Connected => "MCP · Claude connected",
+        McpStatus.Editing => "MCP · Claude editing",
+        McpStatus.OtherWindow => "MCP · In another window",
+        _ => "MCP · Off",
+    };
 
-    /// <summary>Right side of the panel header: "Editing timeline", "Idle · 4 actions", "Waiting for a video".</summary>
+    /// <summary>The badge's green style: Claude connected or editing.</summary>
+    public bool IsMcpOn => Status is McpStatus.Connected or McpStatus.Editing;
+
+    /// <summary>Right side of the panel header: "Editing timeline", "Exporting", "Waiting for you", "Idle · 4 actions", "Waiting for a video".</summary>
     public string StatusLine => IsWorking ? "Editing timeline"
+        : Export.Stage == ClaudeExportStage.Running ? "Exporting"
+        : Export.Stage == ClaudeExportStage.Requested ? "Waiting for you"
         : !HasMedia ? "Waiting for a video"
         : IsOpen ? "Idle"
         : $"Idle · {Log.Count(a => a.IsAction && !a.IsUndone)} actions";
 
     public event EventHandler? Changed;
 
-    public ClaudePanelViewModel()
+    public ClaudePanelViewModel(ClaudeExportViewModel export)
     {
+        Export = export;
         Log.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(ShowIntro));
             OnPropertyChanged(nameof(HasNoCards));
             Recount();
+        };
+        export.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(ClaudeExportViewModel.Stage))
+                return;
+            OnPropertyChanged(nameof(StatusLine));
+            OnPropertyChanged(nameof(IsWorking));
+            OnPropertyChanged(nameof(IsStatusLive));
+            OnPropertyChanged(nameof(Status));
+            OnPropertyChanged(nameof(HasNoCards));
+        };
+        // Whatever moves the status moves the badge.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(Status))
+                return;
+            OnPropertyChanged(nameof(McpText));
+            OnPropertyChanged(nameof(IsMcpOn));
         };
     }
 
@@ -246,6 +278,7 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
     {
         foreach (var item in Log)
             item.Now = now;
+        Export.Now = now;
     }
 
     [RelayCommand]

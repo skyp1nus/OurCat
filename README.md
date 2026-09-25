@@ -30,23 +30,32 @@ editor as they happen, each one undoable.
 
 - **Claude via MCP** (done): Claude reads the project and edits the timeline — add, trim, split, exclude,
   reorder and rename clips, several edits as one undo step, revert any earlier edit, move the playhead, open
-  videos, save the project and export it (the Export dialog shows the progress; files are never overwritten). See [Connecting Claude](#connecting-claude).
+  videos, save the project and export it. Claude's export runs in the background: a card in the Claude panel and
+  the Export button show its progress, and files are never overwritten. See [Connecting Claude](#connecting-claude).
 - **Silence and scene detection** (done): pauses (from the waveform, at a level that follows the recording's
   background noise) show as hatched bands on the audio lanes, scene changes (a cut, a new slide or window) as
   markers on the ruler. Scene detection decodes the video once in the background and is cached. Claude can
   query both at any sensitivity and cut out the pauses in one undoable step.
 
-- **Transcription** (done): Parakeet or Whisper, locally. Download a model in Settings → Transcription and every
-  video you open is transcribed in the background. Claude reads the transcript, searches it, finds filler words and
-  cuts by it (a sentence, an aside, every "um") in one undoable step.
+- **Transcription** (done): Parakeet or Whisper, locally. Download a model in Settings → Transcription (or from
+  the Transcript tab) and every video you open is transcribed in the background (or only when you or Claude ask,
+  if you turn that off). The **Transcript** tab next to Clips shows the text by paragraph: click a word to seek,
+  search it, or select words to play them, keep them as a clip or cut them out. Filler words (set per language in
+  Settings → Transcription) are underlined, and words outside the output are struck through. The timeline can show
+  the words on a transcript lane. Claude reads the transcript, searches it, finds filler words and cuts by it (a
+  sentence, an aside, every "um") in one undoable step.
+- **Settings**: General (startup, recent files, preview cache, diagnostics), Playback (hardware decoding, renderer,
+  audio output, jump length), Export (the defaults the Export dialog starts with, including a file name pattern),
+  Transcription, Keyboard (search the shortcuts, record new keys, conflicts are caught) and MCP server. Some of
+  these are saved but not applied yet; each such place is marked `// STUB:` in the code.
 
 Not yet: smart cut. The UI already has a place for it.
 
 ## Connecting Claude
 
 OurCut is an MCP server: `OurCut.exe mcp` speaks MCP over stdio and forwards Claude's tool calls to the editor,
-starting OurCut when Claude first uses it. **Settings → MCP server** shows the exact command for your install
-with Copy buttons:
+starting OurCut when Claude first uses it. **Settings → MCP server** shows whether Claude is connected, turns the
+server off ("Let Claude connect"), and shows the exact command for your install with Copy buttons:
 
 - **Claude Code**: `claude mcp add --scope user ourcut -- "C:\path\to\OurCut.exe" mcp`
 - **Claude Desktop**: add this to `%APPDATA%\Claude\claude_desktop_config.json` (Settings → Developer → Edit Config)
@@ -60,10 +69,13 @@ with Copy buttons:
   }
   ```
 
+Settings → MCP server also has what Claude may do without asking (open files, save the project, export). They are
+saved, but not enforced yet: Claude's exports start right away.
+
 Then ask Claude something like "open my latest recording in OurCut, cut out the pauses and the ums, split it
 into chapters where I change topic, and export it". Claude does not see the video itself: it works from the
 transcript, silences, scene changes and keyframes OurCut finds. The badge in the title bar shows the connection
-(MCP · waiting for Claude / Claude connected / Claude editing), and every edit Claude makes appears in the Claude
+(MCP · Waiting for Claude / Claude connected / Claude editing / In another window / Off), and every edit Claude makes appears in the Claude
 panel with its own Undo. Only your own user account can connect to the editor.
 
 ## Keyboard shortcuts
@@ -72,16 +84,21 @@ panel with its own Undo. Only your own user account can connect to the editor.
 | --- | --- |
 | Space | Play / pause |
 | I / O | Set in-point / out-point |
-| ← / → | Previous / next frame (Shift: 1 second) |
+| ← / → | Previous / next frame |
+| Shift+← / Shift+→ | Jump back / forward (Settings → Playback → Jump length, 1 second by default) |
 | S | Split clip at playhead |
 | E | Exclude / keep the selected clip |
-| Del (or Shift+Del) | Delete the selected clip |
+| Del or Backspace | Delete the selected clip |
 | V | Select tool (the Split tool cuts a clip where you click it) |
 | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) | Undo / redo |
 | Ctrl+O | Open video |
 | Ctrl+Shift+O | Open project |
 | Ctrl+S / Ctrl+Shift+S | Save project / save as |
-| Ctrl+E | Export |
+| Ctrl+E | Export (while an export runs: show it again) |
+| Esc | Close a dialog; a running export's dialog is hidden and the export goes on |
+
+Settings → Keyboard lists every shortcut and records new keys. They are saved, but the editor still uses the keys
+above for now.
 
 ## Download
 
@@ -117,11 +134,14 @@ A self-contained build like the one CI publishes:
 `dotnet run --project src/OurCut.App -- path/to/video.mp4` opens a video (or an `.ourcut.json` project) at start.
 
 To see the UI with the sample project from the design, start it in demo mode:
-`dotnet run --project src/OurCut.App -- --demo editing` (other screens: `empty`, `ai`, `export`, `exporting`,
-`settings`).
+`dotnet run --project src/OurCut.App -- --demo editing`. The other screens: `empty`, `ai`, `export`, `exporting`,
+`transcript`, `transcribing`, `no-model`, `claude-request`, `claude-exporting`, `claude-export-failed`, and the
+settings sections `settings` (Transcription), `settings-general`, `settings-playback`, `settings-export`,
+`settings-keyboard`, `settings-keyboard-recording`, `settings-keyboard-conflict` and `settings-mcp`. Names are
+not case-sensitive and the dashes are optional (`--demo ClaudeExportFailed` works too).
 
 Run the tests with `dotnet test OurCut.slnx`. The UI tests render the app headlessly and write screenshots to
-`artifacts/screenshots/`. Tests that run ffmpeg generate their own small videos; they are skipped when ffmpeg
+`artifacts/screenshots/`, one per demo screen under the same name (`claude-export-failed.png`) and a few more states. Tests that run ffmpeg generate their own small videos; they are skipped when ffmpeg
 is not found (in `deps/`, `OURCUT_FFMPEG_DIR` or `PATH`). Playback tests also need libmpv (in `deps/`,
 `OURCUT_MPV_DIR` or the system; on Ubuntu `apt install libmpv2`).
 

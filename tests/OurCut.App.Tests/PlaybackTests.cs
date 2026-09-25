@@ -121,6 +121,30 @@ public class PlaybackTests
     }
 
     [AvaloniaFact]
+    public async Task Play_range_pauses_at_its_end_but_a_seek_past_it_is_kept()
+    {
+        var (editor, player) = await OpenAsync();
+        player.Calls.Clear();
+
+        editor.PlayRange(2, 3);
+        player.Report(3.2, playing: true);
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(editor.IsPlaying);
+        Assert.Equal(3, editor.Time);
+        Assert.Equal(["seek 2", "play", "pause", "seek 3"], player.Calls);
+
+        player.Calls.Clear();
+        editor.PlayRange(2, 3);
+        player.Report(2.5, playing: true);
+        editor.SetTime(8);
+        Dispatcher.UIThread.RunJobs();
+        player.Report(8.1, playing: true);
+        Assert.True(editor.IsPlaying);
+        Assert.Equal(8.1, editor.Time);
+        Assert.Equal(["seek 2", "play", "seek 8"], player.Calls);
+    }
+
+    [AvaloniaFact]
     public async Task The_playhead_follows_the_player_without_seeking_back()
     {
         var (editor, player) = await OpenAsync();

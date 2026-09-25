@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:OurCut.App.ViewModels"
              xmlns:c="using:OurCut.App.Controls"
+             xmlns:v="using:OurCut.App.Views"
              x:Class="OurCut.App.Views.ClaudePanel"
              x:DataType="vm:ClaudePanelViewModel">
   <!-- Collapsible log of Claude's edits: 38 px header (+1 px top hairline), at most 300 px open. -->
@@ -17,17 +18,18 @@
           <TextBlock Grid.Column="2" Text="via MCP" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="8,0,0,0"
                      VerticalAlignment="Center" />
           <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-            <c:PulseDot Width="6" Height="6" Fill="{StaticResource TextBrush}" IsVisible="{Binding IsWorking}" VerticalAlignment="Center" />
-            <TextBlock Name="StatusLine" Text="{Binding StatusLine}" FontSize="11" Classes.busy="{Binding IsWorking}" VerticalAlignment="Center" />
+            <c:PulseDot Width="6" Height="6" Fill="{StaticResource TextBrush}" IsVisible="{Binding IsStatusLive}" VerticalAlignment="Center" />
+            <TextBlock Name="StatusLine" Text="{Binding StatusLine}" FontSize="11" Classes.busy="{Binding IsStatusLive}" VerticalAlignment="Center" />
           </StackPanel>
         </Grid>
       </Border>
 
       <ScrollViewer Name="LogScroller" Grid.Row="1" IsVisible="{Binding IsOpen}" HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Auto">
-        <Panel Margin="12,2,12,6">
+        <StackPanel Margin="12,2,12,6">
           <TextBlock IsVisible="{Binding HasNoCards}" Margin="2,8,2,10" Text="Claude’s timeline edits appear here, each with its own undo."
                      FontSize="11.5" LineHeight="17.25" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+          <v:ClaudeExportCard DataContext="{Binding Export}" />
           <!-- Newest on top: every card docks to the bottom of the one after it. -->
           <ItemsControl ItemsSource="{Binding Log}" VerticalAlignment="Top">
             <ItemsControl.ItemsPanel>
@@ -71,7 +73,7 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-        </Panel>
+        </StackPanel>
       </ScrollViewer>
     </Grid>
   </Border>

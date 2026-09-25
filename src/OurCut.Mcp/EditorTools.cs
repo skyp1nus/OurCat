@@ -620,15 +620,15 @@ public sealed class EditorTools(IEditorHost host)
 
     [McpServerTool(Name = "export", Title = "Export the video", OpenWorld = true)]
     [Description("Exports the included clips, like the Export button, with the progress shown in OurCut. Options you leave out " +
-                 "keep what the Export dialog has (for a new video: lossless, a container that fits the source, one merged file " +
-                 "with a chapter per clip, next to the video). Existing files are never overwritten: a number is added to the name. " +
-                 "Waits up to 20 s; for a longer export, call get_export_status.")]
+                 "keep what the Export dialog has, which starts from the user's Settings → Export. The user may be asked to allow " +
+                 "the export first, and can decline. Existing files are never overwritten: a number is added to the name. " +
+                 "Once it runs, waits up to 20 s; for a longer export, call get_export_status.")]
     public async Task<ExportResult> Export(
         [Description("lossless (stream copy, fast; each clip starts at the keyframe at or before its start) or reencode " +
                      "(frame-accurate, slower).")] string? mode = null,
         [Description("mp4, mov or mkv.")] string? container = null,
         [Description("true: one file with all included clips; false: one file per clip.")] bool? merge = null,
-        [Description("Full path of the folder to write to; next to the video if omitted.")] string? folder = null,
+        [Description("Full path of the folder to write to; the Export dialog's folder if omitted.")] string? folder = null,
         [Description("A chapter per clip, named after it (merged files only).")] bool? chapters = null,
         [Description("true: every audio and subtitle track; false: only the audio tracks not muted in OurCut.")] bool? allTracks = null,
         [Description("Re-encoding: h264 (best quality), h264_fast or h265.")] string? video = null,
@@ -639,12 +639,12 @@ public sealed class EditorTools(IEditorHost host)
             allTracks, Pick(video, VideoCodecs, "video"), Pick(audio, AudioCodecs, "audio"));
         if (folder is not null)
             RequireFullPath(folder);
-        var state = await host.RunAsync(ctx =>
+        var state = await host.RunAsync(async ctx =>
         {
             RequireFile(ctx);
-            if (ctx.StartExport(request) is { } error)
+            if (await ctx.StartExportAsync(request, cancellationToken).ConfigureAwait(true) is { } error)
                 throw new McpException(error);
-            return Task.FromResult(ctx.Export ?? throw new McpException("The export did not start."));
+            return ctx.Export ?? throw new McpException("The export did not start.");
         }).ConfigureAwait(false);
         var deadline = DateTime.UtcNow + ExportWait;
         while (state.Status == "running" && DateTime.UtcNow < deadline)

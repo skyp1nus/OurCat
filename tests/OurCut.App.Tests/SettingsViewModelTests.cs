@@ -55,7 +55,7 @@ public sealed class SettingsViewModelTests : IDisposable
     }
 
     /// <summary>Serves a file, fails, or holds the request until it is cancelled.</summary>
-    private sealed class FakeServer(Func<CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
+    internal sealed class FakeServer(Func<CancellationToken, Task<HttpResponseMessage>> respond) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             respond(cancellationToken);
@@ -67,7 +67,7 @@ public sealed class SettingsViewModelTests : IDisposable
     }
 
     /// <summary>A .tar.bz2 like the sherpa-onnx releases: one top folder with the model's files.</summary>
-    private static byte[] Archive(string folder, IEnumerable<string> files)
+    internal static byte[] Archive(string folder, IEnumerable<string> files)
     {
         using var tar = new MemoryStream();
         using (var writer = new TarWriter(tar, leaveOpen: true))
@@ -128,8 +128,9 @@ public sealed class SettingsViewModelTests : IDisposable
         model.DownloadCommand.Execute(null);
         await PumpUntil(() => model.Error is not null);
 
-        Assert.True(model.IsNotInstalled);
+        Assert.True(model.IsFailed);
         Assert.Contains("404", model.Error, StringComparison.Ordinal);
+        Assert.Equal(model.Error, model.Note);
         Assert.StartsWith("Could not download parakeet-tdt-0.6b-v3", editor.StatusMessage, StringComparison.Ordinal);
     }
 
@@ -158,21 +159,36 @@ public sealed class SettingsViewModelTests : IDisposable
         var settings = App.CreateEditor(DesignScreen.Settings).Settings;
         Assert.True(settings.IsOpen);
         Assert.Equal("Best available — parakeet-tdt-0.6b-v3", settings.Model?.Label);
-        Assert.Equal("212 GB free", settings.DiskFreeText);
+        Assert.Equal(["parakeet-tdt-0.6b-v3", "whisper-large-v3-turbo", "whisper-medium", "whisper-small", "whisper-base.en"],
+            settings.Models.Select(m => m.Id));
+        Assert.Equal(["1.3 GB", "1.6 GB", "1.5 GB", "488 MB", "148 MB"], settings.Models.Select(m => m.Size));
+        Assert.Equal("1.4 GB free on D:", settings.DiskFreeText);
+        Assert.Equal("Multilingual, includes Ukrainian", settings.Models[0].Note);
+
+        var medium = settings.Models.Single(m => m.Id == "whisper-medium");
+        Assert.True(medium.IsNoSpace);
+        Assert.Equal("Needs 1.5 GB · 1.4 GB free on D:", medium.Note);
+        Assert.True(settings.HasNoSpaceModels);
+        Assert.Equal("whisper-medium needs 1.5 GB and D: has 1.4 GB free. Free up space or choose another models folder.", settings.NoSpaceText);
 
         var small = settings.Models.Single(m => m.Id == "whisper-small");
+        Assert.True(small.IsFailed);
+        Assert.Equal("Connection lost at 212 of 488 MB", small.Note);
+        small.RetryCommand.Execute(null);
         Assert.True(small.IsDownloading);
-        for (int i = 0; i < 70; i++)
+        Assert.Equal(212.0 / 488, small.Progress, 3);
+
+        var baseEn = settings.Models.Single(m => m.Id == "whisper-base.en");
+        Assert.Equal(0.64, baseEn.Progress, 3);
+        for (int i = 0; i < 60; i++)
+            settings.TickDownloads();
+        Assert.True(baseEn.IsInstalled);
+        for (int i = 0; i < 100; i++)
             settings.TickDownloads();
         Assert.True(small.IsInstalled);
 
-        var baseEn = settings.Models.Single(m => m.Id == "whisper-base.en");
-        baseEn.DownloadCommand.Execute(null);
-        Assert.True(baseEn.IsDownloading);
-        baseEn.CancelDownloadCommand.Execute(null);
-        Assert.True(baseEn.IsNotInstalled);
-
         settings.Models[0].DeleteCommand.Execute(null);
+        Assert.True(settings.Models[0].IsNotInstalled);
         Assert.Equal("Best available — whisper-large-v3-turbo", settings.ModelOptions[0].Label);
     }
 

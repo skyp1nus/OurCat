@@ -43,7 +43,7 @@ public sealed class McpIntegrationTests : IDisposable
         await using var server = new EditorMcpServer(editor, "ourcut-app-test-" + Guid.NewGuid().ToString("N")[..12]);
         server.Start();
         await PumpUntil(() => editor.Claude.IsListening);
-        Assert.Equal("MCP · waiting for Claude", editor.McpText);
+        Assert.Equal("MCP · Waiting for Claude", editor.McpText);
 
         var pipe = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         await pipe.ConnectAsync(5000, Ct);
@@ -74,19 +74,19 @@ public sealed class McpIntegrationTests : IDisposable
         await client.DisposeAsync();
         await pipe.DisposeAsync();
         await PumpUntil(() => !editor.Claude.IsConnected);
-        Assert.Equal("MCP · waiting for Claude", editor.McpText);
+        Assert.Equal("MCP · Waiting for Claude", editor.McpText);
     }
 
     [AvaloniaFact]
     public void The_badge_says_whether_Claude_can_connect()
     {
         var claude = App.CreateEditor(null).Claude;
-        Assert.Equal("MCP · not running", claude.McpText);
+        Assert.Equal("MCP · Off", claude.McpText);
         claude.IsServedElsewhere = true;
-        Assert.Equal("MCP · in another window", claude.McpText);
+        Assert.Equal("MCP · In another window", claude.McpText);
         claude.IsServedElsewhere = false;
         claude.IsListening = true;
-        Assert.Equal("MCP · waiting for Claude", claude.McpText);
+        Assert.Equal("MCP · Waiting for Claude", claude.McpText);
         claude.IsConnected = true;
         Assert.Equal("MCP · Claude connected", claude.McpText);
         claude.NoteActivity();
@@ -154,6 +154,6 @@ public sealed class McpIntegrationTests : IDisposable
         Assert.Equal(settings.ClaudeDesktopConfig, copied);
 
         settings.SectionOptions.Single(o => o.Label == "Keyboard").PickCommand.Execute(null);
-        Assert.True(settings.IsEmptySection);
+        Assert.True(settings.IsKeyboard);
     }
 }

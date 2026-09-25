@@ -319,7 +319,7 @@ public sealed class RealMediaTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Claude_exports_in_the_dialog_and_never_overwrites()
+    public async Task Claude_exports_in_the_background_and_never_overwrites()
     {
         string video = await SampleAsync();
         var (editor, window) = await OpenAsync(video);
@@ -333,12 +333,39 @@ public sealed class RealMediaTests : IDisposable
         Assert.Equal([Path.Combine(outDir, "sample-cut.mkv")], first.Files);
         Assert.Equal("Lossless copy · MKV · merged", first.Settings);
         Assert.True(File.Exists(first.Files[0]));
-        // The user sees it in the Export dialog, as if they had pressed Export.
-        Assert.True(editor.Export.IsExporting && editor.Export.IsDone);
+        // The user sees it on Claude's card, not in the dialog.
+        Assert.False(editor.Export.IsDialogOpen);
+        Assert.Equal(ClaudeExportStage.Done, editor.Claude.Export.Stage);
+        Assert.Equal("Exported sample-cut.mkv", editor.Claude.Export.Title);
 
         var second = await tools.Export(container: "mkv", folder: outDir);
         Assert.Equal([Path.Combine(outDir, "sample-cut (2).mkv")], second.Files);
+        Assert.Equal("Exported sample-cut (2).mkv", editor.Claude.Export.Title);
         Assert.Equal("done", (await tools.GetExportStatus()).Status);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task A_Claude_export_that_does_not_start_leaves_the_dialog_as_it_was()
+    {
+        string video = await SampleAsync();
+        var (editor, window) = await OpenAsync(video);
+        MarkTwoClips(editor);
+        var export = editor.Export;
+        export.Open();
+        export.Container = "MOV";
+
+        Assert.Contains("Export dialog open", export.PrepareForClaude(container: "MKV"), StringComparison.Ordinal);
+        Assert.Equal("MOV", export.Container);
+        Assert.True(export.IsDialogOpen);
+        export.Close();
+
+        Assert.Null(export.PrepareForClaude(container: "MKV", merge: false));
+        Assert.Equal(("MKV", false), (export.Container, export.Merge));
+        export.AbandonPreparedForClaude();
+
+        Assert.Equal(("MOV", true), (export.Container, export.Merge));
+        Assert.Equal(ExportStage.Closed, export.Stage);
         window.Close();
     }
 
@@ -351,12 +378,13 @@ public sealed class RealMediaTests : IDisposable
         string outDir = Directory.CreateDirectory(Path.Combine(_dir, "cancelled")).FullName;
         var host = new EditorMcpHost(editor);
 
-        Assert.Null(host.StartExport(new OurCut.Mcp.ExportRequest(Mode: "reencode", Folder: outDir)));
+        Assert.Null(await host.StartExportAsync(new OurCut.Mcp.ExportRequest(Mode: "reencode", Folder: outDir), Ct));
         Assert.Equal("running", host.Export!.Status);
-        Assert.Contains("already running", host.StartExport(new OurCut.Mcp.ExportRequest()), StringComparison.Ordinal);
+        Assert.Contains("already running", await host.StartExportAsync(new OurCut.Mcp.ExportRequest(), Ct), StringComparison.Ordinal);
         Assert.True(host.CancelExport());
 
         Assert.Equal("cancelled", host.Export!.Status);
+        Assert.Equal(ClaudeExportStage.Cancelled, editor.Claude.Export.Stage);
         Assert.False(editor.Export.IsDialogOpen);
         await PumpUntil(() => editor.StatusMessage == "Export cancelled.");
         Assert.Empty(Directory.GetFiles(outDir));
@@ -411,6 +439,30 @@ public sealed class RealMediaTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task A_hidden_export_that_fails_says_so_and_shows_why_when_reopened()
+    {
+        string video = await SampleAsync();
+        var (editor, window) = await OpenAsync(video);
+        MarkTwoClips(editor);
+        string blocker = Path.Combine(_dir, "not-a-folder");
+        await File.WriteAllTextAsync(blocker, "", Ct);
+
+        var export = editor.Export;
+        export.Open();
+        export.OutputFolder = Path.Combine(blocker, "out");
+        var running = export.StartAsync();
+        export.Dismiss();
+        await running;
+
+        Assert.False(export.IsDialogOpen);
+        Assert.StartsWith("Export failed: ", editor.StatusMessage, StringComparison.Ordinal);
+        export.Open();
+        Assert.True(export.IsDialogOpen);
+        Assert.Equal("Export failed", export.Title);
+        window.Close();
+    }
+
+    [AvaloniaFact]
     public async Task Cancelling_an_export_removes_its_files()
     {
         string video = await SampleAsync();
@@ -429,6 +481,33 @@ public sealed class RealMediaTests : IDisposable
         Assert.False(export.IsDialogOpen);
         Assert.Equal("Export cancelled.", editor.StatusMessage);
         Assert.Empty(Directory.GetFiles(outDir));
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task An_export_started_right_after_a_cancel_is_left_alone_by_the_old_one()
+    {
+        string video = await SampleAsync();
+        var (editor, window) = await OpenAsync(video);
+        MarkTwoClips(editor);
+
+        var export = editor.Export;
+        export.Open();
+        export.Mode = ExportMode.Encode;
+        export.OutputFolder = Path.Combine(_dir, "first");
+        var first = export.StartAsync();
+        export.CancelExport();
+        Assert.True(export.IsConfiguring);
+        export.OutputFolder = Path.Combine(_dir, "second");
+        var second = export.StartAsync();
+        await first;
+        await second;
+
+        Assert.True(export.IsDone, export.ErrorText);
+        Assert.Equal(ExportOutcome.Done, export.Outcome);
+        Assert.Equal([Path.Combine(_dir, "second", "sample-cut.mp4")], export.OutputFiles);
+        Assert.True(File.Exists(export.OutputFiles[0]));
+        Assert.Equal("Exported sample-cut.mp4", editor.StatusMessage);
         window.Close();
     }
 }
