@@ -48,6 +48,18 @@ public interface IEditorContext
     /// <summary>What is still being analysed, e.g. "analysing 45%"; null when done.</summary>
     string? AnalysisStatus { get; }
 
+    /// <summary>
+    /// Starts exporting the included clips with the Export dialog's settings, changed where
+    /// <paramref name="request"/> says, showing the progress in the editor. Returns why it cannot start, or null.
+    /// </summary>
+    string? StartExport(ExportRequest request);
+
+    /// <summary>The running export, or how the latest one ended; null if there was none.</summary>
+    ExportState? Export { get; }
+
+    /// <summary>Cancels the running export; false if none is running.</summary>
+    bool CancelExport();
+
     /// <summary>Moves the playhead (and the player).</summary>
     void Seek(double time);
 
@@ -73,3 +85,20 @@ public sealed record SilenceReport(IReadOnlyList<TimeRange> Ranges, double Thres
 /// <param name="IsComplete">False while detection is still running; <paramref name="Times"/> covers the part scanned.</param>
 /// <param name="Progress">Part of the video scanned, 0..1.</param>
 public sealed record SceneReport(IReadOnlyList<double> Times, bool IsComplete, double Progress);
+
+/// <summary>Export choices; null keeps what the Export dialog has.</summary>
+/// <param name="Mode"><c>lossless</c> or <c>reencode</c>.</param>
+/// <param name="Container"><c>mp4</c>, <c>mov</c> or <c>mkv</c>.</param>
+/// <param name="Folder">Full path of the output folder.</param>
+/// <param name="AllTracks">Keep every audio and subtitle track, or only the audio tracks not muted in the editor.</param>
+/// <param name="Video"><c>h264</c>, <c>h264_fast</c> or <c>h265</c> (re-encoding).</param>
+/// <param name="Audio"><c>copy</c> or <c>aac</c> (re-encoding).</param>
+public sealed record ExportRequest(string? Mode = null, string? Container = null, bool? Merge = null, string? Folder = null,
+    bool? Chapters = null, bool? AllTracks = null, string? Video = null, string? Audio = null);
+
+/// <summary>An export as Claude sees it.</summary>
+/// <param name="Status"><c>running</c>, <c>done</c>, <c>failed</c> or <c>cancelled</c>.</param>
+/// <param name="Progress">0..1.</param>
+/// <param name="Files">The files it writes (while running) or wrote.</param>
+/// <param name="Settings">e.g. "Lossless copy · MP4 · merged".</param>
+public sealed record ExportState(string Status, double Progress, IReadOnlyList<string> Files, string? Error, string Settings);

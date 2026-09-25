@@ -69,6 +69,44 @@ internal sealed class FakeEditor : IEditorHost, IEditorContext, IDisposable
     public SceneReport? FindSceneChanges(double threshold) =>
         Scenes is { } s ? s with { Times = threshold > 20 ? [.. s.Times.Take(1)] : s.Times } : null;
 
+    /// <summary>Why an export cannot start (null: it starts).</summary>
+    public string? ExportRefusal { get; set; }
+
+    /// <summary>How many times the export is read as running before it is done.</summary>
+    public int ExportReads { get; set; } = 1;
+
+    public ExportRequest? LastExport { get; private set; }
+    private ExportState? _export;
+    private int _exportReadsLeft;
+
+    public string? StartExport(ExportRequest request)
+    {
+        if (ExportRefusal is { } refusal)
+            return refusal;
+        LastExport = request;
+        _export = new ExportState("running", 0.1, ["/videos/keynote-cut.mp4"], null, "Lossless copy · MP4 · merged");
+        _exportReadsLeft = ExportReads;
+        return null;
+    }
+
+    public ExportState? Export
+    {
+        get
+        {
+            if (_export is { Status: "running" } running && _exportReadsLeft-- <= 0)
+                _export = running with { Status = "done", Progress = 1 };
+            return _export;
+        }
+    }
+
+    public bool CancelExport()
+    {
+        if (_export is not { Status: "running" } running)
+            return false;
+        _export = running with { Status = "cancelled" };
+        return true;
+    }
+
     public void Seek(double time) => Playhead = time;
     public void SelectClip(int? clipId) => SelectedClipId = clipId;
     public void SetPlaying(bool playing) => IsPlaying = playing;
@@ -147,9 +185,10 @@ public class McpToolListTests
 {
     private static readonly string[] Expected =
     [
-        "add_segment", "cut_silences", "edit_timeline", "find_keyframes", "find_scene_changes", "find_silences", "get_history",
-        "get_project", "list_videos", "move_segment", "open_file", "redo", "remove_segment", "revert_action", "save_project", "seek",
-        "set_included", "set_label", "set_playing", "split_segment", "trim_segment", "undo",
+        "add_segment", "cancel_export", "cut_silences", "edit_timeline", "export", "find_keyframes", "find_scene_changes",
+        "find_silences", "get_export_status", "get_history", "get_project", "list_videos", "move_segment", "open_file", "redo",
+        "remove_segment", "revert_action", "save_project", "seek", "set_included", "set_label", "set_playing", "split_segment",
+        "trim_segment", "undo",
     ];
 
     [Fact]
@@ -557,6 +596,57 @@ public class McpAnalysisTests
         Assert.True(result.IsError);
         Assert.Contains("analysing 40%", result.Text(), StringComparison.Ordinal);
         Assert.Empty(editor.Session.History.Entries);
+    }
+}
+
+/// <summary>Claude exporting: the choices it passes, waiting, progress and cancelling.</summary>
+public class McpExportTests
+{
+    static McpExportTests() => EditorTools.ExportWait = TimeSpan.FromSeconds(1);
+
+    [Fact]
+    public async Task Export_passes_the_choices_and_waits_for_the_result()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+        string folder = Path.GetTempPath();
+
+        var done = (await c.Client.Call("export", new { mode = "Lossless", container = "MKV", merge = false, folder, allTracks = false })).Json();
+
+        Assert.Equal("done", done.GetProperty("status").GetString());
+        Assert.Equal(1, done.GetProperty("progress").GetDouble());
+        Assert.Equal(["/videos/keynote-cut.mp4"], done.GetProperty("files").EnumerateArray().Select(f => f.GetString()));
+        Assert.Equal(new ExportRequest("lossless", "mkv", false, folder, null, false, null, null), editor.LastExport);
+        Assert.Equal("done", (await c.Client.Call("get_export_status")).Json().GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task A_long_export_reports_progress_and_can_be_cancelled()
+    {
+        var editor = new FakeEditor { ExportReads = int.MaxValue };
+        await using var c = await Connection.OpenAsync(editor);
+
+        var running = (await c.Client.Call("export")).Json();
+        Assert.Equal("running", running.GetProperty("status").GetString());
+        Assert.Contains("get_export_status", running.GetProperty("note").GetString(), StringComparison.Ordinal);
+        Assert.Equal(new ExportRequest(), editor.LastExport);
+
+        Assert.Equal("cancelled", (await c.Client.Call("cancel_export")).Json().GetProperty("status").GetString());
+        Assert.True((await c.Client.Call("cancel_export")).IsError);
+    }
+
+    [Fact]
+    public async Task Bad_choices_and_refusals_come_back_as_errors()
+    {
+        var editor = new FakeEditor();
+        await using var c = await Connection.OpenAsync(editor);
+
+        Assert.Contains("lossless, reencode", (await c.Client.Call("export", new { mode = "fast" })).Text(), StringComparison.Ordinal);
+        Assert.Contains("full path", (await c.Client.Call("export", new { folder = "out" })).Text(), StringComparison.Ordinal);
+        Assert.True((await c.Client.Call("get_export_status")).IsError);
+        editor.ExportRefusal = "There are no included clips to export.";
+        Assert.Contains("no included clips", (await c.Client.Call("export")).Text(), StringComparison.Ordinal);
+        Assert.Null(editor.LastExport);
     }
 }
 

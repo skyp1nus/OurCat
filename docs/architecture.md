@@ -175,6 +175,7 @@ Claude ──stdio──> OurCut.exe mcp (McpBridge) ──named pipe──> Our
 | `revert_action`, `undo`, `redo` | Take edits back |
 | `seek`, `set_playing` | Show a frame or play |
 | `open_file`, `save_project` | Open a video or project; save as `.ourcut.json` (full paths only) |
+| `export`, `get_export_status`, `cancel_export` | Export like the Export button (the dialog shows the progress); choices left out keep the dialog's; waits up to 20 s, then Claude polls |
 
 A refused edit (`EditException`, e.g. "Clip 7 does not exist") goes back to Claude as a tool error it can act on.
 Results are JSON; times are seconds, rounded to milliseconds, with `MM:SS.mmm` ranges for talking to the user.

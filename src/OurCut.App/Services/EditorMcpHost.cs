@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using OurCut.App.ViewModels;
 using OurCut.Core.Editing;
+using OurCut.Media.Export;
 using OurCut.Mcp;
 
 namespace OurCut.App.Services;
@@ -39,6 +40,38 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
             ? new SceneReport(found.Changes, found.IsComplete, found.Progress)
             : null;
     public string? AnalysisStatus => editor.Media?.Activity;
+
+    public string? StartExport(ExportRequest request) =>
+        editor.Export.StartForClaude(
+            request.Mode switch { "lossless" => ExportMode.Copy, "reencode" => ExportMode.Encode, _ => null },
+            request.Container?.ToUpperInvariant(),
+            request.Merge,
+            request.Folder,
+            request.Chapters,
+            request.AllTracks,
+            request.Video switch
+            {
+                "h264" => VideoEncoding.H264Quality,
+                "h264_fast" => VideoEncoding.H264Fast,
+                "h265" => VideoEncoding.H265,
+                _ => null,
+            },
+            request.Audio is null ? null : request.Audio == "copy");
+
+    public ExportState? Export => editor.Export switch
+    {
+        { Outcome: ExportOutcome.None } => null,
+        var e => new ExportState(e.Outcome.ToString().ToLowerInvariant(), e.Outcome == ExportOutcome.Done ? 1 : e.Progress,
+            e.OutputFiles, e.Outcome == ExportOutcome.Failed ? e.ErrorText : null, e.Footer),
+    };
+
+    public bool CancelExport()
+    {
+        if (editor.Export.Outcome != ExportOutcome.Running)
+            return false;
+        editor.Export.Close();
+        return true;
+    }
 
     public void Seek(double time) => editor.SetTime(time);
 

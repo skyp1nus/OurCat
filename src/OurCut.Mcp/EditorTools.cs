@@ -50,6 +50,14 @@ public sealed record HistoryItem(long Id, string Description, [property: Descrip
 
 public sealed record VideoFile(string Path, string Name, long SizeBytes, string Modified);
 
+public sealed record ExportResult(
+    [property: Description("running, done, failed or cancelled.")] string Status,
+    [property: Description("0..1.")] double Progress,
+    [property: Description("Files the export writes (while running) or wrote.")] IReadOnlyList<string> Files,
+    string? Error,
+    [property: Description("Mode, container and whether the clips are merged, e.g. \"Lossless copy · MP4 · merged\".")] string Settings,
+    string? Note);
+
 public sealed record SilenceInfo(double Start, double End, double Duration,
     [property: Description("Start–end as MM:SS.mmm, as the editor shows it.")] string Range);
 
@@ -103,6 +111,7 @@ public sealed class EditorTools(IEditorHost host)
 
         Everything you change appears in OurCut's Claude panel, highlighted, and the user can undo it. For
         several related changes use edit_timeline with a short description, so they form one undo step.
+        When the cut is ready, export writes it out (lossless and next to the video unless told otherwise).
         """;
 
     private static readonly string[] VideoExtensions =
@@ -390,6 +399,85 @@ public sealed class EditorTools(IEditorHost host)
                 throw new McpException(error);
             return $"Saved to {ctx.ProjectPath}.";
         });
+
+    // ---- Export --------------------------------------------------------------------------
+
+    /// <summary>How long <c>export</c> waits for the export to finish before it reports progress instead.</summary>
+    internal static TimeSpan ExportWait { get; set; } = TimeSpan.FromSeconds(20);
+
+    private static readonly string[] Modes = ["lossless", "reencode"];
+    private static readonly string[] Containers = ["mp4", "mov", "mkv"];
+    private static readonly string[] VideoCodecs = ["h264", "h264_fast", "h265"];
+    private static readonly string[] AudioCodecs = ["copy", "aac"];
+
+    [McpServerTool(Name = "export", Title = "Export the video", OpenWorld = true)]
+    [Description("Exports the included clips, like the Export button, with the progress shown in OurCut. Options you leave out " +
+                 "keep what the Export dialog has (for a new video: lossless, a container that fits the source, one merged file " +
+                 "with a chapter per clip, next to the video). Existing files are never overwritten: a number is added to the name. " +
+                 "Waits up to 20 s; for a longer export, call get_export_status.")]
+    public async Task<ExportResult> Export(
+        [Description("lossless (stream copy, fast; each clip starts at the keyframe at or before its start) or reencode " +
+                     "(frame-accurate, slower).")] string? mode = null,
+        [Description("mp4, mov or mkv.")] string? container = null,
+        [Description("true: one file with all included clips; false: one file per clip.")] bool? merge = null,
+        [Description("Full path of the folder to write to; next to the video if omitted.")] string? folder = null,
+        [Description("A chapter per clip, named after it (merged files only).")] bool? chapters = null,
+        [Description("true: every audio and subtitle track; false: only the audio tracks not muted in OurCut.")] bool? allTracks = null,
+        [Description("Re-encoding: h264 (best quality), h264_fast or h265.")] string? video = null,
+        [Description("Re-encoding: copy (keep the source audio) or aac.")] string? audio = null,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new ExportRequest(Pick(mode, Modes, "mode"), Pick(container, Containers, "container"), merge, folder, chapters,
+            allTracks, Pick(video, VideoCodecs, "video"), Pick(audio, AudioCodecs, "audio"));
+        if (folder is not null)
+            RequireFullPath(folder);
+        var state = await host.RunAsync(ctx =>
+        {
+            RequireFile(ctx);
+            if (ctx.StartExport(request) is { } error)
+                throw new McpException(error);
+            return Task.FromResult(ctx.Export ?? throw new McpException("The export did not start."));
+        }).ConfigureAwait(false);
+        var deadline = DateTime.UtcNow + ExportWait;
+        while (state.Status == "running" && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+            state = await host.RunAsync(ctx => Task.FromResult(ctx.Export ?? state)).ConfigureAwait(false);
+        }
+        return Describe(state);
+    }
+
+    [McpServerTool(Name = "get_export_status", Title = "Check the export", ReadOnly = true, Idempotent = true)]
+    [Description("Progress of the running export, or how the latest one ended (files written, or why it failed).")]
+    public Task<ExportResult> GetExportStatus() =>
+        host.RunAsync(ctx => Task.FromResult(Describe(ctx.Export ?? throw new McpException("Nothing has been exported yet."))));
+
+    [McpServerTool(Name = "cancel_export", Title = "Cancel the export", Idempotent = true)]
+    [Description("Stops the running export and removes its unfinished files.")]
+    public Task<ExportResult> CancelExport() =>
+        host.RunAsync(ctx =>
+        {
+            if (!ctx.CancelExport())
+                throw new McpException("No export is running.");
+            return Task.FromResult(Describe(ctx.Export!));
+        });
+
+    private static ExportResult Describe(ExportState state) =>
+        new(state.Status, Math.Round(state.Progress, 3), state.Files, state.Error, state.Settings, state.Status switch
+        {
+            "running" => "Still exporting; call get_export_status to follow it.",
+            "cancelled" => "The export was cancelled (by you or the user).",
+            _ => null,
+        });
+
+    /// <summary>A choice in lower case, or null; an unknown one is refused with the valid ones listed.</summary>
+    private static string? Pick(string? value, string[] allowed, string name)
+    {
+        if (value is null)
+            return null;
+        string v = value.Trim().ToLowerInvariant();
+        return allowed.Contains(v) ? v : throw new McpException($"Unknown {name} “{value}”; use {string.Join(", ", allowed)}.");
+    }
 
     // ---- Helpers -------------------------------------------------------------------------
 

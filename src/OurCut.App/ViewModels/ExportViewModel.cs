@@ -454,7 +454,7 @@ public sealed partial class ExportViewModel : ViewModelBase
     {
         StopTimer();
         StopStatsTimer();
-        _exportCts?.Cancel();
+        StopRunning();
         Stage = ExportStage.Closed;
         Progress = 0;
         ErrorText = null;
@@ -480,12 +480,20 @@ public sealed partial class ExportViewModel : ViewModelBase
     {
         StopTimer();
         StopStatsTimer();
-        _exportCts?.Cancel();
+        StopRunning();
         Stage = ExportStage.Configure;
         Progress = 0;
         ErrorText = null;
         IsPreparing = false;
         Rows.Clear();
+    }
+
+    /// <summary>Cancels a running export; it counts as cancelled at once, before ffmpeg has stopped.</summary>
+    private void StopRunning()
+    {
+        _exportCts?.Cancel();
+        if (Outcome == ExportOutcome.Running)
+            Outcome = ExportOutcome.Cancelled;
     }
 
     [RelayCommand]
@@ -520,6 +528,48 @@ public sealed partial class ExportViewModel : ViewModelBase
         _timer.Start();
     }
 
+    /// <summary>The latest real export: running, or how it ended.</summary>
+    public ExportOutcome Outcome { get; private set; }
+
+    /// <summary>The files the running export writes, or the latest one wrote.</summary>
+    public IReadOnlyList<string> OutputFiles => _written.Count > 0 ? _written : _plan?.Outputs ?? [];
+
+    /// <summary>
+    /// Starts an export for Claude (MCP): the dialog's settings, changed where Claude chose otherwise, with the
+    /// progress shown in the dialog as if the user had pressed Export. Returns why it cannot start, or null.
+    /// </summary>
+    public string? StartForClaude(ExportMode? mode = null, string? container = null, bool? merge = null, string? folder = null,
+        bool? chapters = null, bool? keepAllTracks = null, VideoEncoding? video = null, bool? copyAudio = null)
+    {
+        if (!_editor.HasFile)
+            return "No video is open.";
+        if (IsSimulated)
+            return "Exporting is not available for this file.";
+        if (Outcome == ExportOutcome.Running)
+            return "An export is already running; wait for it (get_export_status) or cancel it.";
+        if (Included.Count == 0)
+            return "There are no included clips to export.";
+        Open();
+        if (mode is { } m)
+            Mode = m;
+        if (container is not null)
+            Container = container;
+        if (merge is { } mg)
+            Merge = mg;
+        if (folder is not null)
+            OutputFolder = folder;
+        if (chapters is { } ch)
+            AddChapters = ch;
+        if (keepAllTracks is { } all)
+            KeepAllTracks = all;
+        if (video is not null)
+            Video = video;
+        if (copyAudio is { } copy)
+            Audio = copy ? AudioChoices[0] : AudioChoices[^1];
+        _ = StartAsync();
+        return null;
+    }
+
     /// <summary>The settings as the Media layer takes them.</summary>
     public ExportSettings BuildSettings(MediaInfo info)
     {
@@ -551,6 +601,7 @@ public sealed partial class ExportViewModel : ViewModelBase
         Rows.Clear();
         Progress = 0;
         Stage = ExportStage.Running;
+        Outcome = ExportOutcome.Running;
         try
         {
             IsPreparing = Mode == ExportMode.Copy && !preview.KeyframesTask.IsCompleted;
@@ -574,10 +625,12 @@ public sealed partial class ExportViewModel : ViewModelBase
             _written = await Task.Run(() => ExportRunner.RunAsync(plan, progress, cts.Token), cts.Token).ConfigureAwait(true);
             _finished = DateTime.UtcNow;
             ApplyProgress(new ExportProgress(plan.Steps.Count - 1, 1, 1));
+            Outcome = ExportOutcome.Done;
             _editor.ShowMessage(_written.Count == 1 ? $"Exported {Path.GetFileName(_written[0])}" : $"Exported {_written.Count} files");
         }
         catch (OperationCanceledException)
         {
+            Outcome = ExportOutcome.Cancelled;
             if (Stage == ExportStage.Running)
                 Close();
             _editor.ShowMessage("Export cancelled.");
@@ -587,6 +640,7 @@ public sealed partial class ExportViewModel : ViewModelBase
             _finished = DateTime.UtcNow;
             IsPreparing = false;
             ErrorText = e.Message;
+            Outcome = ExportOutcome.Failed;
         }
         finally
         {
@@ -756,4 +810,14 @@ public enum ExportStage
     Closed,
     Configure,
     Running,
+}
+
+/// <summary>How the latest real export went (what Claude is told).</summary>
+public enum ExportOutcome
+{
+    None,
+    Running,
+    Done,
+    Failed,
+    Cancelled,
 }
