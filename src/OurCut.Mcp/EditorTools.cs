@@ -141,7 +141,7 @@ public sealed class EditorTools(IEditorHost host)
 
         get_transcript gives what is said, as timed sentences (OurCut transcribes locally once a model is
         installed in Settings → Transcription); search_transcript finds words or phrases, find_filler_words the
-        ums and uhs. Use the times to add, trim or split clips, label clips after what is said, or cut words and
+        user's filler words (ums, uhs…). Use the times to add, trim or split clips, label clips after what is said, or cut words and
         sentences out with cut_ranges or cut_filler_words.
 
         Everything you change appears in OurCut's Claude panel, highlighted, and the user can undo it. For
@@ -359,10 +359,11 @@ public sealed class EditorTools(IEditorHost host)
         });
 
     [McpServerTool(Name = "cut_filler_words", Title = "Cut out filler words")]
-    [Description("Cuts filler words (um, uh, er…; е-е, ну, типу…) or the given words out of the included clips, or the " +
-                 "given clips, as one undo step. Needs the finished transcript.")]
+    [Description("Cuts the user's filler words (Settings → Transcription; by default um, uh, er, like, you know; е-е, ну, " +
+                 "типу, короче) or the given words out of the included clips, or the given clips, as one undo step. Needs the " +
+                 "finished transcript. Some fillers (like, you know) are also real words: find_filler_words first to check.")]
     public Task<EditResult> CutFillerWords(
-        [Description("Words or short phrases to cut instead of the usual fillers.")] IReadOnlyList<string>? words = null,
+        [Description("Words or short phrases to cut instead of the user's filler words.")] IReadOnlyList<string>? words = null,
         [Description("Seconds added before and after each word (default 0.02).")] double padding = 0.02,
         [Description("Clip ids to cut; every included clip if omitted.")] IReadOnlyList<int>? clips = null) =>
         host.RunAsync(ctx =>
@@ -372,7 +373,7 @@ public sealed class EditorTools(IEditorHost host)
                 throw new McpException($"The transcript is not finished ({StatusText(status)}). Try again when it is.");
             if (padding is < 0 or > 1)
                 throw new McpException("The padding goes from 0 to 1 second.");
-            var matches = FindAll(transcript, words ?? DefaultFillers);
+            var matches = FindAll(transcript, words ?? ctx.FillerWords);
             var cuts = matches.Select(m => new TimeRange(Math.Max(0, m.Start - padding), m.End + padding)).ToList();
             var result = CutOut(ctx, cuts, clips, "cut_filler_words",
                 n => $"Removed {n} filler word{(n == 1 ? "" : "s")}",
@@ -431,21 +432,24 @@ public sealed class EditorTools(IEditorHost host)
         });
 
     [McpServerTool(Name = "open_file", Title = "Open a video or project", OpenWorld = true)]
-    [Description("Opens a video (as a new, empty project) or a saved .ourcut.json project in OurCut, replacing what is open.")]
-    public Task<ProjectInfo> OpenFile([Description("Full path of the file.")] string path) =>
+    [Description("Opens a video (as a new, empty project) or a saved .ourcut.json project in OurCut, replacing what is open. " +
+                 "The user may be asked first (Settings → MCP server → Open files); the call waits for their answer.")]
+    public Task<ProjectInfo> OpenFile([Description("Full path of the file.")] string path, CancellationToken cancellationToken = default) =>
         host.RunAsync(async ctx =>
         {
             RequireFullPath(path);
             if (!File.Exists(path))
                 throw new McpException($"{path} does not exist.");
-            if (await ctx.OpenAsync(path).ConfigureAwait(true) is { } error)
+            if (await ctx.OpenAsync(path, cancellationToken).ConfigureAwait(true) is { } error)
                 throw new McpException(error);
             return Describe(ctx);
         });
 
     [McpServerTool(Name = "save_project", Title = "Save the project")]
-    [Description("Saves the project as .ourcut.json: where it was saved before, or to the given path.")]
-    public Task<string> SaveProject([Description("Full path ending in .ourcut.json; needed the first time.")] string? path = null) =>
+    [Description("Saves the project as .ourcut.json: where it was saved before, or to the given path. The user may be asked " +
+                 "first (Settings → MCP server → Save project); the call waits for their answer.")]
+    public Task<string> SaveProject([Description("Full path ending in .ourcut.json; needed the first time.")] string? path = null,
+        CancellationToken cancellationToken = default) =>
         host.RunAsync(async ctx =>
         {
             RequireFile(ctx);
@@ -453,16 +457,12 @@ public sealed class EditorTools(IEditorHost host)
                 throw new McpException("The project has not been saved yet; give a path ending in .ourcut.json.");
             if (path is not null)
                 RequireFullPath(path);
-            if (await ctx.SaveAsync(path).ConfigureAwait(true) is { } error)
+            if (await ctx.SaveAsync(path, cancellationToken).ConfigureAwait(true) is { } error)
                 throw new McpException(error);
             return $"Saved to {ctx.ProjectPath}.";
         });
 
     // ---- Transcript ----------------------------------------------------------------------
-
-    /// <summary>Fillers looked for by default: English and Ukrainian hesitation sounds and words.</summary>
-    internal static readonly string[] DefaultFillers =
-        ["um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "hmm", "mm", "е", "ее", "еее", "е-е", "ем", "мм", "ну", "типу", "короче"];
 
     [McpServerTool(Name = "get_transcript", Title = "Read the transcript", ReadOnly = true)]
     [Description("What is said in the video, as timed lines, one per sentence or phrase: \"MM:SS.mmm–MM:SS.mmm text\". " +
@@ -528,16 +528,17 @@ public sealed class EditorTools(IEditorHost host)
         });
 
     [McpServerTool(Name = "find_filler_words", Title = "Find filler words", ReadOnly = true)]
-    [Description("Filler words and sounds (um, uh, er…; Ukrainian е-е, ну, типу…) with their times; or the words you give. " +
+    [Description("The user's filler words (Settings → Transcription; by default um, uh, er, like, you know; Ukrainian е-е, " +
+                 "ну, типу, короче) with their times; or the words you give. " +
                  "Speech models often leave out ums and uhs, so short pauses (find_silences with a small minDuration) can " +
                  "show where they were.")]
     public Task<MatchesResult> FindFillerWords(
-        [Description("Words or short phrases to find instead of the usual fillers.")] IReadOnlyList<string>? words = null,
+        [Description("Words or short phrases to find instead of the user's filler words.")] IReadOnlyList<string>? words = null,
         [Description("How many at most (default 200).")] int limit = 200) =>
         host.RunAsync(ctx =>
         {
             var (status, transcript) = RequireTranscript(ctx);
-            var matches = FindAll(transcript, words ?? DefaultFillers);
+            var matches = FindAll(transcript, words ?? ctx.FillerWords);
             return Task.FromResult(Matches(matches, limit, status,
                 matches.Count == 0 ? "No filler words in the transcript; speech models often leave them out." : null));
         });

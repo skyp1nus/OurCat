@@ -172,14 +172,14 @@ Claude ──stdio──> OurCut.exe mcp (McpBridge) ──named pipe──> Our
 | `find_scene_changes` | Scene changes at a sensitivity; what is found so far while detection runs |
 | `cut_silences` | Cuts the pauses out of the included (or given) clips as one undo step, keeping some padding |
 | `get_transcript` | What is said, as timed sentences (and words on request), in parts of about 20,000 characters; starts transcription if needed |
-| `search_transcript`, `find_filler_words` | Where a word or phrase (case and punctuation ignored), or the ums and uhs, are said |
+| `search_transcript`, `find_filler_words` | Where a word or phrase (case and punctuation ignored), or the user's filler words (Settings → Transcription), are said |
 | `cut_ranges`, `cut_filler_words` | Cut any source ranges (e.g. from the transcript), or the filler words, out of the clips as one undo step |
 | `list_videos` | Video files in a folder, newest first |
 | `add_segment`, `remove_segment`, `trim_segment`, `split_segment`, `set_included`, `move_segment`, `set_label` | One edit each (the commands above) |
 | `edit_timeline` | Several edits as one undo step, all or nothing |
 | `revert_action`, `undo`, `redo` | Take edits back |
 | `seek`, `set_playing` | Show a frame or play |
-| `open_file`, `save_project` | Open a video or project; save as `.ourcut.json` (full paths only) |
+| `open_file`, `save_project` | Open a video or project; save as `.ourcut.json` (full paths only); the user may be asked first |
 | `export`, `get_export_status`, `cancel_export` | Export like the Export button (runs in the background; the Claude panel shows it); choices left out keep the dialog's; waits up to 20 s, then Claude polls |
 
 A refused edit (`EditException`, e.g. "Clip 7 does not exist") goes back to Claude as a tool error it can act on.
@@ -202,17 +202,28 @@ bind to view models and never change the project themselves.
   words packed by width from the start of each chunk. A click there seeks to a word; it never splits or trims.
 - **Claude's export**: `IEditorContext.StartExportAsync` (`EditorMcpHost`) fills the export settings from the request
   (`ExportViewModel.PrepareForClaude`, which starts from Settings → Export like the dialog does, and refuses while the
-  user has the dialog open), asks (`AskToExportAsync`, the permission seam), then runs it with the dialog hidden
+  user has the dialog open), asks (`AskToExportAsync`: Settings → MCP server → Export; Never refuses before anything
+  is prepared), then runs it with the dialog hidden
   (`StartPreparedForClaude`: `IsByClaude`, `IsHidden`). When it does not start (denied, withdrawn, refused),
   `AbandonPreparedForClaude` puts the dialog's own choices back. `ClaudeExportViewModel` (`ClaudePanelViewModel.Export`) drives the request banner over
   the preview (Allow, Deny, Always allow: `AskAsync`) and the card at the top of the Claude log (running, done,
   failed, denied, cancelled). The Export button reads "Exporting 45%" over a progress strip. ✕ and Esc on the
   export dialog hide a running export (`Dismiss`), and the button or Ctrl+E shows it again. `cancel_export` and the
   card's Cancel call `ExportViewModel.CancelExport`.
+- **Claude's other requests**: `open_file` and `save_project` follow Settings → MCP server → Open files and Save
+  project. For Ask, `EditorMcpHost.PermitAsync` shows `ClaudeFileRequestViewModel` (`ClaudePanelViewModel.Files`) in
+  the same banner: the banner binds to `ClaudePanelViewModel.Request` (`IClaudeRequest`), the open/save request while
+  one waits, else the export's. Claude asks one thing at a time; a request is withdrawn when Claude cancels the call
+  or another file opens. Save checks the path first (`EditorViewModel.SavePathForClaude`), so a save that cannot
+  happen is refused without asking.
 - **MCP status**: `ClaudePanelViewModel.Status` (`McpStatus`: Off, Waiting, Connected, Editing, OtherWindow) follows
   `IsServerOn` ("Let Claude connect"), `IsConnected`, `IsWorking`, `IsListening` and `IsServedElsewhere`. The title
   bar badge (`McpText`, `IsMcpOn`) and the status card in Settings → MCP server show it. `EditorMcpServer` starts
-  and stops the pipe server when `IsServerOn` changes, one switch at a time.
+  and stops the pipe server when `IsServerOn` changes, one switch at a time. The bridge connects to the editor with
+  Claude's own clientInfo, so `McpPipeServer.ClientName` (`McpEndpoint.ClientTitle`: "claude-ai" is Claude Desktop,
+  "claude-code" Claude Code) names the client. The editor that holds the pipe lock writes its project (file name) to
+  `<pipe>.owner` next to it; a waiting window reads it (`OtherOwnerLabel`) for "The OurCut window with … has the
+  server".
 - **Settings dialog**: `SettingsViewModel` is split by section (`SettingsViewModel.<Section>.cs`, views in
   `Views/Settings/<Section>Section.axaml`, shared styles in `Theme/Controls.axaml`). Every change goes through
   `UpdateSettings(change)`, which applies it to `Current` and saves. Segmented controls use `ChoiceSet<T>`.
@@ -237,12 +248,7 @@ bind to view models and never change the project themselves.
 Places where the UI and the setting exist but the behaviour does not are marked with a one-line `// STUB:` comment
 (`grep -rn "// STUB:" src`):
 
-- **Permissions**: `EditorMcpHost.AskToExportAsync` always allows (it should follow `Settings.ExportPermission` and
-  use `ClaudeExportViewModel.AskAsync` for Ask; Always allow already sets Allow); `OpenAsync` and `SaveAsync` ignore
-  their permissions.
 - **Shortcuts**: `Shortcuts.Handle` dispatches fixed keys instead of `KeyMap.Find(KeyCombo.From(key, mods))`.
-- **MCP**: the connected client's name and the project in the other window (`ClaudePanelViewModel.ClientName`,
-  `OtherWindowProject`); `find_filler_words` and `cut_filler_words` keep their own list instead of the user's.
 - **Playback**: hardware decoding and the renderer apply at the next start; the audio device list and output; the
   Jump chips show fixed keys.
 - **Export defaults**: the GPU encoder, the file name pattern, "if the file exists" and "after export" are saved but

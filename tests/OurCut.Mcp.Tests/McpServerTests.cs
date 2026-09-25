@@ -77,6 +77,9 @@ internal sealed class FakeEditor : IEditorHost, IEditorContext, IDisposable
         new("videos.", 13.9, 14.4), new("Uh", 105.0, 105.3), new("the", 105.5, 105.6), new("export", 105.7, 106.1), new("dialog.", 106.2, 106.7),
     ]), null);
 
+    /// <summary>The user's filler words (Settings → Transcription).</summary>
+    public IReadOnlyList<string> FillerWords { get; set; } = OurCut.Core.Transcripts.FillerWords.All(OurCut.Core.Transcripts.FillerWords.Defaults);
+
     /// <summary>Why transcription cannot start (null: it starts and is done at once).</summary>
     public string? TranscriptionRefusal { get; set; }
 
@@ -133,7 +136,7 @@ internal sealed class FakeEditor : IEditorHost, IEditorContext, IDisposable
     public void SelectClip(int? clipId) => SelectedClipId = clipId;
     public void SetPlaying(bool playing) => IsPlaying = playing;
 
-    public Task<string?> OpenAsync(string path)
+    public Task<string?> OpenAsync(string path, CancellationToken cancellationToken)
     {
         Opened.Add(path);
         if (path.EndsWith(".broken", StringComparison.Ordinal))
@@ -142,7 +145,7 @@ internal sealed class FakeEditor : IEditorHost, IEditorContext, IDisposable
         return Task.FromResult<string?>(null);
     }
 
-    public Task<string?> SaveAsync(string? path)
+    public Task<string?> SaveAsync(string? path, CancellationToken cancellationToken)
     {
         ProjectPath = path ?? ProjectPath;
         return Task.FromResult<string?>(null);
@@ -495,6 +498,60 @@ public class McpEditingTests
     }
 
     [Fact]
+    public async Task A_waiting_editor_knows_which_project_has_the_pipe()
+    {
+        string name = Connection.NewPipeName();
+        var first = new McpPipeServer(new FakeEditor(), name) { OwnerLabel = "keynote.mp4" };
+        first.Start();
+        await WaitUntil(() => first.IsListening);
+        await using var second = new McpPipeServer(new FakeEditor(), name) { RetryDelay = TimeSpan.FromMilliseconds(50), OwnerLabel = "talk.mp4" };
+        int changes = 0;
+        second.StateChanged += (_, _) => Interlocked.Increment(ref changes);
+        second.Start();
+        await WaitUntil(() => second.OtherOwnerLabel == "keynote.mp4");
+        Assert.True(second.IsInUseElsewhere);
+
+        // The first window saves its project: the waiting one hears about it.
+        int before = Volatile.Read(ref changes);
+        first.OwnerLabel = "keynote.ourcut.json";
+        await WaitUntil(() => second.OtherOwnerLabel == "keynote.ourcut.json");
+        Assert.True(Volatile.Read(ref changes) > before);
+
+        await first.DisposeAsync();
+        await WaitUntil(() => second.IsListening);
+        Assert.Null(second.OtherOwnerLabel);
+        Assert.Equal("talk.mp4", (await File.ReadAllTextAsync(second.OwnerPath, TestContext.Current.CancellationToken)).Trim());
+        await second.DisposeAsync();
+        Assert.False(File.Exists(second.OwnerPath));
+    }
+
+    [Fact]
+    public async Task The_server_knows_which_client_is_connected()
+    {
+        var editor = new FakeEditor();
+        await using var server = new McpPipeServer(editor, Connection.NewPipeName());
+        server.Start();
+        await WaitUntil(() => server.IsListening);
+        await using var pipe = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        await pipe.ConnectAsync(5000, TestContext.Current.CancellationToken);
+        await using var client = await McpClient.CreateAsync(new StreamClientTransport(pipe, pipe),
+            new McpClientOptions { ClientInfo = new Implementation { Name = "claude-code", Version = "2.1.0" } },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await WaitUntil(() => server.ClientName == "Claude Code");
+    }
+
+    [Theory]
+    [InlineData("claude-ai", null, "Claude Desktop")]
+    [InlineData("claude-code", null, "Claude Code")]
+    [InlineData("cursor-vscode", null, "cursor-vscode")]
+    [InlineData("some-client", "Some Client", "Some Client")]
+    [InlineData("ourcut-bridge", null, null)]
+    [InlineData("", null, null)]
+    public void Clients_are_named_as_the_user_knows_them(string name, string? title, string? expected) =>
+        Assert.Equal(expected, McpEndpoint.ClientTitle(new Implementation { Name = name, Title = title, Version = "1" }));
+
+    [Fact]
     public async Task A_pipe_left_by_a_crashed_editor_is_taken_over()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows removes a pipe with its process.");
@@ -712,6 +769,17 @@ public class McpTranscriptTests
     }
 
     [Fact]
+    public async Task Filler_words_are_the_users_own()
+    {
+        var editor = new FakeEditor { FillerWords = ["so", "the"] };
+        await using var c = await Connection.OpenAsync(editor);
+
+        var fillers = (await c.Client.Call("find_filler_words")).Json();
+
+        Assert.Equal(["the", "so", "the"], fillers.GetProperty("matches").EnumerateArray().Select(m => m.GetProperty("text").GetString()));
+    }
+
+    [Fact]
     public async Task Cut_ranges_cuts_what_claude_picked_and_checks_the_ranges()
     {
         var editor = new FakeEditor();
@@ -808,8 +876,9 @@ public class McpBridgeTests
         public McpBridge Bridge { get; }
         public McpClient? Client { get; private set; }
 
-        public async Task<McpClient> ConnectAsync() => Client = await McpClient.CreateAsync(
+        public async Task<McpClient> ConnectAsync(Implementation? clientInfo = null) => Client = await McpClient.CreateAsync(
             new StreamClientTransport(_toBridge.Writer.AsStream(), _fromBridge.Reader.AsStream()),
+            clientInfo is null ? null : new McpClientOptions { ClientInfo = clientInfo },
             cancellationToken: TestContext.Current.CancellationToken);
 
         public async ValueTask DisposeAsync()
@@ -871,6 +940,20 @@ public class McpBridgeTests
         var client = await run.ConnectAsync();
 
         Assert.Equal("keynote", (await client.Call("get_project")).Json().GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task The_editor_sees_who_is_connected_through_the_bridge()
+    {
+        string pipeName = Connection.NewPipeName();
+        await using var server = new McpPipeServer(new FakeEditor(), pipeName);
+        server.Start();
+        await using var run = new BridgeRun(new McpBridge(() => false, pipeName));
+        var client = await run.ConnectAsync(new Implementation { Name = "claude-ai", Version = "0.14.0" });
+
+        (await client.Call("get_project")).Json();
+
+        await McpEditingTests.WaitUntil(() => server.ClientName == "Claude Desktop");
     }
 
     [Fact]

@@ -174,14 +174,23 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(StatusLine), nameof(McpText), nameof(IsWorking), nameof(Status), nameof(IsStatusLive))]
     public partial bool IsBusy { get; set; }
 
-    /// <summary>Claude is editing right now. Its own export's polling shows as Exporting, not editing.</summary>
-    public bool IsWorking => IsBusy || (IsActive && !Export.IsLive);
+    /// <summary>Claude is editing right now. Its own export's polling shows as Exporting, and a request as waiting, not editing.</summary>
+    public bool IsWorking => IsBusy || (IsActive && !Export.IsLive && !Files.IsAsking);
 
     /// <summary>The header's pulsing dot and white status.</summary>
-    public bool IsStatusLive => IsWorking || Export.IsLive;
+    public bool IsStatusLive => IsWorking || Export.IsLive || Files.IsAsking;
 
     /// <summary>Claude's export: the request banner and the card on top of the log.</summary>
     public ClaudeExportViewModel Export { get; }
+
+    /// <summary>Claude asking to open a file or save the project.</summary>
+    public ClaudeFileRequestViewModel Files { get; }
+
+    /// <summary>What the request banner shows: an open or save request while one waits, else the export's.</summary>
+    public IClaudeRequest Request => Files.IsAsking ? Files : Export;
+
+    /// <summary>A request waits for the user's answer; Claude asks one thing at a time.</summary>
+    public bool IsAsking => Export.IsAsking || Files.IsAsking;
 
     [ObservableProperty]
     public partial int ChangeCount { get; set; }
@@ -210,16 +219,17 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
     /// <summary>Right side of the panel header: "Editing timeline", "Exporting", "Waiting for you", "Idle · 4 actions", "Waiting for a video".</summary>
     public string StatusLine => IsWorking ? "Editing timeline"
         : Export.Stage == ClaudeExportStage.Running ? "Exporting"
-        : Export.Stage == ClaudeExportStage.Requested ? "Waiting for you"
+        : Export.Stage == ClaudeExportStage.Requested || Files.IsAsking ? "Waiting for you"
         : !HasMedia ? "Waiting for a video"
         : IsOpen ? "Idle"
         : $"Idle · {Log.Count(a => a.IsAction && !a.IsUndone)} actions";
 
     public event EventHandler? Changed;
 
-    public ClaudePanelViewModel(ClaudeExportViewModel export)
+    public ClaudePanelViewModel(ClaudeExportViewModel export, ClaudeFileRequestViewModel files)
     {
         Export = export;
+        Files = files;
         Log.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(ShowIntro));
@@ -235,6 +245,16 @@ public sealed partial class ClaudePanelViewModel : ViewModelBase
             OnPropertyChanged(nameof(IsStatusLive));
             OnPropertyChanged(nameof(Status));
             OnPropertyChanged(nameof(HasNoCards));
+        };
+        files.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(ClaudeFileRequestViewModel.IsAsking))
+                return;
+            OnPropertyChanged(nameof(Request));
+            OnPropertyChanged(nameof(StatusLine));
+            OnPropertyChanged(nameof(IsWorking));
+            OnPropertyChanged(nameof(IsStatusLive));
+            OnPropertyChanged(nameof(Status));
         };
         // Whatever moves the status moves the badge.
         PropertyChanged += (_, e) =>

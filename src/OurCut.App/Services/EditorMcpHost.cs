@@ -42,7 +42,6 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
             : null;
     public string? AnalysisStatus => editor.Media?.Activity;
 
-    // STUB: expose through IEditorContext so find/cut_filler_words default to the user's list.
     /// <summary>Settings → Transcription → Filler words, every language.</summary>
     public IReadOnlyList<string> FillerWords => Fillers.All(editor.Settings.FillerWords);
 
@@ -56,8 +55,10 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
     {
         var export = editor.Export;
         var claude = editor.Claude.Export;
-        if (claude.IsAsking)
-            return "An export is already waiting for the user's answer.";
+        if (editor.Claude.IsAsking)
+            return AlreadyAsking;
+        if (editor.Settings.ExportPermission == McpPermission.Never)
+            return "The user exports by themselves (Settings → MCP server → Export: Never). Tell them the cut is ready to export.";
         if (export.PrepareForClaude(
                 request.Mode switch { "lossless" => ExportMode.Copy, "reencode" => ExportMode.Encode, _ => null },
                 request.Container?.ToUpperInvariant(),
@@ -98,9 +99,13 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
         }
     }
 
-    // STUB: pick by editor.Settings.ExportPermission: Allow → Allow, Ask → editor.Claude.Export.AskAsync(target, ct), Never → refuse with its own message.
-    private static Task<ClaudeExportAnswer> AskToExportAsync(ClaudeExportTarget target, CancellationToken cancellationToken) =>
-        Task.FromResult(ClaudeExportAnswer.Allow);
+    /// <summary>Settings → MCP server → Export: Allow starts right away, Ask shows the request first.</summary>
+    private Task<ClaudeExportAnswer> AskToExportAsync(ClaudeExportTarget target, CancellationToken cancellationToken) =>
+        editor.Settings.ExportPermission == McpPermission.Allow
+            ? Task.FromResult(ClaudeExportAnswer.Allow)
+            : editor.Claude.Export.AskAsync(target, cancellationToken);
+
+    private const string AlreadyAsking = "Another request is waiting for the user's answer; try again once they have answered.";
 
     public ExportState? Export => editor.Export switch
     {
@@ -127,9 +132,37 @@ public sealed class EditorMcpHost(EditorViewModel editor) : IEditorHost, IEditor
             editor.TogglePlay();
     }
 
-    // STUB: honour Settings.OpenFilesPermission; Ask needs a request like the export one.
-    public Task<string?> OpenAsync(string path) => editor.OpenForClaudeAsync(path);
+    public async Task<string?> OpenAsync(string path, CancellationToken cancellationToken) =>
+        await PermitAsync(editor.Settings.OpenFilesPermission, files => files.AskToOpenAsync(path, cancellationToken),
+            $"The user declined opening {Path.GetFileName(path)}.").ConfigureAwait(true)
+        ?? await editor.OpenForClaudeAsync(path).ConfigureAwait(true);
 
-    // STUB: honour Settings.SaveProjectPermission; Ask needs a request like the export one.
-    public Task<string?> SaveAsync(string? path) => editor.SaveForClaudeAsync(path);
+    public async Task<string?> SaveAsync(string? path, CancellationToken cancellationToken)
+    {
+        if (editor.SavePathForClaude(path, out string? error) is not { } full)
+            return error;
+        return await PermitAsync(editor.Settings.SaveProjectPermission, files => files.AskToSaveAsync(full, cancellationToken),
+                "The user declined saving the project.").ConfigureAwait(true)
+            ?? await editor.SaveToAsync(full, auto: false).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Settings → MCP server → Open files or Save project: Allow goes ahead, Ask shows the request first. Returns why
+    /// not (declined, withdrawn, another request waiting), or null to go ahead.
+    /// </summary>
+    private async Task<string?> PermitAsync(McpPermission permission, Func<ClaudeFileRequestViewModel, Task<bool>> ask, string declined)
+    {
+        if (permission == McpPermission.Allow)
+            return null;
+        if (editor.Claude.IsAsking)
+            return AlreadyAsking;
+        try
+        {
+            return await ask(editor.Claude.Files).ConfigureAwait(true) ? null : declined;
+        }
+        catch (OperationCanceledException)
+        {
+            return "The request was withdrawn.";
+        }
+    }
 }

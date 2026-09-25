@@ -14,13 +14,11 @@ public sealed partial class ClaudePanelViewModel
     [ObservableProperty]
     public partial DateTimeOffset? ConnectedSince { get; set; }
 
-    // STUB: set from Claude's clientInfo once the bridge forwards it; null reads as "Claude".
-    /// <summary>The connected MCP client ("Claude Desktop").</summary>
+    /// <summary>The connected MCP client ("Claude Desktop"), as its clientInfo names it; null reads as "Claude".</summary>
     [ObservableProperty]
     public partial string? ClientName { get; set; }
 
-    // STUB: the project open in the window that holds the server; the pipe lock file would have to carry it.
-    /// <summary>The project open in the OurCut window that has the server.</summary>
+    /// <summary>The project open in the OurCut window that has the server (from its owner file next to the pipe lock).</summary>
     [ObservableProperty]
     public partial string? OtherWindowProject { get; set; }
 
