@@ -70,9 +70,9 @@ public sealed class MpvPlayer : IDisposable
     private readonly Queue<string> _errors = new();
     private TaskCompletionSource? _loading;
     private string? _loadingPath;
-    private long _seekRequested, _seekReplied;
+    private readonly SeekState _seeks = new();
     private double _position, _seekTarget, _duration;
-    private volatile bool _paused = true, _eof, _seeking, _disposed;
+    private volatile bool _paused = true, _eof, _disposed;
     private int _videoWidth, _videoHeight;
     private MpvRenderer? _renderer;
 
@@ -134,12 +134,12 @@ public sealed class MpvPlayer : IDisposable
     internal IntPtr Handle { get; }
 
     /// <summary>Playback position in seconds from the file's start; the seek target while seeking.</summary>
-    public double Position => _seeking ? Volatile.Read(ref _seekTarget) : Volatile.Read(ref _position);
+    public double Position => _seeks.IsSeeking ? Volatile.Read(ref _seekTarget) : Volatile.Read(ref _position);
 
     public double Duration => Volatile.Read(ref _duration);
     public bool IsPlaying => !_paused && !_eof && LoadedPath is not null;
     public bool IsEndReached => _eof;
-    public bool IsSeeking => _seeking;
+    public bool IsSeeking => _seeks.IsSeeking;
     public (int Width, int Height) VideoSize => (Volatile.Read(ref _videoWidth), Volatile.Read(ref _videoHeight));
 
     /// <summary>Why the last file stopped with an error.</summary>
@@ -191,9 +191,8 @@ public sealed class MpvPlayer : IDisposable
     /// <summary>Exact seek to a source time.</summary>
     public void Seek(double time)
     {
-        long generation = Interlocked.Increment(ref _seekRequested);
         Volatile.Write(ref _seekTarget, time);
-        _seeking = true;
+        long generation = _seeks.Request();
         _eof = false;
         Command(SeekTag | (ulong)generation, "seek", Seconds(time), "absolute+exact");
     }
@@ -383,7 +382,7 @@ public sealed class MpvPlayer : IDisposable
         {
             case TimePosId:
                 Volatile.Write(ref _position, has ? *(double*)property.Data : 0);
-                if (_seeking)
+                if (_seeks.IsSeeking)
                     return;
                 break;
             case PauseId:
@@ -409,20 +408,16 @@ public sealed class MpvPlayer : IDisposable
 
     private void OnSeekReply(long generation, int error)
     {
-        Volatile.Write(ref _seekReplied, Math.Max(Volatile.Read(ref _seekReplied), generation));
         // A seek that failed (nothing loaded) produces no playback restart.
-        if (error < 0 && generation == Volatile.Read(ref _seekRequested))
-        {
-            _seeking = false;
+        _seeks.Replied(generation, failed: error < 0);
+        if (error < 0)
             RaiseChanged();
-        }
     }
 
     private void OnPlaybackRestart()
     {
-        // Only the restart after the newest seek settles the position.
-        if (Volatile.Read(ref _seekReplied) == Volatile.Read(ref _seekRequested))
-            _seeking = false;
+        // Settles the seeks replied to so far; one still in flight keeps the target as the position.
+        _seeks.Restarted();
         RaiseChanged();
     }
 

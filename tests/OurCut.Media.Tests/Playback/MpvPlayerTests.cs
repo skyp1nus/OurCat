@@ -206,3 +206,52 @@ public sealed class MpvPlayerTests(SampleMediaFixture media) : IClassFixture<Sam
         }
     }
 }
+
+public class SeekStateTests
+{
+    [Fact]
+    public void A_restart_left_over_from_before_a_seek_does_not_end_it()
+    {
+        var seeks = new SeekState();
+        long first = seeks.Request();
+        // The restart from loading the file is handled after the seek was asked for. (MpvPlayer used to keep a
+        // separate flag that such a restart could clear while Seek set it; generations cannot be undone that way.)
+        seeks.Restarted();
+        Assert.True(seeks.IsSeeking);
+
+        seeks.Replied(first, failed: false);
+        Assert.True(seeks.IsSeeking);
+        seeks.Restarted();
+        Assert.False(seeks.IsSeeking);
+    }
+
+    [Fact]
+    public void Only_the_newest_of_rapid_seeks_settles()
+    {
+        var seeks = new SeekState();
+        long a = seeks.Request(), b = seeks.Request(), c = seeks.Request();
+        seeks.Replied(a, false);
+        seeks.Restarted();
+        Assert.True(seeks.IsSeeking);
+        seeks.Replied(c, false);
+        seeks.Replied(b, false);
+        seeks.Restarted();
+        Assert.False(seeks.IsSeeking);
+    }
+
+    [Fact]
+    public void A_failed_seek_settles_without_a_restart_unless_a_newer_one_is_pending()
+    {
+        var seeks = new SeekState();
+        long a = seeks.Request();
+        seeks.Replied(a, failed: true);
+        Assert.False(seeks.IsSeeking);
+
+        long b = seeks.Request(), c = seeks.Request();
+        seeks.Replied(b, failed: true);
+        Assert.True(seeks.IsSeeking);
+        seeks.Replied(c, failed: false);
+        seeks.Restarted();
+        Assert.False(seeks.IsSeeking);
+    }
+}
