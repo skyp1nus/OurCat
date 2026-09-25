@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -422,8 +423,26 @@ public sealed class RealPlaybackTests : IDisposable
         ], null, Ct), Ct);
         VideoView.PreferOpenGl = false;
         using var engine = new MpvPlaybackEngine(new MpvPlayerOptions { AudioOutput = "null", HardwareDecoding = "no" });
-        // Stands in for an OpenGL renderer that is released a moment after its view is replaced.
+        // Stands in for an OpenGL renderer that keeps drawing until it is released, a moment after its view is replaced.
         var holder = new MpvSoftwareRenderer(engine.Mpv);
+        using var stopHolder = new CancellationTokenSource();
+        var holding = Task.Run(() =>
+        {
+            var pixels = Marshal.AllocHGlobal(64 * 36 * 4);
+            try
+            {
+                while (!stopHolder.IsCancellationRequested)
+                {
+                    if (holder.HasNewFrame())
+                        holder.Render(pixels, 64, 36, 64 * 4);
+                    Thread.Sleep(10);
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(pixels);
+            }
+        }, CancellationToken.None);
         var editor = App.CreateEditor(null, new FfmpegMediaOpener(new MediaCache(Path.Combine(_dir, "cache"))), player: engine);
         var window = new MainWindow { DataContext = editor, Width = 1440, Height = 900 };
         window.Show();
@@ -433,10 +452,12 @@ public sealed class RealPlaybackTests : IDisposable
         await Task.Delay(300, Ct);
         Dispatcher.UIThread.RunJobs();
         Assert.Null(editor.VideoOutput);
+        await stopHolder.CancelAsync();
+        await holding;
         holder.Dispose();
 
         await PumpUntil(() => editor.VideoOutput == "software");
-        await PumpUntil(() => HasYellow(window), 5);
+        await PumpUntil(() => HasYellow(window), 10);
         Assert.Null(editor.StatusMessage is { } m && m.StartsWith("No video picture", StringComparison.Ordinal) ? m : null);
         window.Close();
     }

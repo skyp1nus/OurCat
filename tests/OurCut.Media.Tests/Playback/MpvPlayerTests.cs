@@ -171,6 +171,37 @@ public sealed class MpvPlayerTests(SampleMediaFixture media) : IClassFixture<Sam
     }
 
     [Fact]
+    public async Task Taking_the_renderer_away_while_playing_keeps_the_file_open()
+    {
+        var player = await LoadAsync();
+        var renderer = new MpvSoftwareRenderer(player);
+        var pixels = Marshal.AllocHGlobal(64 * 36 * 4);
+        try
+        {
+            // The first switch reopens the file with the render context.
+            await WaitUntil(() => player.GetPropertyString("current-vo") == "libmpv");
+            player.Seek(1.5);
+            player.Play();
+            await WaitUntil(() =>
+            {
+                if (renderer.HasNewFrame())
+                    renderer.Render(pixels, 64, 36, 64 * 4);
+                return player.Position > 1.6;
+            });
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(pixels);
+        }
+
+        // mpv may end the file with an error when its video output goes; the player reopens it where it was.
+        renderer.Dispose();
+
+        await WaitUntil(() => player.GetPropertyString("path") == media.Mp4 && player.LoadedPath == media.Mp4 && player.Position > 1.5);
+        Assert.NotEqual("libmpv", player.GetPropertyString("current-vo"));
+    }
+
+    [Fact]
     public void The_device_list_is_read_from_mpvs_json()
     {
         const string json = """

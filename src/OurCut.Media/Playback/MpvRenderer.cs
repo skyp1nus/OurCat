@@ -80,10 +80,12 @@ public abstract class MpvRenderer : IDisposable
     {
         if (_context == IntPtr.Zero)
             return;
+        // First, while the file and position are still there: freeing the context takes the video output away, and
+        // mpv may end the file with an error.
+        _player.Detach(this);
         MpvNative.mpv_render_context_set_update_callback(_context, null, IntPtr.Zero);
         MpvNative.mpv_render_context_free(_context);
         _context = IntPtr.Zero;
-        _player.Detach(this);
         if (_self.IsAllocated)
             _self.Free();
     }

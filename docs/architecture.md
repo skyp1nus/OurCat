@@ -124,7 +124,9 @@ written. Claude's exports always add a number. "After export: Show in folder" re
 - **Video** goes through the render API into OurCut's own view: `MpvOpenGlRenderer` draws into Avalonia's OpenGL
   framebuffer; `MpvSoftwareRenderer` renders BGRX frames into memory on a background thread. `vo=libmpv` without
   a render context fails the whole file, so the player uses `vo=null` until a renderer is attached and reopens
-  the file where it was when one attaches or detaches.
+  the file where it was when one attaches or detaches. A renderer detaches before it frees its context (freeing it
+  takes the output away, and mpv may end the file with an error), and the reopen goes by the file the app opened
+  (`_openPath`), not `LoadedPath`, which that error clears.
 
 In the App, `IPlayer` is what `EditorViewModel` uses (`MpvPlaybackEngine` in the app, a fake in tests). The view
 model keeps the playhead: user moves become seeks, the player's positions come back as `Time` without seeking
