@@ -78,6 +78,12 @@ public interface IMediaPreview
     /// </summary>
     string? Activity { get; }
 
+    /// <summary>
+    /// How long each part of the analysis took, for Copy diagnostics: "keyframes 0.3 s · thumbnails 0.4 s · waveform
+    /// cached"; null before any part is done.
+    /// </summary>
+    string? AnalysisTimes => null;
+
     /// <summary>Why part of the analysis failed (e.g. a damaged audio stream); null if nothing did.</summary>
     string? AnalysisError { get; }
 

@@ -106,11 +106,11 @@ public class ThumbnailExtractorTests
         Assert.Equal(expected, ThumbnailExtractor.IntervalFor(duration), 9);
 
     [Fact]
-    public void Arguments_decode_only_keyframes_on_the_gpu_when_there_is_one()
+    public void Arguments_read_and_decode_only_keyframes_on_the_gpu_when_there_is_one()
     {
         var args = ThumbnailExtractor.Arguments(ExportSample.Info, 160, 90, 2.5);
         Assert.Equal(
-            ["-v", "error", "-hwaccel", "auto", "-skip_frame", "nokey", "-i", ExportSample.SourcePath, "-map", "0:0", "-an", "-sn", "-dn",
+            ["-v", "error", "-hwaccel", "auto", "-discard", "nokey", "-skip_frame", "nokey", "-i", ExportSample.SourcePath, "-map", "0:0", "-an", "-sn", "-dn",
              "-vf", "fps=1/2.5:round=near,scale=160:90:flags=bilinear,format=bgra", "-f", "rawvideo", "pipe:1"],
             args);
     }

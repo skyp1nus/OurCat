@@ -55,11 +55,15 @@ single right answer, so the command refuses with an `EditException` and the UI s
 - **Probing** (`MediaProbe`): `ffprobe -show_format -show_streams` as JSON → `MediaInfo`: container family,
   the first real video stream (cover art is skipped), audio streams with their titles (MP4 keeps track names in
   the handler name), subtitles, rotation, B-frames. `ToSourceMedia()` gives Core's description.
-- **Keyframes** (`KeyframeScanner`): packet flags from ffprobe, no decoding. Times are relative to the file's
-  start time, like everything else in OurCut.
+- **Keyframes** (`KeyframeScanner`): packet flags, no decoding. An MP4 or MOV without B-frames lists its
+  keyframes in the index, so ffmpeg's demuxer skips the other samples (`-discard nokey`, copied into `framecrc`) and
+  only a few percent of the file is read; with B-frames ffmpeg 6.x's MOV demuxer gets the times of skipped samples
+  wrong, so those files, like every other container, are read through with ffprobe. Times are relative to the
+  file's start time, like everything else in OurCut.
 - **Previews**: `WaveformExtractor` decodes every audio stream in one pass to 8 kHz mono and keeps one peak per
-  10 ms (`WaveformData`, drawn on a dB scale). `ThumbnailExtractor` decodes only keyframes
-  (`-skip_frame nokey`) to raw BGRA, at most about 300 per file. Both stream their results as they arrive.
+  10 ms (`WaveformData`, drawn on a dB scale). `ThumbnailExtractor` reads (`-discard nokey`, where the container
+  allows) and decodes (`-skip_frame nokey`) only keyframes, to raw BGRA, at most about 300 per file. Both stream
+  their results as they arrive.
   Thumbnails and scene detection decode on the GPU when there is one (`FfmpegText.GpuDecoding`, `-hwaccel auto`,
   which falls back to the CPU by itself), and every analysis process (`ToolProcess`) runs below normal priority so
   playback and the UI keep the CPU they need.
@@ -71,7 +75,8 @@ single right answer, so the command refuses with an `EditException` and the UI s
 
 In the App, `FfmpegMediaOpener` probes a file and creates a `MediaPreview`, which runs the three analyses in
 parallel (or reads them from the cache) and raises `Changed` as results arrive; the timeline redraws, and the
-keyframes are handed to the editing session for snapping.
+keyframes are handed to the editing session for snapping. How long each part took, or that it came from the cache,
+is in Copy diagnostics ("Analysis keyframes 0.2 s · thumbnails 0.3 s · …").
 
 ### Lossless cuts
 
@@ -148,7 +153,7 @@ Both live in `OurCut.Media.Analysis` and keep their raw measurements, so a diffe
   12 dB over the noise floor (the level of the quietest 5 % of the audio), kept between −55 and −35 dBFS, so a
   noisy microphone still has pauses and quiet music is not taken for one.
 - **Scene changes** (`SceneDetector`) need the whole video decoded, so they run after the rest of the analysis
-  (status bar: "detecting scenes 34%"), with half the CPU cores. ffmpeg shrinks every frame (at the video's own
+  (status bar: "detecting scenes 34%"), on the GPU or every CPU core (below normal priority). ffmpeg shrinks every frame (at the video's own
   rate, up to 60 fps, timed from the file start like keyframes) to 64×36 grey and pipes it out; each frame is
   scored against the one before as ffmpeg's `scdet` does: the mean difference, but no more than its jump from the
   previous frame's, so steady motion (scrolling, panning) scores low and a cut scores high. The per-frame scores

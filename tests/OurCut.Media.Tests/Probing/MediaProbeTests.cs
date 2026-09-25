@@ -1,3 +1,4 @@
+using OurCut.Media.Tests.Export;
 using OurCut.Media.Probing;
 using OurCut.Media.Tools;
 
@@ -125,4 +126,43 @@ public class KeyframeScannerTests
     [InlineData("1.0,1.0,KD")]
     public void ParsePacket_skips_unusable_lines(string line) =>
         Assert.Null(KeyframeScanner.ParsePacket(line));
+
+    [Theory]
+    [InlineData("0,          0,          0,      512,   122720, 0x6a12cf23", 0, 0, true)]
+    [InlineData("0,        512,       1536,      512,    91293, 0x0600b054, F=0x0", 512, 1536, false)]
+    [InlineData("0,      14336,      15360,      512,     4134, 0x16f20fa3, S=1,        8, 0x05c80bc1", 14336, 15360, true)]
+    [InlineData("0,      -1024,          0,      512,     4048, 0x5006662b, F=0x3", -1024, 0, true)]
+    [InlineData("0, -9223372036854775808,       2048,      512,       10, 0x00000001", 2048, 2048, true)]
+    [InlineData("0,       4096, -9223372036854775808,      512,       10, 0x00000001", 4096, 4096, true)]
+    public void ParseFrameLine_reads_times_and_key_flag(string line, long dts, long pts, bool key) =>
+        Assert.Equal((dts, pts, key), KeyframeScanner.ParseFrameLine(line));
+
+    [Theory]
+    [InlineData("#tb 0: 1/15360")]
+    [InlineData("")]
+    [InlineData("0, 1, 2, 3")]
+    [InlineData("0,        512,        512,      512,       10, 0x00000001, F=0x5")]
+    [InlineData("0, -9223372036854775808, -9223372036854775808,      512,       10, 0x00000001")]
+    public void ParseFrameLine_skips_headers_and_unusable_lines(string line) =>
+        Assert.Null(KeyframeScanner.ParseFrameLine(line));
+
+    [Fact]
+    public void TimeBase_is_read_from_the_header_of_the_first_stream()
+    {
+        Assert.Equal((1001L, 30000L), KeyframeScanner.TimeBase("#tb 0: 1001/30000"));
+        Assert.Null(KeyframeScanner.TimeBase("#tb 1: 1/48000"));
+        Assert.Null(KeyframeScanner.TimeBase("#codec_id 0: h264"));
+        Assert.Null(KeyframeScanner.TimeBase("#tb 0: 0/0"));
+    }
+
+    [Theory]
+    [InlineData("mov,mp4,m4a,3gp,3g2,mj2", false, true)]
+    [InlineData("mov,mp4,m4a,3gp,3g2,mj2", true, false)]
+    [InlineData("matroska,webm", false, false)]
+    [InlineData("mpegts", false, false)]
+    public void Only_an_mp4_without_B_frames_skips_to_the_keyframes(string format, bool bFrames, bool skips)
+    {
+        var info = ExportSample.Info with { FormatName = format, Video = ExportSample.Info.Video! with { HasBFrames = bFrames } };
+        Assert.Equal(skips, KeyframeScanner.CanSkipToKeyframes(info));
+    }
 }

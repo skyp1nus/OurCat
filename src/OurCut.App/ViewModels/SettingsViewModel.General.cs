@@ -190,6 +190,7 @@ public sealed partial class SettingsViewModel
         $"Hardware decoding {HardwareDecoding} · renderer {Renderer}",
         $"Video output {_editor.VideoOutput ?? "not started"} · decoder {_editor.Player?.CurrentDecoder ?? "—"}",
         $"Open file {_editor.MediaInfoText}",
+        $"Analysis {_editor.Media?.AnalysisTimes ?? "—"}",
         $"Settings {AppSettingsStore.DefaultFile}",
         $"Logs {CrashLog.Folder}");
 

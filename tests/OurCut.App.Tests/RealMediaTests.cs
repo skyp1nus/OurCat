@@ -114,6 +114,8 @@ public sealed class RealMediaTests : IDisposable
         Assert.True(preview.AudioPeak(0, 1, 2) > 0.5);
         Assert.Null(preview.AnalysisError);
         Assert.Equal(video, Assert.Single(editor.RecentFiles).Path);
+        Assert.Matches(@"^keyframes \d+\.\d s · thumbnails \d+\.\d s · waveform \d+\.\d s · scenes \d+\.\d s$", preview.AnalysisTimes);
+        Assert.Contains("Analysis keyframes ", editor.Settings.DiagnosticsText(), StringComparison.Ordinal);
 
         MarkTwoClips(editor);
         editor.ZoomLevel = 0.3;
@@ -282,6 +284,7 @@ public sealed class RealMediaTests : IDisposable
         Assert.Equal(a.Keyframes, b.Keyframes);
         Assert.Equal(a.ThumbnailCount, b.ThumbnailCount);
         Assert.Equal(a.Waveform.Filled, b.Waveform.Filled);
+        Assert.Equal("keyframes cached · thumbnails cached · waveform cached · scenes cached", b.AnalysisTimes);
         w2.Close();
     }
 
