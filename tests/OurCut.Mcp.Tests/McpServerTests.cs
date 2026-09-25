@@ -604,6 +604,8 @@ public class McpAnalysisTests
         Assert.Equal([(0.0, 50.0), (52.5, 120.0), (124.0, 330.0), (340.0, 600.0)], cut.GetProperty("clips").EnumerateArray()
             .Select(x => (x.GetProperty("start").GetDouble(), x.GetProperty("end").GetDouble())));
         Assert.Equal("keynote (4)", cut.GetProperty("clips")[3].GetProperty("label").GetString());
+        // Measured against the whole video, which was kept first.
+        Assert.Equal("Removed 3 silences: 16.5 s shorter.", cut.GetProperty("result").GetString());
         Assert.Single(editor.Session.History.Entries);
     }
 

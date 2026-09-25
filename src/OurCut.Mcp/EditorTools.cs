@@ -759,9 +759,11 @@ public sealed class EditorTools(IEditorHost host)
         steps.Add(new CutRangesCommand(hit, clips, name, description));
         IEditCommand command = steps.Count == 1 ? steps[0] : new BatchCommand(name, description, steps);
         var entry = Guard(() => ctx.Session.Execute(command, EditOrigin.Assistant));
+        // Without clips the whole video was kept first: the cut is measured against it.
+        double before = project.Clips.IsEmpty && clips is null ? project.SourceDuration : project.OutputDuration;
         return Result(ctx, entry) with
         {
-            Result = $"{description}: {Round(project.OutputDuration - ctx.Session.Project.OutputDuration)} s shorter.",
+            Result = $"{description}: {Round(before - ctx.Session.Project.OutputDuration)} s shorter.",
         };
     }
 
