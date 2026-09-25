@@ -275,6 +275,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
         LoadGeneralPlaybackExport(settings);
         LoadTranscriptionMcp(settings);
         LoadKeyboard(settings);
+        ApplyTimeline();
         _loading = false;
         if (!ReferenceEquals(fillers, FillerWords))
             FillerWordsChanged?.Invoke(this, EventArgs.Empty);

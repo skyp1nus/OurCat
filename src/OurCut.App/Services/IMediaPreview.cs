@@ -54,6 +54,11 @@ public interface IMediaPreview
     {
     }
 
+    /// <summary>Stops a transcription under way (the Transcript chip turned off); a finished transcript stays.</summary>
+    void StopTranscription()
+    {
+    }
+
     /// <summary>Silence detection has seen all of the audio (or given up).</summary>
     bool SilencesComplete => true;
 
@@ -65,6 +70,11 @@ public interface IMediaPreview
 
     /// <summary>Starts scene detection unless it was asked for already. It reads every frame, so it takes a while.</summary>
     void DetectScenes()
+    {
+    }
+
+    /// <summary>Stops a scene detection under way (the Scenes chip turned off): what it found so far is dropped.</summary>
+    void StopScenes()
     {
     }
 

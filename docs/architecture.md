@@ -162,8 +162,9 @@ Both live in `OurCut.Media.Analysis` and keep their raw measurements, so a diffe
   12 dB over the noise floor (the level of the quietest 5 % of the audio), kept between −55 and −35 dBFS, so a
   noisy microphone still has pauses and quiet music is not taken for one.
 - **Scene changes** (`SceneDetector`) need the whole video decoded, so they are found only when asked for: the
-  timeline's Scenes chip or Claude's `find_scene_changes` (`MediaPreview.DetectScenes`); scene changes cached from
-  an earlier run are shown straight away. Detection waits for the rest of the analysis (status bar: "detecting
+  timeline's Scenes chip (off at first; while it is on, every video opened is searched) or Claude's
+  `find_scene_changes` (`MediaPreview.DetectScenes`); scene changes cached from an earlier run are read straight away.
+  Turning the chip off stops a search under way (`MediaPreview.StopScenes`) and keeps nothing of it. Detection waits for the rest of the analysis (status bar: "detecting
   scenes 34%") and runs on the GPU or every CPU core (below normal priority). ffmpeg shrinks every frame (at the video's own
   rate, up to 60 fps, timed from the file start like keyframes) to 64×36 grey and pipes it out; each frame is
   scored against the one before as ffmpeg's `scdet` does: the mean difference, but no more than its jump from the
@@ -267,11 +268,13 @@ bind to view models and never change the project themselves.
   recent file when "On startup" is "Open the last project". `RecentFilesStore` keeps 20 files and lists `Limit` of
   them (Recent files: 5, 10 or 20). The cache card measures `MediaCache.Measure` (one folder per video) off the UI
   thread; Clear cache (`MediaCache.Clear`) keeps the open video's folder and every `transcript-*.json`.
-- **Settings file**: `AppSettings(Transcription, General?, Playback?, Export?, Keyboard?, Mcp?)` (records and enums
+- **Settings file**: `AppSettings(Transcription, General?, Playback?, Export?, Keyboard?, Mcp?, Timeline?)` (records and enums
   in `Services/Settings/`), saved by `AppSettingsStore` to `%LOCALAPPDATA%\OurCut\settings.json` with
   source-generated JSON, enums by name (`LenientEnumConverter`). A section missing from the file (an older version
   wrote it, or it is at its defaults) reads as null and means the defaults; a value this version does not know falls
   back to its default, and the rest of the file is kept.
+  `Timeline` is the timeline toolbar's chips (Keyframes, Silence, Scenes, Snap), saved as they are clicked and put
+  back for every project and run (`SettingsViewModel.ApplyTimeline`); the design's screens show them all and save none.
   Playback is read before the player is created, which starts with the saved decoding and audio device. Changes apply
   while it plays: `IPlayer.SetHardwareDecoding` (mpv `hwdec`), `SetAudioDevice` (`audio-device`, one of
   `AudioDevices`, mpv's `audio-device-list`, listed again whenever Settings opens; the setting keeps mpv's name and the
@@ -321,6 +324,8 @@ and Whisper large-v3-turbo, small and base.en (99 languages; base.en English onl
 - **In the editor** (`MediaPreview`): transcription starts when asked for (the Transcript tab's Transcribe, or a
   Claude transcript tool), or when a file is opened with "Transcribe when a video is opened" on (off by default;
   saved as `transcribeWhenOpened`, so files from when it was on by default read as off), once a model is installed.
+  The timeline's Transcript chip is the same setting: turned on, the open video is transcribed too; turned off, a
+  transcription under way stops (`MediaPreview.StopTranscription`).
   A transcript cached earlier with the chosen model is shown when the file opens either way. It runs after
   keyframes, waveform and thumbnails (it may overlap scene detection), on half the cores. The status bar shows "transcribing 34%", the transcript fills in piece by piece
   and is cached per model and language (`transcript-<model>-<language>.json`). Installing a model or changing the

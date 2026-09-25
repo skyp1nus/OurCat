@@ -274,9 +274,13 @@ public sealed class SettingsTranscriptionMcpTests : IDisposable
         editor.Settings.Language = "Ukrainian";
         Assert.Equal(2, opener.Transcriptions);
 
+        // The setting and the Transcript chip are one choice: on, the open video is transcribed too.
+        Assert.False(editor.ShowTranscriptLane);
         editor.Settings.TranscribeOnOpen = true;
-        await editor.OpenMediaAsync("/videos/other.mp4");
+        Assert.True(editor.ShowTranscriptLane);
         Assert.Equal(3, opener.Transcriptions);
+        await editor.OpenMediaAsync("/videos/other.mp4");
+        Assert.Equal(4, opener.Transcriptions);
     }
 
     [AvaloniaFact]

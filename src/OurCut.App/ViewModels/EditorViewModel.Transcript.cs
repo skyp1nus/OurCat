@@ -44,7 +44,11 @@ public sealed partial class EditorViewModel
         TranscriptPanel.RevealCurrentWord();
     }
 
-    /// <summary>The transcript lane under the video track (timeline toolbar chip "Transcript").</summary>
+    /// <summary>
+    /// The transcript lane under the video track (timeline toolbar chip "Transcript"). It is the same choice as
+    /// Settings → Transcription → "Transcribe when a video is opened": on, the open video is transcribed (and every
+    /// later one); off, a transcription under way stops.
+    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTranscriptLaneVisible), nameof(TimelineHeight), nameof(TimelineTracksHeight))]
     public partial bool ShowTranscriptLane { get; set; }
@@ -60,7 +64,20 @@ public sealed partial class EditorViewModel
     [RelayCommand]
     private void ToggleTranscriptLane() => ShowTranscriptLane = !ShowTranscriptLane;
 
-    partial void OnShowTranscriptLaneChanged(bool value) => RaiseTimelineChanged();
+    partial void OnShowTranscriptLaneChanged(bool value)
+    {
+        RaiseTimelineChanged();
+        if (IsDemo || _showingChips)
+            return;
+        Settings.TranscribeOnOpen = value;
+        if (!HasFile)
+            return;
+        // Without a model the lane says how to get one.
+        if (value)
+            StartTranscription();
+        else
+            Media?.StopTranscription();
+    }
 
     /// <summary>"Keep as clip": a clip for the words, placed among the clips by source position and selected. One undo step.</summary>
     public void KeepWords(double start, double end, string label) => TryEdit(() =>

@@ -51,6 +51,7 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     private volatile bool _analysing;
     private volatile bool _detectingScenes;
     private int _scenesRequested;
+    private CancellationTokenSource? _scenesCts;
     private volatile string? _error;
     private SceneScores? _scenes;
     private readonly TaskCompletionSource _mainAnalysisDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -172,6 +173,20 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     /// </summary>
     public void StartTranscription(TranscriptionSetup setup) => Transcribe(setup, cachedOnly: false);
 
+    /// <summary>Stops a transcription under way (the Transcript chip turned off); a finished transcript stays.</summary>
+    public void StopTranscription()
+    {
+        if (_transcriptState is not (TranscriptState.Waiting or TranscriptState.Running))
+            return;
+        _transcribeCts?.Cancel();
+        _transcribeCts = null;
+        _transcriptKey = null;
+        _transcriptState = TranscriptState.None;
+        Volatile.Write(ref _transcript, null);
+        Volatile.Write(ref _transcriptProgress, 0);
+        NotifyChanged();
+    }
+
     /// <summary>Shows the transcript <paramref name="setup"/>'s model made earlier, if the cache has it; transcribes nothing.</summary>
     public void LoadTranscript(TranscriptionSetup setup)
     {
@@ -290,11 +305,16 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     {
         if (Info.Video is null || _disposed || Interlocked.Exchange(ref _scenesRequested, 1) == 1)
             return;
-        var ct = _cts.Token;
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _scenesCts = cts;
+        var ct = cts.Token;
+        var stopped = ScenesTask;
         ScenesTask = Task.Run(async () =>
         {
             try
             {
+                // A search stopped a moment ago lets go of its ffmpeg first.
+                await stopped.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
                 await _mainAnalysisDone.Task.WaitAsync(ct).ConfigureAwait(false);
                 await Guard(() => DetectScenesAsync(ct)).ConfigureAwait(false);
             }
@@ -303,10 +323,29 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
             }
             finally
             {
-                _detectingScenes = false;
+                // A stopped search leaves nothing half done (it may have set out its scores just after the stop); one
+                // asked for again since waits for this to end before it starts.
+                if (ct.IsCancellationRequested && Volatile.Read(ref _scenes) is { IsComplete: false })
+                    Volatile.Write(ref _scenes, null);
+                if (_scenesCts is null || ReferenceEquals(_scenesCts, cts))
+                    _detectingScenes = false;
                 NotifyChanged();
             }
         }, CancellationToken.None);
+        NotifyChanged();
+    }
+
+    /// <summary>
+    /// Stops a scene detection under way (the Scenes chip turned off): what it found so far is dropped and nothing is
+    /// cached. Finished or cached scene changes stay.
+    /// </summary>
+    public void StopScenes()
+    {
+        if (Info.Video is null || Volatile.Read(ref _scenes) is { IsComplete: true } || Interlocked.Exchange(ref _scenesRequested, 0) == 0)
+            return;
+        Interlocked.Exchange(ref _scenesCts, null)?.Cancel();
+        Volatile.Write(ref _scenes, null);
+        _detectingScenes = false;
         NotifyChanged();
     }
 

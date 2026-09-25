@@ -49,6 +49,12 @@ public sealed partial class EditorViewModel : ViewModelBase
         Claude = new ClaudePanelViewModel(new ClaudeExportViewModel(this), new ClaudeFileRequestViewModel(this));
         Settings = new SettingsViewModel(this);
         TranscriptPanel = CreateTranscriptPanel();
+        // The Transcript chip and "Transcribe when a video is opened" are one choice.
+        Settings.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SettingsViewModel.TranscribeOnOpen) && !IsDemo)
+                ShowTranscriptLane = Settings.TranscribeOnOpen;
+        };
         // With "transcribe when opened" off, only a transcript someone asked for (or the tab's Download) is started;
         // one made earlier with the new model is shown.
         Settings.TranscriptionChanged += (_, _) =>
@@ -164,9 +170,13 @@ public sealed partial class EditorViewModel : ViewModelBase
             Claude.ClientName = null;
             Claude.OtherWindowProject = null;
         }
+        bool wasDemo = IsDemo;
         IsDemo = false;
         Claude.Log.Clear();
         _historyItems.Clear();
+        // The design's chips were for its screens; the user's own come back.
+        if (wasDemo)
+            Settings.ApplyTimeline();
     }
 
     // ---- File ----------------------------------------------------------------------------
@@ -336,8 +346,9 @@ public sealed partial class EditorViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool ShowSilences { get; set; } = true;
 
+    /// <summary>Scene change markers; while on, scene changes are found in every video opened (Settings: off at first).</summary>
     [ObservableProperty]
-    public partial bool ShowScenes { get; set; } = true;
+    public partial bool ShowScenes { get; set; }
 
     /// <summary>Silences and scene changes found so far (the toolbar chips are off without any).</summary>
     public bool HasSilenceData => Media?.Silences.Count > 0;
@@ -348,8 +359,8 @@ public sealed partial class EditorViewModel : ViewModelBase
         : !media.SilencesComplete ? "Looking for silences…"
         : media.AudioStreamCount == 0 ? "No audio in this file" : "No pauses of a second or more in this file";
 
-    public string ScenesTip => Media is not { } media ? "Scene changes"
-        : !media.ScenesRequested ? "Find scene changes (reads every frame, so it takes a while)"
+    public string ScenesTip => !ShowScenes ? "Show scene changes (finding them reads every frame, so it takes a while)"
+        : Media is not { } media ? "Scene changes: found in every video you open"
         : media.SceneChanges.Count is > 0 and var n
             ? $"Scene changes: {n}" + (media.ScenesComplete ? "" : " so far")
         : !media.ScenesComplete ? "Detecting scene changes…"
@@ -372,25 +383,14 @@ public sealed partial class EditorViewModel : ViewModelBase
     [RelayCommand]
     private void ToggleSilences() => ShowSilences = !ShowSilences;
 
-    /// <summary>The Scenes chip: shows or hides the markers, or starts finding them the first time.</summary>
-    public bool CanToggleScenes => HasSceneData || Media is { ScenesRequested: false };
+    /// <summary>The Scenes chip works without a file (the choice is kept for the next one), not for a file without video.</summary>
+    public bool CanToggleScenes => !HasFile || Media is { FrameRate: > 0 };
 
-    /// <summary>The Scenes chip is lit: markers are shown (or on their way).</summary>
-    public bool ScenesOn => ShowScenes && Media is { ScenesRequested: true };
+    /// <summary>The Scenes chip is lit.</summary>
+    public bool ScenesOn => ShowScenes && CanToggleScenes;
 
     [RelayCommand]
-    private void ToggleScenes()
-    {
-        if (Media is { ScenesRequested: false } media)
-        {
-            media.DetectScenes();
-            ShowScenes = true;
-            foreach (string name in (string[])[nameof(ScenesTip), nameof(CanToggleScenes), nameof(ScenesOn)])
-                OnPropertyChanged(name);
-            return;
-        }
-        ShowScenes = !ShowScenes;
-    }
+    private void ToggleScenes() => ShowScenes = !ShowScenes;
 
     [RelayCommand]
     private void ToggleSnap() => SnapToKeyframes = !SnapToKeyframes;
@@ -399,12 +399,48 @@ public sealed partial class EditorViewModel : ViewModelBase
     [RelayCommand]
     private void ZoomFit() => ZoomLevel = 0;
 
-    partial void OnShowKeyframesChanged(bool value) => RaiseTimelineChanged();
-    partial void OnShowSilencesChanged(bool value) => RaiseTimelineChanged();
+    partial void OnShowKeyframesChanged(bool value) => ChipChanged();
+    partial void OnShowSilencesChanged(bool value) => ChipChanged();
+    partial void OnSnapToKeyframesChanged(bool value) => ChipChanged();
+
+    /// <summary>On: the open video's scene changes are found (and every later one's). Off: an unfinished search stops.</summary>
     partial void OnShowScenesChanged(bool value)
     {
-        OnPropertyChanged(nameof(ScenesOn));
+        if (!_showingChips)
+        {
+            if (value)
+                Media?.DetectScenes();
+            else
+                Media?.StopScenes();
+        }
+        foreach (string name in (string[])[nameof(ScenesOn), nameof(ScenesTip)])
+            OnPropertyChanged(name);
+        ChipChanged();
+    }
+
+    private bool _showingChips;
+
+    /// <summary>
+    /// Shows the saved chips (the Transcript chip is "Transcribe when a video is opened"), saving and starting nothing:
+    /// the next file opened is worked out as they say.
+    /// </summary>
+    internal void ShowTimelineChips(TimelineSettings chips, bool transcript)
+    {
+        _showingChips = true;
+        ShowKeyframes = chips.Keyframes;
+        ShowSilences = chips.Silences;
+        ShowScenes = chips.Scenes;
+        SnapToKeyframes = chips.Snap;
+        ShowTranscriptLane = transcript;
+        _showingChips = false;
+    }
+
+    /// <summary>A chip changed: redraw, and keep the choice for the next project (the design's screens keep nothing).</summary>
+    private void ChipChanged()
+    {
         RaiseTimelineChanged();
+        if (!_showingChips && !IsDemo)
+            Settings.SaveTimeline(new TimelineSettings(ShowKeyframes, ShowSilences, ShowScenes, SnapToKeyframes));
     }
 
     // ---- Totals and status ---------------------------------------------------------------
@@ -538,6 +574,8 @@ public sealed partial class EditorViewModel : ViewModelBase
             StartTranscription();
         else
             LoadCachedTranscript();
+        if (ShowScenes)
+            media.DetectScenes();
         Processing.Track(IsDemo ? null : media, MediaFileName, info, project.SourceDuration);
     }
 
