@@ -10,6 +10,11 @@ public sealed partial class SettingsViewModel
     /// <summary>Which keys run which editor action; saved with the other settings.</summary>
     public KeyMap KeyMap => Keyboard.Map;
 
+    /// <summary>The keys the hints show, from <see cref="KeyMap"/>.</summary>
+    public ShortcutLabels Keys => _keys ??= new(KeyMap);
+
+    private ShortcutLabels? _keys;
+
     partial void InitKeyboard()
     {
         KeyMap.Changed += (_, _) => UpdateSettings(s => s with { Keyboard = SavedKeyboard() });

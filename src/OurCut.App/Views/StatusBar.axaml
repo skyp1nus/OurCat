@@ -24,11 +24,11 @@
         </StackPanel>
       </Grid>
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16">
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="Space" /></Border><TextBlock Text="Play" /></StackPanel>
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="I / O" /></Border><TextBlock Text="In / out" /></StackPanel>
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="← / →" /></Border><TextBlock Text="Frame step" /></StackPanel>
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="Del" /></Border><TextBlock Text="Remove" /></StackPanel>
-        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="Ctrl Z" /></Border><TextBlock Text="Undo" /></StackPanel>
+        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="{Binding Settings.Keys.PlayPause}" /></Border><TextBlock Text="Play" /></StackPanel>
+        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="{Binding Settings.Keys.InOut}" /></Border><TextBlock Text="In / out" /></StackPanel>
+        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="{Binding Settings.Keys.FrameStep}" /></Border><TextBlock Text="Frame step" /></StackPanel>
+        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="{Binding Settings.Keys.DeleteClip}" /></Border><TextBlock Text="Remove" /></StackPanel>
+        <StackPanel Classes="hint"><Border Classes="kbd status"><TextBlock Text="{Binding Settings.Keys.Undo}" /></Border><TextBlock Text="Undo" /></StackPanel>
       </StackPanel>
     </Grid>
   </Border>

@@ -29,7 +29,7 @@
               <c:SvgIcon Data="{StaticResource IconOpen16}" ViewBox="16" StrokeWidth="1.2" LineJoin="Miter" Width="14" Height="14"
                          VerticalAlignment="Center" />
               <TextBlock Text="Open file" VerticalAlignment="Center" />
-              <Border Classes="kbd"><TextBlock Text="Ctrl O" /></Border>
+              <Border Classes="kbd"><TextBlock Text="{Binding Settings.Keys.OpenVideo}" /></Border>
             </StackPanel>
           </Button>
           <!-- Projects, save and export: the menus the design leaves out. -->
