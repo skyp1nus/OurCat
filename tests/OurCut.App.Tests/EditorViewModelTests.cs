@@ -264,18 +264,33 @@ public class EditorViewModelTests
         export.Container = "MKV";
         Assert.Equal("4 files", export.FileCountText);
         Assert.Equal("Separate files (4)", export.SeparateFilesText);
-        Assert.EndsWith(@"interview_final_v3-{n}-{label}.mkv", export.OutputPath);
-        Assert.Equal("interview_final_v3-1-cold-open.mkv … interview_final_v3-4-outro.mkv", export.FileNamesText);
+        Assert.EndsWith(@"interview_final_v3-cut-{n}.mkv", export.OutputPath);
+        Assert.Equal("interview_final_v3-cut-01.mkv … interview_final_v3-cut-04.mkv", export.FileNamesText);
 
         export.Start(0.5);
         Assert.Equal(4, export.Rows.Count);
-        Assert.Equal("interview_final_v3-3-export-demo.mkv", export.Rows[2].Name);
+        Assert.Equal("interview_final_v3-cut-03.mkv", export.Rows[2].Name);
         Assert.Equal("Writing clip 3 of 4", export.ProgressText);
         Assert.Single(export.Rows, r => r.IsCurrent);
 
         // Cancel export goes back to the settings.
         export.CancelExport();
         Assert.True(export.IsConfiguring);
+        export.Close();
+    }
+
+    [AvaloniaFact]
+    public void Export_names_follow_the_file_name_pattern()
+    {
+        var editor = Sample();
+        editor.Settings.FileNamePattern = "{date}_{project}_{label}";
+        var export = editor.Export;
+        export.Open();
+
+        Assert.Equal("2026-09-25_interview_final_v3.mp4", export.FileNamesText);
+        export.Merge = false;
+        Assert.Equal("2026-09-25_interview_final_v3_cold-open.mp4 … 2026-09-25_interview_final_v3_outro.mp4", export.FileNamesText);
+        Assert.EndsWith("{date}_interview_final_v3_{label}.mp4", export.OutputPath, StringComparison.Ordinal);
         export.Close();
     }
 

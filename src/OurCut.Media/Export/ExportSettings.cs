@@ -63,8 +63,19 @@ public sealed record ExportSettings
 
     public required string OutputFolder { get; init; }
 
-    /// <summary>Base of the output file names, usually the project name.</summary>
+    /// <summary>Base of the output file names, usually the project name: the pattern's {project}.</summary>
     public required string BaseName { get; init; }
+
+    /// <summary>How outputs are named (<see cref="ExportFileNames"/>): "{project}-cut-{n}" by default.</summary>
+    public string FileNamePattern { get; init; } = ExportFileNames.DefaultPattern;
+
+    /// <summary>The pattern's {date}.</summary>
+    public DateOnly Date { get; init; } = DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>
+    /// Replace a file that has an output's name (once the new one is complete); otherwise " (2)" is added to the name.
+    /// </summary>
+    public bool Overwrite { get; init; }
 
     public VideoEncoding Video { get; init; } = VideoEncoding.H264Quality;
     public AudioEncoding Audio { get; init; } = AudioEncoding.Copy;

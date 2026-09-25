@@ -183,7 +183,7 @@ public class MediaIntegrationTests(SampleMediaFixture media) : IClassFixture<Sam
 
         var written = await ExportRunner.RunAsync(plan, cancellationToken: Ct);
 
-        Assert.Equal(["sample-1-intro.mp4", "sample-2-demo-import.mp4"], written.Select(Path.GetFileName));
+        Assert.Equal(["sample-cut-01.mp4", "sample-cut-02.mp4"], written.Select(Path.GetFileName));
         AssertLosslessLength(2.2, (await MediaProbe.ProbeAsync(written[0], Ct)).Duration, 1);
         AssertLosslessLength(2.0, (await MediaProbe.ProbeAsync(written[1], Ct)).Duration, 1);
         Assert.Equal(2, Directory.GetFiles(folder).Length);
@@ -258,6 +258,36 @@ public class MediaIntegrationTests(SampleMediaFixture media) : IClassFixture<Sam
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExportRunner.RunAsync(plan, progress, cts.Token));
 
         Assert.Empty(Directory.GetFiles(folder));
+    }
+
+    [Fact]
+    public async Task Overwrite_replaces_the_file_and_a_cancelled_one_keeps_it()
+    {
+        media.SkipIfUnavailable();
+        var (info, keyframes) = await Analyse(media.Mp4);
+        string folder = media.NewOutputFolder();
+        string output = Path.Combine(folder, "sample-cut.mp4");
+        await File.WriteAllTextAsync(output, "old", Ct);
+        var settings = Settings(folder) with { Overwrite = true };
+
+        // Cancelled on the last step, the one that writes the file: the old file stays as it was.
+        var cancelled = ExportPlanner.Plan(Project(info), info, keyframes, settings);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var progress = new SyncProgress<ExportProgress>(p =>
+        {
+            if (p.StepIndex == cancelled.Steps.Count - 1)
+                cts.Cancel();
+        });
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExportRunner.RunAsync(cancelled, progress, cts.Token));
+        Assert.Equal("old", await File.ReadAllTextAsync(output, Ct));
+        Assert.Equal([output], Directory.GetFiles(folder));
+
+        var plan = ExportPlanner.Plan(Project(info), info, keyframes, settings);
+        var written = await ExportRunner.RunAsync(plan, cancellationToken: Ct);
+
+        Assert.Equal([output], written);
+        Assert.Equal([output], Directory.GetFiles(folder));
+        AssertLosslessLength(plan.OutputDuration, (await MediaProbe.ProbeAsync(output, Ct)).Duration, plan.Clips.Count);
     }
 
     [Fact]

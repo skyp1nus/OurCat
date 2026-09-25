@@ -99,6 +99,9 @@ public sealed partial class EditorViewModel : ViewModelBase
     /// <summary>File dialogs, provided by the window.</summary>
     public IFileDialogs? Dialogs { get; set; }
 
+    /// <summary>Shows a file in the system file manager (after an export); none in tests and the demo.</summary>
+    public Action<string>? RevealInFolder { get; set; }
+
     /// <summary>Probes and analyses media files. Without one, videos cannot be opened.</summary>
     public IMediaOpener? MediaOpener { get; set; }
 

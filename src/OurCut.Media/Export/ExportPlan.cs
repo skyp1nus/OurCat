@@ -35,6 +35,10 @@ public sealed record ExportStep(ExportStepKind Kind, string Name, string OutputP
     IReadOnlyList<ExportClip> Clips, double Weight);
 
 /// <summary>Everything an export will do, decided up front so it can be shown and tested.</summary>
+/// <param name="Replacements">
+/// Outputs that replace an existing file (<see cref="ExportSettings.Overwrite"/>): each is written under a temporary
+/// name (the key) and moved over the old file (the value) once complete, so a failed export leaves the old file.
+/// </param>
 public sealed record ExportPlan(
     MediaInfo Source,
     ExportSettings Settings,
@@ -42,12 +46,14 @@ public sealed record ExportPlan(
     IReadOnlyList<ExportStep> Steps,
     IReadOnlyList<string> Outputs,
     string? ConcatListPath,
-    string? ChaptersPath)
+    string? ChaptersPath,
+    IReadOnlyDictionary<string, string>? Replacements = null)
 {
-    /// <summary>Temporary files the export creates and removes.</summary>
+    /// <summary>Temporary files the export creates and removes (a replacement is gone once it has been moved).</summary>
     public IEnumerable<string> TemporaryFiles =>
         Steps.Where(s => s.IsTemporary).Select(s => s.OutputPath)
-            .Concat(new[] { ConcatListPath, ChaptersPath }.OfType<string>());
+            .Concat(new[] { ConcatListPath, ChaptersPath }.OfType<string>())
+            .Concat(Replacements?.Keys ?? []);
 
     public double OutputDuration => Clips.Sum(c => c.OutputDuration);
 }
@@ -80,11 +86,29 @@ public static partial class ExportPlanner
 
         string folder = settings.OutputFolder;
         string ext = settings.Extension;
+        var names = OutputNames(project, settings);
         var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        string Unique(string fileName) => UniquePath(Path.Combine(folder, fileName), p => fileExists(p) || reserved.Contains(p), reserved);
+        var replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         tempId ??= Guid.NewGuid().ToString("N")[..12];
         string Temp(string suffix) => Path.Combine(folder, $".ourcut-tmp-{tempId}{suffix}");
+
+        // Where output i goes, and the file ffmpeg writes for it: a new name gets " (2)" when it is taken, unless the
+        // old file is to be replaced; two outputs with one name (a pattern without {n}) are always told apart.
+        (string Final, string Target) Output(int i)
+        {
+            if (!settings.Overwrite)
+            {
+                string unique = UniquePath(names[i], p => fileExists(p) || reserved.Contains(p), reserved);
+                return (unique, unique);
+            }
+            string final = UniquePath(names[i], reserved.Contains, reserved);
+            if (!fileExists(final))
+                return (final, final);
+            string target = Temp($"-new{i + 1:000}.{ext}");
+            replacements[target] = final;
+            return (final, target);
+        }
 
         var steps = new List<ExportStep>();
         var outputs = new List<string>();
@@ -93,7 +117,7 @@ public static partial class ExportPlanner
 
         if (settings.Merge)
         {
-            string final = Unique($"{settings.BaseName}-cut.{ext}");
+            var (final, target) = Output(0);
             outputs.Add(final);
             if (settings.AddChapters)
                 chaptersPath = Temp(".ffmeta");
@@ -105,21 +129,21 @@ public static partial class ExportPlanner
                         c.OutputDuration, [c], (1 - ConcatWeight) * Share(c.OutputDuration, total, clips.Count)));
                 }
                 listPath = Temp(".ffconcat");
-                steps.Add(new ExportStep(ExportStepKind.Concat, $"Merge into {Path.GetFileName(final)}", final, false, total, clips,
+                steps.Add(new ExportStep(ExportStepKind.Concat, $"Merge into {Path.GetFileName(final)}", target, false, total, clips,
                     ConcatWeight));
             }
             else
             {
-                steps.Add(new ExportStep(ExportStepKind.EncodeMerged, $"Merge into {Path.GetFileName(final)}", final, false, total, clips, 1));
+                steps.Add(new ExportStep(ExportStepKind.EncodeMerged, $"Merge into {Path.GetFileName(final)}", target, false, total, clips, 1));
             }
         }
         else
         {
             foreach (var c in clips)
             {
-                string final = Unique($"{settings.BaseName}-{c.Number}-{Slug(c.Label)}.{ext}");
+                var (final, target) = Output(c.Number - 1);
                 outputs.Add(final);
-                steps.Add(new ExportStep(lossless ? ExportStepKind.Cut : ExportStepKind.Encode, Path.GetFileName(final), final, false,
+                steps.Add(new ExportStep(lossless ? ExportStepKind.Cut : ExportStepKind.Encode, Path.GetFileName(final), target, false,
                     c.OutputDuration, [c], Share(c.OutputDuration, total, clips.Count)));
             }
         }
@@ -127,7 +151,21 @@ public static partial class ExportPlanner
         if (outputs.Any(o => string.Equals(Path.GetFullPath(o), Path.GetFullPath(source.Path), StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("The export would overwrite the source file.");
 
-        return new ExportPlan(source, settings, clips, steps, outputs, listPath, chaptersPath);
+        return new ExportPlan(source, settings, clips, steps, outputs, listPath, chaptersPath, replacements.Count > 0 ? replacements : null);
+    }
+
+    /// <summary>
+    /// The files an export writes before " (2)" is added to a taken name: <see cref="ExportSettings.FileNamePattern"/> for
+    /// the merged file, or for each included clip.
+    /// </summary>
+    public static IReadOnlyList<string> OutputNames(Project project, ExportSettings settings)
+    {
+        string ext = "." + settings.Extension;
+        string Name(int number, string label, bool merged) => Path.Combine(settings.OutputFolder,
+            ExportFileNames.Fill(settings.FileNamePattern, settings.BaseName, number, label, settings.Date, merged) + ext);
+        return settings.Merge
+            ? [Name(1, "", merged: true)]
+            : [.. project.IncludedClips.Select((c, i) => Name(i + 1, c.Label, merged: false))];
     }
 
     /// <summary>
