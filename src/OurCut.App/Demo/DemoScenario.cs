@@ -10,13 +10,14 @@ namespace OurCut.App.Demo;
 /// (<c>viewState()</c>, <c>priorLog()</c> and <c>runAI()</c> in design/project/OurCut.dc.html).
 /// Claude's scripted actions are real Core commands made with <see cref="EditOrigin.Assistant"/>.
 /// </summary>
-public static class DemoScenario
+public static partial class DemoScenario
 {
     public static void Apply(EditorViewModel editor, DesignScreen screen)
     {
         editor.IsDemo = true;
         editor.Export.Close();
         editor.Settings.Close();
+        editor.Settings.Section = "Transcription";
         editor.Unload();
         editor.PlaceholderDuration = DesignSample.SampleDuration;
         editor.Claude.Log.Clear();
@@ -28,11 +29,39 @@ public static class DemoScenario
         editor.Settings.LoadDemo();
 
         if (screen == DesignScreen.Empty)
-        {
             editor.Claude.Recount();
-            return;
-        }
+        else
+            ApplyEditor(editor, screen);
 
+        ApplyTranscriptionMcp(editor, screen);
+        ApplyTranscript(editor, screen);
+        ApplyClaude(editor, screen);
+        ApplyGeneralPlaybackExport(editor, screen);
+        ApplyKeyboard(editor, screen);
+    }
+
+    // Per-area hooks, implemented in DemoScenario.<Area>.cs; each runs for every screen, in this order.
+    static partial void ApplyTranscriptionMcp(EditorViewModel editor, DesignScreen screen);
+    static partial void ApplyTranscript(EditorViewModel editor, DesignScreen screen);
+    static partial void ApplyClaude(EditorViewModel editor, DesignScreen screen);
+    static partial void ApplyGeneralPlaybackExport(EditorViewModel editor, DesignScreen screen);
+    static partial void ApplyKeyboard(EditorViewModel editor, DesignScreen screen);
+
+    /// <summary>The settings section a screen shows (prototype <c>SET_VIEWS</c>); null when the dialog is closed.</summary>
+    public static string? SettingsSection(DesignScreen screen) => screen switch
+    {
+        DesignScreen.Settings => "Transcription",
+        DesignScreen.SettingsGeneral => "General",
+        DesignScreen.SettingsPlayback => "Playback",
+        DesignScreen.SettingsExport => "Export",
+        DesignScreen.SettingsKeyboard or DesignScreen.SettingsKeyboardRecording or DesignScreen.SettingsKeyboardConflict => "Keyboard",
+        DesignScreen.SettingsMcp => "MCP server",
+        _ => null,
+    };
+
+    /// <summary>Every screen but Empty: the sample project, Claude's earlier edits and the screen's dialog.</summary>
+    private static void ApplyEditor(EditorViewModel editor, DesignScreen screen)
+    {
         editor.LoadProject(DesignSample.Project, new DesignSample(), DesignSample.SourceInfo);
         AddPriorLog(editor);
 
@@ -65,9 +94,11 @@ public static class DemoScenario
                 editor.Export.Loop = true;
                 editor.Export.Start(0.46);
                 break;
-            case DesignScreen.Settings:
-                editor.Settings.Open();
-                break;
+        }
+        if (SettingsSection(screen) is { } section)
+        {
+            editor.Settings.Section = section;
+            editor.Settings.Open();
         }
     }
 

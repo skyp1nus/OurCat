@@ -4,8 +4,8 @@
              xmlns:c="using:OurCut.App.Controls"
              x:Class="OurCut.App.Views.TimelinePanel"
              x:DataType="vm:EditorViewModel">
-  <!-- 212 px: 36 px toolbar, 158 px of tracks, room for the scrollbar when zoomed in. -->
-  <Border Name="Root" Height="212" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}"
+  <!-- 212 px (232 with the transcript lane): 36 px toolbar, 158 px of tracks, room for the scrollbar when zoomed in. -->
+  <Border Name="Root" Height="{Binding TimelineHeight}" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource DividerBrush}"
           BorderThickness="0,1,0,0">
     <Grid RowDefinitions="36,*">
       <!-- Toolbar: tools | marker layers | selection | snap | zoom. -->
@@ -52,6 +52,19 @@
                 <TextBlock Text="Scenes" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
+            <Button Classes="chip" Classes.on="{Binding ShowTranscriptLane}" Height="24" Padding="8,0"
+                    ToolTip.Tip="Transcript under the video track" Command="{Binding ToggleTranscriptLaneCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Border Classes="swatch" ClipToBounds="True">
+                  <StackPanel Spacing="2">
+                    <Border Height="1.5" Background="#8CFFFFFF" />
+                    <Border Height="1.5" Background="#8CFFFFFF" />
+                    <Border Height="1.5" Background="#8CFFFFFF" />
+                  </StackPanel>
+                </Border>
+                <TextBlock Text="Transcript" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
           </StackPanel>
 
           <TextBlock Grid.Column="1" Classes="mono" Text="{Binding SelectionInfo}" FontSize="11" LetterSpacing="-0.2"
@@ -85,11 +98,15 @@
       <Grid Grid.Row="1" ColumnDefinitions="44,*">
         <!-- Track names. -->
         <Border BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,0,1,0">
-          <Grid RowDefinitions="22,64,72,*">
+          <Grid RowDefinitions="22,64,Auto,72,*">
             <Border Grid.Row="1" Classes="track" BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,1,0,0">
               <TextBlock Classes="track" Text="V1" />
             </Border>
-            <Border Grid.Row="2" BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,1,0,0">
+            <Border Grid.Row="2" Height="20" BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,1,0,0"
+                    IsVisible="{Binding IsTranscriptLaneVisible}">
+              <TextBlock Classes="track" Text="TX" />
+            </Border>
+            <Border Grid.Row="3" BorderBrush="{StaticResource DividerSoftBrush}" BorderThickness="0,1,0,0">
               <Panel>
               <TextBlock Classes="track" Text="A1" IsVisible="{Binding !AudioLanes.Count}" />
               <ItemsControl ItemsSource="{Binding AudioLanes}" VerticalAlignment="Center">
@@ -108,7 +125,7 @@
         </Border>
 
         <Panel Grid.Column="1" Margin="0,0,12,0">
-          <c:TimelineControl Name="Timeline" Height="158" VerticalAlignment="Top" Editor="{Binding}" />
+          <c:TimelineControl Name="Timeline" Height="{Binding TimelineTracksHeight}" VerticalAlignment="Top" Editor="{Binding}" />
           <ScrollBar Name="HScroll" Orientation="Horizontal" VerticalAlignment="Bottom" Height="8" Margin="0,0,0,3"
                      Minimum="0" Maximum="{Binding #Timeline.MaxScroll}" ViewportSize="{Binding #Timeline.Bounds.Width}"
                      Value="{Binding #Timeline.ScrollOffset, Mode=TwoWay}"

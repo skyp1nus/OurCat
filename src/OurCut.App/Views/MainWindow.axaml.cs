@@ -23,7 +23,8 @@ public partial class MainWindow : Window
     {
         if (Editor is not { } editor)
             return;
-        if (FocusManager?.GetFocusedElement() is TextBox)
+        // Recording a shortcut takes every key, even from a text box.
+        if (FocusManager?.GetFocusedElement() is TextBox && !editor.Settings.Keyboard.IsRecording)
             return;
         e.Handled = Shortcuts.Handle(editor, e.Key, e.KeyModifiers);
     }

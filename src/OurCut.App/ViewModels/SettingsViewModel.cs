@@ -1,11 +1,11 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
-using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OurCut.App.Services;
 using OurCut.Transcription.Models;
+using Fillers = OurCut.Core.Transcripts.FillerWords;
 
 namespace OurCut.App.ViewModels;
 
@@ -14,12 +14,22 @@ public enum ModelState
     NotInstalled,
     Downloading,
     Installed,
+
+    /// <summary>The last download failed; Retry resumes it.</summary>
+    Failed,
+
+    /// <summary>Not installed, and too big for the free space in the models folder.</summary>
+    NoSpace,
 }
 
 /// <summary>A transcription model in the Settings → Transcription table.</summary>
 public sealed partial class TranscriptionModelViewModel(SettingsViewModel owner, TranscriptionModel model) : ViewModelBase
 {
-    public TranscriptionModel Model { get; } = model;
+    /// <summary>The catalog entry (the demo swaps in the design's sizes).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Id), nameof(Engine), nameof(Size), nameof(Languages), nameof(Recommendation), nameof(Note), nameof(HasNote))]
+    public partial TranscriptionModel Model { get; internal set; } = model;
+
     public string Id => Model.Id;
     public string Engine => Model.Engine.ToString();
     public string Size => Model.SizeText;
@@ -27,13 +37,15 @@ public sealed partial class TranscriptionModelViewModel(SettingsViewModel owner,
 
     /// <summary>Why the last download failed; null if it did not.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Note), nameof(HasNote))]
     public partial string? Error { get; set; }
 
     /// <summary>The running download, cancelled by the row's ✕.</summary>
     internal CancellationTokenSource? RunningDownload { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDownloading), nameof(IsNotInstalled))]
+    [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsDownloading), nameof(IsNotInstalled), nameof(IsFailed), nameof(IsNoSpace),
+        nameof(Note), nameof(HasNote))]
     public partial ModelState State { get; set; }
 
     [ObservableProperty]
@@ -52,17 +64,16 @@ public sealed partial class TranscriptionModelViewModel(SettingsViewModel owner,
     private void Download() => owner.Download(this);
 
     [RelayCommand]
+    private void Retry() => owner.Download(this);
+
+    [RelayCommand]
     private void Delete() => owner.Delete(this);
 
     [RelayCommand]
     private void CancelDownload() => owner.Delete(this);
 }
 
-/// <summary>
-/// The settings dialog: Transcription (as designed) and MCP server (how to connect Claude); the other
-/// sections are listed but empty. Choices are saved as soon as they change. Transcription itself comes
-/// later, so outside demo mode the model table only reports which models are in the models folder.
-/// </summary>
+/// <summary>The settings dialog; each section lives in SettingsViewModel.&lt;Section&gt;.cs and saves as soon as it changes.</summary>
 public sealed partial class SettingsViewModel : ViewModelBase
 {
     public static IReadOnlyList<string> Sections { get; } = ["General", "Playback", "Export", "Transcription", "Keyboard", "MCP server"];
@@ -74,6 +85,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     private readonly EditorViewModel _editor;
     private DispatcherTimer? _downloadTimer;
     private bool _loading;
+    private AppSettings _settings = AppSettings.Default;
 
     public SettingsViewModel(EditorViewModel editor)
     {
@@ -82,6 +94,9 @@ public sealed partial class SettingsViewModel : ViewModelBase
         SectionOptions = [.. Sections.Select(name => new ChoiceOption(name, () => Section = name))];
         EngineOptions = [.. Engines.Select(e => new ChoiceOption(e, () => Engine = e))];
         DeviceOptions = [.. Devices.Select(d => new ChoiceOption(d, () => Device = d))];
+        InitGeneralPlaybackExport();
+        InitTranscriptionMcp();
+        InitKeyboard();
         Load(AppSettings.Default);
         OnSectionChanged(Section);
         var (command, args) = EditorLauncher.McpCommand();
@@ -102,18 +117,27 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     /// <summary>The section shown on the right.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsTranscription), nameof(IsMcp), nameof(IsEmptySection), nameof(SectionNote))]
+    [NotifyPropertyChangedFor(nameof(IsGeneral), nameof(IsPlayback), nameof(IsExport), nameof(IsTranscription), nameof(IsKeyboard),
+        nameof(IsMcp), nameof(SectionNote))]
     public partial string Section { get; set; } = "Transcription";
 
+    public bool IsGeneral => Section == "General";
+    public bool IsPlayback => Section == "Playback";
+    public bool IsExport => Section == "Export";
     public bool IsTranscription => Section == "Transcription";
+    public bool IsKeyboard => Section == "Keyboard";
     public bool IsMcp => Section == "MCP server";
-    public bool IsEmptySection => !IsTranscription && !IsMcp;
 
+    /// <summary>The header's line under the section name (prototype <c>SECSUB</c>).</summary>
     public string SectionNote => Section switch
     {
+        "General" => "How OurCut starts, saves your work and stores its cache.",
+        "Playback" => "Decoding, audio output and transport steps.",
+        "Export" => "The defaults the Export dialog starts with. Each export can still change them.",
         "Transcription" => "Runs locally. Claude uses the transcript to find silences, quotes and filler words.",
-        "MCP server" => "Lets Claude read and edit the timeline. Every edit shows up in the Claude panel and can be undone.",
-        _ => "Nothing to set here yet.",
+        "Keyboard" => "Select a row, then Change to record a new shortcut.",
+        "MCP server" => "Lets Claude Desktop and Claude Code open videos and edit the timeline in this window.",
+        _ => "",
     };
 
     public ObservableCollection<TranscriptionModelViewModel> Models { get; }
@@ -198,39 +222,62 @@ public sealed partial class SettingsViewModel : ViewModelBase
             _ => "Uses the GPU when one is available",
         };
 
-    public string DiskFreeText
+    /// <summary>The table header's "1.4 GB free on D:".</summary>
+    public string DiskFreeText => _space is { } s ? FormatFree(s.Free) + " free" + (s.Drive is { } d ? " on " + d : "") : "";
+
+    /// <summary>Everything the dialog saves: the loaded settings with every change since.</summary>
+    public AppSettings Current => _settings with
     {
-        get
+        Transcription = _settings.Transcription with
         {
-            if (_editor.IsDemo)
-                return "212 GB free";
-            try
-            {
-                string? root = Path.GetPathRoot(Path.GetFullPath(ModelsFolder));
-                if (root is null)
-                    return "";
-                double gb = new DriveInfo(root).AvailableFreeSpace / 1e9;
-                return gb.ToString("0", CultureInfo.InvariantCulture) + " GB free";
-            }
-            catch (Exception e) when (e is IOException or ArgumentException or UnauthorizedAccessException)
-            {
-                return "";
-            }
-        }
+            Engine = Engine,
+            Model = Model?.Value ?? "best",
+            Device = Device,
+            Language = Language,
+            ModelsFolder = ModelsFolder == AppSettingsStore.DefaultModelsFolder ? null : ModelsFolder,
+            FillerWords = Fillers.AreDefaults(FillerWords) ? null : FillerWords,
+        },
+    };
+
+    /// <summary>
+    /// The one way a section changes settings: applies <paramref name="change"/> to <see cref="Current"/> and
+    /// saves the result (not while loading).
+    /// </summary>
+    private void UpdateSettings(Func<AppSettings, AppSettings> change)
+    {
+        _settings = change(Current);
+        if (!_loading)
+            Store?.Save(_settings);
     }
+
+    // Section hooks; Load runs while _loading, so nothing is saved back.
+    partial void InitGeneralPlaybackExport();
+    partial void InitTranscriptionMcp();
+    partial void InitKeyboard();
+    partial void LoadGeneralPlaybackExport(AppSettings settings);
+    partial void LoadTranscriptionMcp(AppSettings settings);
+    partial void LoadKeyboard(AppSettings settings);
 
     public void Load(AppSettings settings)
     {
+        var fillers = FillerWords;
         _loading = true;
+        _settings = settings;
         var t = settings.Transcription;
         Engine = Engines.Contains(t.Engine) ? t.Engine : "Auto";
         Device = Devices.Contains(t.Device) ? t.Device : "Auto";
         Language = Languages.Contains(t.Language) ? t.Language : "Auto-detect";
         ModelsFolder = string.IsNullOrWhiteSpace(t.ModelsFolder) ? AppSettingsStore.DefaultModelsFolder : t.ModelsFolder;
-        ScanModels();
+        ScanModels(keepFailures: false);
         RefreshModelOptions(t.Model);
         SyncChoices();
+        SetFillerWordLists(Fillers.WithDefaults(t.FillerWords));
+        LoadGeneralPlaybackExport(settings);
+        LoadTranscriptionMcp(settings);
+        LoadKeyboard(settings);
         _loading = false;
+        if (!ReferenceEquals(fillers, FillerWords))
+            FillerWordsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void SyncChoices()
@@ -244,68 +291,53 @@ public sealed partial class SettingsViewModel : ViewModelBase
     /// <summary>Shows the design's sample settings (demo mode).</summary>
     public void LoadDemo()
     {
+        var fillers = FillerWords;
         _loading = true;
+        SetFillerWordLists(Fillers.Defaults);
         Engine = "Auto";
         Device = "Auto";
         Language = "Auto-detect";
         ModelsFolder = @"D:\OurCut\models";
-        foreach (var m in Models)
-        {
-            (m.State, m.Progress) = m.Id switch
-            {
-                "parakeet-tdt-0.6b-v3" or "whisper-large-v3-turbo" => (ModelState.Installed, 1.0),
-                "whisper-small" => (ModelState.Downloading, 0.64),
-                _ => (ModelState.NotInstalled, 0.0),
-            };
-        }
+        LoadDesignTranscription();
         RefreshModelOptions("best");
         SyncChoices();
         _loading = false;
+        if (!ReferenceEquals(fillers, FillerWords))
+            FillerWordsChanged?.Invoke(this, EventArgs.Empty);
         OnPropertyChanged(nameof(DeviceNote));
         OnPropertyChanged(nameof(DiskFreeText));
         StartDownloadTimer();
     }
 
-    public AppSettings ToSettings() =>
-        new(new TranscriptionSettings(Engine, Model?.Value ?? "best", Device, Language,
-            ModelsFolder == AppSettingsStore.DefaultModelsFolder ? null : ModelsFolder));
+    public AppSettings ToSettings() => Current;
 
-    // ---- MCP server ----------------------------------------------------------------------
+    // ---- Filler words (Settings → Transcription) -----------------------------------------------
 
-    /// <summary>The program Claude starts (this OurCut) and its arguments.</summary>
-    public string McpCommand { get; }
-    public IReadOnlyList<string> McpArgs { get; }
+    /// <summary>Filler words by language code ("en", "uk"): marked in the transcript.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyDictionary<string, IReadOnlyList<string>> FillerWords { get; private set; } = Fillers.Defaults;
 
-    /// <summary>Adds OurCut to Claude Code, for every project.</summary>
-    public string ClaudeCodeCommand => "claude mcp add --scope user ourcut -- " + string.Join(' ', McpArgs.Prepend(McpCommand).Select(Quote));
+    /// <summary>Raised after <see cref="FillerWords"/> changed: edited, or read from the settings file.</summary>
+    public event EventHandler? FillerWordsChanged;
 
-    /// <summary>The entry for Claude Desktop's claude_desktop_config.json.</summary>
-    public string ClaudeDesktopConfig =>
-        JsonSerializer.Serialize(new { mcpServers = new { ourcut = new { command = McpCommand, args = McpArgs } } }, IndentedJson);
-
-    /// <summary>Where Claude Desktop keeps its settings on this system.</summary>
-    public static string ClaudeDesktopConfigPath =>
-        OperatingSystem.IsWindows() ? @"%APPDATA%\Claude\claude_desktop_config.json"
-        : OperatingSystem.IsMacOS() ? "~/Library/Application Support/Claude/claude_desktop_config.json"
-        : "~/.config/Claude/claude_desktop_config.json";
-
-    // Relaxed escaping keeps non-ASCII paths readable (no \uXXXX); the text is only pasted into a JSON file.
-    private static readonly JsonSerializerOptions IndentedJson = new()
+    /// <summary>Replaces one language's filler words (trimmed, lower case, each once) and saves them.</summary>
+    public void SetFillerWords(string language, IEnumerable<string> words)
     {
-        WriteIndented = true,
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-    };
+        var lists = new Dictionary<string, IReadOnlyList<string>>(FillerWords, StringComparer.Ordinal) { [language] = Fillers.Clean(words) };
+        if (!SetFillerWordLists(lists))
+            return;
+        Save();
+        if (!_loading)
+            FillerWordsChanged?.Invoke(this, EventArgs.Empty);
+    }
 
-    private static string Quote(string arg) =>
-        arg.Length > 0 && !arg.Any(ch => char.IsWhiteSpace(ch) || ch is '"' or '\'' or '&' or '(' or ')' or ';') ? arg
-        : OperatingSystem.IsWindows() ? '"' + arg + '"'
-        : "'" + arg.Replace("'", "'\\''", StringComparison.Ordinal) + "'";
-
-    [RelayCommand]
-    private Task CopyClaudeCode() => CopyText?.Invoke(ClaudeCodeCommand) ?? Task.CompletedTask;
-
-    [RelayCommand]
-    private Task CopyClaudeDesktop() => CopyText?.Invoke(ClaudeDesktopConfig) ?? Task.CompletedTask;
+    private bool SetFillerWordLists(IReadOnlyDictionary<string, IReadOnlyList<string>> lists)
+    {
+        if (Fillers.Same(lists, FillerWords))
+            return false;
+        FillerWords = lists;
+        return true;
+    }
 
     partial void OnSectionChanged(string value)
     {
@@ -316,9 +348,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
     [RelayCommand]
     public void Open()
     {
-        if (!_editor.IsDemo)
-            ScanModels();
-        OnPropertyChanged(nameof(DiskFreeText));
+        ScanModels(keepFailures: true);
         IsOpen = true;
     }
 
@@ -344,10 +374,13 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     internal void Download(TranscriptionModelViewModel model)
     {
-        if (!CanManageModels || !model.IsNotInstalled)
+        if (!CanManageModels || !(model.IsNotInstalled || model.IsFailed))
             return;
-        model.Progress = 0;
+        // A failed download resumes from its partial file.
+        if (!model.IsFailed)
+            model.Progress = 0;
         model.Error = null;
+        model.ReportBytes(InstallPhase.Downloading, 0, null);
         model.State = ModelState.Downloading;
         if (_editor.IsDemo)
             StartDownloadTimer();
@@ -363,7 +396,10 @@ public sealed partial class SettingsViewModel : ViewModelBase
         var progress = new Progress<InstallProgress>(p =>
         {
             if (model.IsDownloading)
+            {
                 model.Progress = p.Fraction;
+                model.ReportBytes(p.Phase, p.Received, p.Total);
+            }
         });
         try
         {
@@ -372,6 +408,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
             model.Progress = 1;
             RefreshModelOptions(Model?.Value);
             RaiseTranscriptionChanged();
+            RefreshSpace();
         }
         catch (OperationCanceledException)
         {
@@ -379,12 +416,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
             TryDelete(() => store.DeletePartial(model.Model));
             model.State = ModelState.NotInstalled;
             model.Progress = 0;
+            RefreshSpace();
         }
         catch (ModelDownloadException e)
         {
-            model.State = ModelState.NotInstalled;
-            model.Progress = 0;
             model.Error = e.Message;
+            model.State = ModelState.Failed;
             _editor.ShowMessage($"Could not download {model.Id}: {e.Message}");
         }
         finally
@@ -406,6 +443,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
             return;
         model.State = ModelState.NotInstalled;
         model.Progress = 0;
+        RefreshSpace();
         RefreshModelOptions(Model?.Value);
     }
 
@@ -456,18 +494,27 @@ public sealed partial class SettingsViewModel : ViewModelBase
         _downloadTimer = null;
     }
 
-    /// <summary>Marks the models that are fully installed in the models folder (downloads in progress stay as they are).</summary>
-    private void ScanModels()
+    /// <summary>
+    /// Marks the models that are fully installed in the models folder (downloads in progress stay as they are, and
+    /// failed ones with <paramref name="keepFailures"/>), then which of the others fit on the disk.
+    /// </summary>
+    private void ScanModels(bool keepFailures)
     {
-        if (_editor.IsDemo)
-            return;
-        var store = InstalledModels;
-        foreach (var m in Models.Where(m => !m.IsDownloading))
+        if (!_editor.IsDemo)
         {
-            bool found = store.IsInstalled(m.Model);
-            m.State = found ? ModelState.Installed : ModelState.NotInstalled;
-            m.Progress = found ? 1 : 0;
+            RestoreCatalogModels();
+            var store = InstalledModels;
+            foreach (var m in Models.Where(m => !m.IsDownloading))
+            {
+                bool found = store.IsInstalled(m.Model);
+                if (!found && keepFailures && m.IsFailed)
+                    continue;
+                m.State = found ? ModelState.Installed : ModelState.NotInstalled;
+                m.Progress = found ? 1 : 0;
+                m.Error = null;
+            }
         }
+        RefreshSpace();
     }
 
     /// <summary>Installed models of the chosen engine; "Best available" first when the engine is Auto.</summary>
@@ -516,17 +563,12 @@ public sealed partial class SettingsViewModel : ViewModelBase
     partial void OnModelsFolderChanged(string value)
     {
         if (!_loading)
-            ScanModels();
+            ScanModels(keepFailures: false);
         RefreshModelOptions(Model?.Value);
-        OnPropertyChanged(nameof(DiskFreeText));
         Save();
     }
 
-    private void Save()
-    {
-        if (!_loading)
-            Store?.Save(ToSettings());
-    }
+    private void Save() => UpdateSettings(s => s);
 }
 
 /// <summary>An entry of the Model dropdown.</summary>

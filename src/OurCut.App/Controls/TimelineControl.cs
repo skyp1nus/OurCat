@@ -11,9 +11,10 @@ namespace OurCut.App.Controls;
 
 /// <summary>
 /// The timeline of the whole source file: ruler with scene markers, thumbnail strip with keyframe
-/// ticks, audio waveform with silence bands, clips as blue-tinted segments with in/out handles,
-/// a pulsing ring on clips Claude just changed, and the playhead.
-/// Layout follows design/project/OurCut.dc.html: ruler 22 px, video track 64 px, audio track 72 px.
+/// ticks, the transcript lane (when shown), audio waveform with silence bands, clips as blue-tinted
+/// segments with in/out handles, a pulsing ring on clips Claude just changed, and the playhead.
+/// Layout follows design/project/OurCut.dc.html: ruler 22 px, video track 64 px, transcript lane 20 px,
+/// audio track 72 px.
 /// </summary>
 public sealed class TimelineControl : Control
 {
@@ -35,9 +36,9 @@ public sealed class TimelineControl : Control
     public const double RulerHeight = 22;
     public const double VideoTop = 22;
     public const double VideoHeight = 64;
-    public const double AudioTop = 86;
+    public const double LaneTop = 86;
+    public const double LaneHeight = 20;
     public const double AudioHeight = 72;
-    public const double TotalHeight = 158;
 
     private const double SegmentInset = 2;
     private const double HandleWidth = 6;
@@ -84,8 +85,21 @@ public sealed class TimelineControl : Control
     private static readonly IPen SegmentBorderExcluded = new Pen(White(0.25), 1, new DashStyle([3, 3], 0));
     private static readonly IBrush Handle = White(0.4);
     private static readonly IBrush HandleSelected = new SolidColorBrush(Color.Parse("#F2F2F2"));
+    private static readonly IBrush LaneBg = new SolidColorBrush(Color.Parse("#0F1012"));
+    private static readonly IBrush ChunkFill = White(0.045);
+    private static readonly IBrush ChunkEdge = White(0.2);
+    private static readonly IBrush LaneWordInk = new SolidColorBrush(Color.Parse("#CECECF"));
+    private static readonly IBrush LaneFillerInk = new SolidColorBrush(Color.Parse("#9D9E9F"));
+    private static readonly IBrush LaneOutInk = new SolidColorBrush(Color.Parse("#71717A"));
+    private static readonly IBrush LaneOutStrike = new SolidColorBrush(Color.Parse("#E671717A"));
+    private static readonly IBrush LaneFillerDot = White(0.45);
+    private static readonly IBrush LaneCurrent = White(0.16);
+    private static readonly IBrush LaneSelected = new SolidColorBrush(Color.FromArgb(77, 59, 130, 246));
+    private static readonly IBrush LanePending = White(0.035);
 
     private readonly List<HitRegion> _hits = [];
+    private readonly List<(int Word, Rect Rect)> _laneHits = [];
+    private readonly Dictionary<(int Word, IBrush Ink), FormattedText> _laneText = [];
     private readonly Dictionary<int, DateTime> _recentSince = [];
     private EditorViewModel? _editor;
     private double _extentWidth;
@@ -94,6 +108,8 @@ public sealed class TimelineControl : Control
     private Drag _drag;
     private DispatcherTimer? _pulseTimer;
     private DateTime _pulseStart = DateTime.UtcNow;
+    private int _laneVersion = -1;
+    private bool _placed;
 
     static TimelineControl()
     {
@@ -125,6 +141,9 @@ public sealed class TimelineControl : Control
     /// <summary>Zoom factor from the slider position: 1× (whole file) up to frame level, exponential.</summary>
     public double Zoom => Math.Pow(MaxZoom, Math.Clamp(_editor?.ZoomLevel ?? 0, 0, 1));
 
+    private double Lane => _editor is { IsTranscriptLaneVisible: true } ? LaneHeight : 0;
+    private double AudioTop => LaneTop + Lane;
+    private double TotalHeight => 158 + Lane;
     private double Duration => _editor?.Duration ?? 0;
     private double Inner => Math.Max(Bounds.Width, Bounds.Width * Zoom);
     private double Pps => Duration > 0 ? Inner / Duration : 0;
@@ -155,6 +174,14 @@ public sealed class TimelineControl : Control
         else if (change.Property == BoundsProperty)
         {
             UpdateExtent();
+            // A zoom set before the first layout (demo screens) starts with the playhead in the middle.
+            if (!_placed && Bounds.Width > 0)
+            {
+                _placed = true;
+                double x = X(_editor?.Time ?? 0);
+                if (_editor is { HasFile: true } && (x < ScrollOffset || x > ScrollOffset + Bounds.Width))
+                    ScrollOffset = Math.Clamp(x - Bounds.Width / 2, 0, MaxScroll);
+            }
         }
     }
 
@@ -171,7 +198,7 @@ public sealed class TimelineControl : Control
             ScrollOffset = Math.Clamp(X(_editor!.Time) - anchor, 0, MaxScroll);
         }
         else if (e.PropertyName is nameof(EditorViewModel.Media) or nameof(EditorViewModel.HasFile)
-                 or nameof(EditorViewModel.PlaceholderDuration))
+                 or nameof(EditorViewModel.PlaceholderDuration) or nameof(EditorViewModel.IsTranscriptLaneVisible))
         {
             UpdateExtent();
             InvalidateVisual();
@@ -270,8 +297,14 @@ public sealed class TimelineControl : Control
         DrawRuler(context, editor, media, visible);
         DrawVideoTrack(context, editor, media, visible);
         DrawAudioTrack(context, editor, media, visible);
-        foreach (var clip in editor.Clips.OrderBy(c => c.IsSelected))
+        var clips = editor.Clips.OrderBy(c => c.IsSelected).ToList();
+        foreach (var clip in clips)
             DrawSegment(context, editor, clip, visible);
+        _laneHits.Clear();
+        if (editor.IsTranscriptLaneVisible)
+            DrawTranscriptLane(context, editor.TranscriptPanel, visible);
+        foreach (var clip in clips)
+            DrawHandles(context, clip, visible);
         DrawRings(context, editor, visible);
         DrawPlayhead(context, editor);
     }
@@ -502,9 +535,15 @@ public sealed class TimelineControl : Control
                 ctx.DrawText(label, new Point(chip.X + 5 + num.Width + 5, chip.Y + (16 - label.Height) / 2));
             }
         }
+    }
 
-        // In and out handles, straddling the segment's edges.
-        var handleBrush = sel ? HandleSelected : Handle;
+    /// <summary>In and out handles, straddling the segment's edges (over the transcript lane).</summary>
+    private void DrawHandles(DrawingContext ctx, ClipViewModel clip, Rect visible)
+    {
+        var rect = SegmentRect(clip);
+        if (rect.X > visible.Right + 10 || rect.Right < visible.Left - 10)
+            return;
+        var handleBrush = clip.IsSelected ? HandleSelected : Handle;
         double hy = rect.Center.Y - HandleHeight / 2;
         var left = new Rect(rect.X - HandleWidth / 2, hy, HandleWidth, HandleHeight);
         var right = new Rect(rect.Right - HandleWidth / 2, hy, HandleWidth, HandleHeight);
@@ -513,6 +552,106 @@ public sealed class TimelineControl : Control
         _hits.Add(new HitRegion(HitKind.TrimIn, clip) { Rect = left.Inflate(new Thickness(2, 4)) });
         _hits.Add(new HitRegion(HitKind.TrimOut, clip) { Rect = right.Inflate(new Thickness(2, 4)) });
     }
+
+    /// <summary>
+    /// The transcript lane: the words in short chunks, coloured like the Transcript tab (current, cut out, filler,
+    /// selected), a hatch where transcription has not got to yet, or a note while there is no transcript.
+    /// </summary>
+    private void DrawTranscriptLane(DrawingContext ctx, TranscriptPanelViewModel panel, Rect visible)
+    {
+        ctx.FillRectangle(LaneBg, new Rect(visible.Left, LaneTop, visible.Width, LaneHeight));
+        ctx.FillRectangle(TrackLine, new Rect(visible.Left, LaneTop, visible.Width, 1));
+        if (!panel.HasText)
+        {
+            if (panel.LaneMessage is { } message)
+                DrawLaneLabel(ctx, message, visible.Left + 10);
+            return;
+        }
+        if (_laneVersion != panel.LayoutVersion || _laneText.Count > 4000)
+        {
+            _laneText.Clear();
+            _laneVersion = panel.LayoutVersion;
+        }
+        var chunks = panel.LaneChunks;
+        var words = panel.Words;
+        double from = T(visible.Left);
+        int lo = 0, hi = chunks.Count;
+        while (lo < hi)
+        {
+            int mid = (lo + hi) / 2;
+            if (chunks[mid].End < from)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        for (int c = lo; c < chunks.Count; c++)
+        {
+            var chunk = chunks[c];
+            double x = X(chunk.Start);
+            if (x > visible.Right)
+                break;
+            var box = new Rect(x, LaneTop + 3, Math.Max(1, X(chunk.End) - x), 14);
+            var shape = new RoundedRect(box, 3);
+            using var clip = ctx.PushClip(shape);
+            ctx.FillRectangle(ChunkFill, box);
+            ctx.FillRectangle(ChunkEdge, new Rect(box.X, box.Y, 1, box.Height));
+            if (box.Width < 8)
+                continue;
+            double wx = box.X + 3;
+            for (int i = chunk.FirstWord; i < chunk.FirstWord + chunk.WordCount && i < words.Count && wx < box.Right; i++)
+            {
+                var word = words[i];
+                var ink = word.IsCurrent ? Brushes.White : word.IsOut ? LaneOutInk : word.IsFiller ? LaneFillerInk : LaneWordInk;
+                if (!_laneText.TryGetValue((i, ink), out var text))
+                    _laneText[(i, ink)] = text = Text(word.Text, SansFace(FontWeight.Normal), 10, ink);
+                double width = text.WidthIncludingTrailingWhitespace;
+                var wordBox = new Rect(wx, box.Y, width, box.Height);
+                if ((word.IsSelected ? LaneSelected : word.IsCurrent ? LaneCurrent : null) is { } highlight)
+                    ctx.DrawRectangle(highlight, null, new RoundedRect(wordBox, 2));
+                double top = box.Y + (box.Height - text.Height) / 2;
+                ctx.DrawText(text, new Point(wx, top));
+                if (word.IsOut)
+                {
+                    ctx.FillRectangle(LaneOutStrike, new Rect(wx, Math.Round(box.Center.Y), width, 1));
+                }
+                else if (word.IsFiller)
+                {
+                    double y = Math.Round(top + text.Baseline + 2);
+                    for (double dx = 0; dx < width; dx += 2)
+                        ctx.FillRectangle(LaneFillerDot, new Rect(wx + dx, y, 1, 1));
+                }
+                _laneHits.Add((i, wordBox.Intersect(box)));
+                wx += width + 3;
+            }
+        }
+        if (panel.IsRunning)
+        {
+            double x = X(panel.TranscribedUntil);
+            var pending = new Rect(x, LaneTop, Math.Max(0, Inner - x), LaneHeight);
+            Hatch.Draw(ctx, pending, visible, LanePending, 6, 2);
+            if (x < visible.Right)
+                DrawLaneLabel(ctx, "transcribing…", Math.Max(x, visible.Left) + 6);
+        }
+    }
+
+    private static void DrawLaneLabel(DrawingContext ctx, string label, double x)
+    {
+        var text = Text(label, SansFace(FontWeight.Normal), 10, EmptyText);
+        ctx.DrawText(text, new Point(x, LaneTop + (LaneHeight - text.Height) / 2));
+    }
+
+    /// <summary>The lane word at a point of the content, or -1.</summary>
+    private int LaneWordAt(Point content)
+    {
+        foreach (var (word, rect) in _laneHits)
+        {
+            if (rect.Contains(content))
+                return word;
+        }
+        return -1;
+    }
+
+    private bool InLane(Point p) => _editor is { IsTranscriptLaneVisible: true } && p.Y >= LaneTop && p.Y < LaneTop + LaneHeight;
 
     /// <summary>Thin blue rings on clips Claude is editing or just changed ("ocPulse" in the design).</summary>
     private void DrawRings(DrawingContext ctx, EditorViewModel editor, Rect visible)
@@ -591,7 +730,22 @@ public sealed class TimelineControl : Control
         var p = e.GetPosition(this);
         double t = Math.Clamp(T(p.X + ScrollOffset), 0, Duration);
         var hit = HitTest(p);
-        if (editor.Tool == TimelineTool.Split && hit is { Clip: { } target } && p.Y > RulerHeight)
+        if (InLane(p) && hit?.Kind is not (HitKind.TrimIn or HitKind.TrimOut))
+        {
+            // The lane never splits or trims: a word moves the playhead to it, anywhere else scrubs.
+            int word = LaneWordAt(new Point(p.X + ScrollOffset, p.Y));
+            if (word >= 0)
+            {
+                editor.TranscriptPanel.SeekToWord(word);
+            }
+            else
+            {
+                _drag = new Drag(DragKind.Scrub, null, p.X, 0, null);
+                editor.ScrubTo(t, select: true);
+                e.Pointer.Capture(this);
+            }
+        }
+        else if (editor.Tool == TimelineTool.Split && hit is { Clip: { } target } && p.Y > RulerHeight)
         {
             editor.SplitAt(target, t);
         }
@@ -633,6 +787,11 @@ public sealed class TimelineControl : Control
         }
 
         var hit = editor.HasFile ? HitTest(p) : null;
+        if (InLane(p) && hit?.Kind is not (HitKind.TrimIn or HitKind.TrimOut))
+        {
+            Cursor = LaneWordAt(new Point(p.X + ScrollOffset, p.Y)) >= 0 ? new Cursor(StandardCursorType.Hand) : Cursor.Default;
+            return;
+        }
         Cursor = editor.Tool == TimelineTool.Split && hit is not null && p.Y > RulerHeight ? new Cursor(StandardCursorType.Cross)
             : hit?.Kind is HitKind.TrimIn or HitKind.TrimOut ? new Cursor(StandardCursorType.SizeWestEast)
             : hit is not null ? new Cursor(StandardCursorType.Hand)

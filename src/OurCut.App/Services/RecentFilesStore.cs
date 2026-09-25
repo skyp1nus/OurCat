@@ -38,11 +38,19 @@ public sealed class RecentFilesStore(string file)
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var list = Load().Where(r => !string.Equals(r.Path, full, comparison)).ToList();
         list.Insert(0, new RecentFile(full, duration, openedUtc ?? DateTime.UtcNow));
+        Write([.. list.Take(Capacity)]);
+    }
+
+    /// <summary>Forgets every file.</summary>
+    public void Clear() => Write([]);
+
+    private void Write(List<RecentFile> list)
+    {
         try
         {
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(File)!);
             string temp = File + ".tmp";
-            System.IO.File.WriteAllBytes(temp, JsonSerializer.SerializeToUtf8Bytes(list.Take(Capacity).ToList(), RecentFilesJson.Default.ListRecentFile));
+            System.IO.File.WriteAllBytes(temp, JsonSerializer.SerializeToUtf8Bytes(list, RecentFilesJson.Default.ListRecentFile));
             System.IO.File.Move(temp, File, overwrite: true);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

@@ -101,14 +101,14 @@ internal sealed class FakeEditor : IEditorHost, IEditorContext, IDisposable
     private ExportState? _export;
     private int _exportReadsLeft;
 
-    public string? StartExport(ExportRequest request)
+    public Task<string?> StartExportAsync(ExportRequest request, CancellationToken cancellationToken)
     {
         if (ExportRefusal is { } refusal)
-            return refusal;
+            return Task.FromResult<string?>(refusal);
         LastExport = request;
         _export = new ExportState("running", 0.1, ["/videos/keynote-cut.mp4"], null, "Lossless copy · MP4 · merged");
         _exportReadsLeft = ExportReads;
-        return null;
+        return Task.FromResult<string?>(null);
     }
 
     public ExportState? Export

@@ -210,7 +210,7 @@ public class EditorViewModelTests
     {
         Assert.Equal("MCP · Claude connected", Sample().McpText);
         Assert.Equal("MCP · Claude editing", App.CreateEditor(DesignScreen.Ai).McpText);
-        Assert.Equal("MCP · not running", App.CreateEditor(null).McpText);
+        Assert.Equal("MCP · Off", App.CreateEditor(null).McpText);
     }
 
     [AvaloniaFact]

@@ -18,7 +18,7 @@
             <TextBlock Grid.Column="1" Text="{Binding HeaderSummary}" Foreground="{StaticResource MutedBrush}" Margin="10,0,0,0"
                        VerticalAlignment="Center" />
             <Button Grid.Column="3" Classes="ghost bright" Width="26" Height="26" CornerRadius="6" Foreground="{StaticResource Text4Brush}"
-                    ToolTip.Tip="Close (Esc)" Command="{Binding CloseCommand}">
+                    ToolTip.Tip="Close (Esc)" Command="{Binding DismissCommand}">
               <c:SvgIcon Data="{StaticResource IconClose10}" ViewBox="10" StrokeWidth="1.2" LineCap="Flat" Width="10" Height="10" />
             </Button>
           </Grid>

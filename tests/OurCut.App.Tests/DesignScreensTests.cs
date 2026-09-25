@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;
@@ -10,52 +11,54 @@ using OurCut.App.Views;
 namespace OurCut.App.Tests;
 
 /// <summary>
-/// Renders each screen of the design with its sample data at the design size (1440×900) and
-/// saves a screenshot to artifacts/screenshots/ for comparison with design/project/OurCut.dc.html.
+/// Renders every screen of the design with its sample data at the design size (1440×900) and
+/// saves a screenshot to artifacts/screenshots/ (named as <c>--demo</c> takes it) for comparison with design/project/OurCut.dc.html.
 /// </summary>
 public class DesignScreensTests
 {
+    public static TheoryData<DesignScreen> Screens { get; } = new(Enum.GetValues<DesignScreen>());
+
     [AvaloniaTheory]
-    [InlineData(DesignScreen.Empty)]
-    [InlineData(DesignScreen.Editing)]
-    [InlineData(DesignScreen.Ai)]
-    [InlineData(DesignScreen.Export)]
-    [InlineData(DesignScreen.Exporting)]
-    [InlineData(DesignScreen.Settings)]
+    [MemberData(nameof(Screens))]
     public void Design_screen_renders_at_design_size(DesignScreen screen)
     {
         var editor = App.CreateEditor(screen);
         var window = new MainWindow { DataContext = editor, Width = 1440, Height = 900 };
         window.Show();
-        Dispatcher.UIThread.RunJobs();
-        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        // Twice: the keyboard screens focus and scroll their row into view in a posted job.
+        for (int i = 0; i < 2; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        }
+        // Back to the design's 34 % and 45 % in case the simulated transcription or export ticked meanwhile.
+        if (screen == DesignScreen.Transcribing)
+        {
+            ((DesignSample)editor.Media!).StartTranscribing(0.34);
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        }
+        if (screen == DesignScreen.ClaudeExporting)
+        {
+            editor.Export.Progress = 0.45;
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        }
 
         using var frame = window.CaptureRenderedFrame();
 
         Assert.NotNull(frame);
         Assert.Equal(1440, frame!.PixelSize.Width);
         Assert.Equal(900, frame.PixelSize.Height);
-        frame.Save(Path.Combine(Screenshots.Directory, $"{screen.ToString().ToLowerInvariant()}.png"), new PngBitmapEncoderOptions());
+        frame.Save(Path.Combine(Screenshots.Directory, Screenshots.Name(screen) + ".png"), new PngBitmapEncoderOptions());
         window.Close();
     }
-}
 
-public class SettingsScreensTests
-{
-    [AvaloniaFact]
-    public void The_MCP_server_section_renders()
+    [Fact]
+    public void Screenshot_names_are_the_demo_arguments()
     {
-        var editor = App.CreateEditor(DesignScreen.Settings);
-        editor.Settings.SectionOptions.Single(o => o.Label == "MCP server").PickCommand.Execute(null);
-        var window = new MainWindow { DataContext = editor, Width = 1440, Height = 900 };
-        window.Show();
-        Dispatcher.UIThread.RunJobs();
-        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-
-        using var frame = window.CaptureRenderedFrame();
-        Assert.NotNull(frame);
-        frame!.Save(Path.Combine(Screenshots.Directory, "settings-mcp.png"), new PngBitmapEncoderOptions());
-        window.Close();
+        Assert.Equal("claude-export-failed", Screenshots.Name(DesignScreen.ClaudeExportFailed));
+        foreach (var screen in Enum.GetValues<DesignScreen>())
+            Assert.Equal(screen, App.ParseDemoScreen(["--demo", Screenshots.Name(screen)]));
     }
 }
 
@@ -83,9 +86,15 @@ public class TimelineZoomTests
     }
 }
 
-internal static class Screenshots
+internal static partial class Screenshots
 {
     public static string Directory { get; } = Create();
+
+    /// <summary>"claude-export-failed" for <see cref="DesignScreen.ClaudeExportFailed"/>.</summary>
+    public static string Name(DesignScreen screen) => WordStart().Replace(screen.ToString(), "-$1").ToLowerInvariant();
+
+    [GeneratedRegex("(?<=[a-z])([A-Z])")]
+    private static partial Regex WordStart();
 
     private static string Create()
     {

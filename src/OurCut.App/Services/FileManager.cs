@@ -30,4 +30,20 @@ public static class FileManager
             // No file manager available; nothing useful to do.
         }
     }
+
+    /// <summary>Opens a file in its default app.</summary>
+    public static void Open(string path)
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true })?.Dispose();
+            else
+                Process.Start(new ProcessStartInfo(OperatingSystem.IsMacOS() ? "open" : "xdg-open") { ArgumentList = { path }, UseShellExecute = false })?.Dispose();
+        }
+        catch (Exception e) when (e is Win32Exception or InvalidOperationException)
+        {
+            // No app for the file; nothing useful to do.
+        }
+    }
 }

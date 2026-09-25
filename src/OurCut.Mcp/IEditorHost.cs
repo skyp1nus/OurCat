@@ -56,10 +56,11 @@ public interface IEditorContext
     string? StartTranscription();
 
     /// <summary>
-    /// Starts exporting the included clips with the Export dialog's settings, changed where
-    /// <paramref name="request"/> says, showing the progress in the editor. Returns why it cannot start, or null.
+    /// Starts exporting the included clips with the Export dialog's settings, changed where <paramref name="request"/> says;
+    /// the editor shows the progress in its Claude panel. May first wait for the user to allow it.
+    /// Returns why it cannot start or why the user declined, or null.
     /// </summary>
-    string? StartExport(ExportRequest request);
+    Task<string?> StartExportAsync(ExportRequest request, CancellationToken cancellationToken);
 
     /// <summary>The running export, or how the latest one ended; null if there was none.</summary>
     ExportState? Export { get; }

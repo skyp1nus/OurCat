@@ -45,10 +45,17 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     public EditorViewModel()
     {
-        Claude = new ClaudePanelViewModel();
         Export = new ExportViewModel(this);
+        Claude = new ClaudePanelViewModel(new ClaudeExportViewModel(this));
         Settings = new SettingsViewModel(this);
-        Settings.TranscriptionChanged += (_, _) => StartTranscription();
+        TranscriptPanel = CreateTranscriptPanel();
+        // With "transcribe when opened" off, only a transcript someone asked for (or the tab's Download) is started.
+        Settings.TranscriptionChanged += (_, _) =>
+        {
+            if ((Settings.TranscribeOnOpen || TranscriptPanel.TranscribeWhenInstalled || Media is { TranscriptState: not TranscriptState.None })
+                && StartTranscription() is null)
+                TranscriptPanel.TranscribeWhenInstalled = false;
+        };
         Session.Changed += OnSessionChanged;
         PropertyChanged += (_, e) =>
         {
@@ -67,7 +74,8 @@ public sealed partial class EditorViewModel : ViewModelBase
         };
         Export.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(ExportViewModel.Stage) or nameof(ExportViewModel.Progress) or nameof(ExportViewModel.Mode))
+            if (e.PropertyName is nameof(ExportViewModel.Stage) or nameof(ExportViewModel.Progress) or nameof(ExportViewModel.Mode)
+                or nameof(ExportViewModel.ErrorText) or nameof(ExportViewModel.IsInProgress))
             {
                 OnPropertyChanged(nameof(ExportButtonText));
                 OnPropertyChanged(nameof(StatusRight));
@@ -140,7 +148,12 @@ public sealed partial class EditorViewModel : ViewModelBase
         if (IsDemo)
         {
             RecentFiles.Clear();
+            // A demo run has no MCP server; its connection was the design's.
             Claude.IsConnected = false;
+            Claude.IsListening = false;
+            Claude.ConnectedSince = null;
+            Claude.ClientName = null;
+            Claude.OtherWindowProject = null;
         }
         IsDemo = false;
         Claude.Log.Clear();
@@ -371,13 +384,14 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     public bool IsClaudeBusy => Claude.IsBusy;
 
-    /// <summary>The MCP badge: "MCP · Claude connected", "MCP · Claude editing", "MCP · waiting for Claude" or "MCP · not running".</summary>
+    /// <summary>The MCP badge: "MCP · Off", "MCP · Waiting for Claude", "MCP · Claude connected", "MCP · Claude editing" or "MCP · In another window".</summary>
     public string McpText => Claude.McpText;
 
     /// <summary>Export needs an open file and at least one included clip.</summary>
     public bool CanExport => HasFile && Session.Project.IncludedClips.Any();
 
-    public string ExportButtonText => Export.IsExporting ? "Exporting" : "Export";
+    /// <summary>The title bar's pill: "Exporting 45%" while an export runs, shown or not.</summary>
+    public string ExportButtonText => Export.IsInProgress ? "Exporting " + Export.PercentText : "Export";
 
     /// <summary>ffmpeg availability shown in the status bar before a file is open.</summary>
     [ObservableProperty]
@@ -423,7 +437,7 @@ public sealed partial class EditorViewModel : ViewModelBase
             if (!HasFile)
                 return ToolStatus.Contains("not found", StringComparison.Ordinal) ? "No file open  ·  " + ToolStatus : "No file open";
             string text = MediaInfoText;
-            if (Media?.Activity is { } activity)
+            if (AnalysisActivity is { } activity)
                 text += "  ·  " + activity;
             return IsDemo ? text : text + "  ·  " + SaveStateText;
         }
@@ -473,7 +487,8 @@ public sealed partial class EditorViewModel : ViewModelBase
             _ = LoadPlayerAsync(source.Path);
         else
             UnloadPlayer();
-        StartTranscription();
+        if (Settings.TranscribeOnOpen)
+            StartTranscription();
     }
 
     /// <summary>Makes the recognizer (tests use a fake); sherpa-onnx if null.</summary>
@@ -839,7 +854,7 @@ public sealed partial class EditorViewModel : ViewModelBase
 
     private void ScheduleAutosave()
     {
-        if (ProjectPath is null || IsDemo)
+        if (!AutosaveEnabled || ProjectPath is null || IsDemo)
             return;
         _autosaveTimer?.Stop();
         _autosaveTimer = new DispatcherTimer(AutosaveDelay, DispatcherPriority.Background, async (_, _) =>
@@ -886,13 +901,22 @@ public sealed partial class EditorViewModel : ViewModelBase
                 StopPlayback();
                 return;
             }
-            SetTime(t);
+            _timeFromPlayer = true;
+            try
+            {
+                SetTime(t);
+            }
+            finally
+            {
+                _timeFromPlayer = false;
+            }
         });
         _playTimer.Start();
     }
 
     private void StopPlayback()
     {
+        _playUntil = null;
         _playTimer?.Stop();
         _playTimer = null;
         if (HasPlayback && IsPlaying)
@@ -1237,6 +1261,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         OnPropertyChanged(nameof(CurrentClipLabel));
         OnPropertyChanged(nameof(IsCurrentClipAi));
         RaiseTimelineChanged();
+        CheckPlayUntil();
     }
 
     /// <summary>A new time set by the user (not by the player) moves the player there.</summary>
