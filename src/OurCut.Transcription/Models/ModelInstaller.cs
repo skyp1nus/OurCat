@@ -75,7 +75,8 @@ public sealed class ModelInstaller(HttpClient http, Func<string, long?>? freeSpa
         if (archive)
         {
             long size = new FileInfo(download).Length;
-            await Task.Run(() => Unpack(download, staging, read =>
+            var keep = model.Files.ToHashSet(StringComparer.Ordinal);
+            await Task.Run(() => Unpack(download, staging, name => keep.Contains(name) || name.StartsWith("test_wavs/", StringComparison.Ordinal), read =>
                 progress?.Report(new InstallProgress(InstallPhase.Unpacking, downloadShare + UnpackShare * read / Math.Max(1, size), size, size)),
                 cancellationToken), cancellationToken).ConfigureAwait(false);
             File.Delete(download);
@@ -221,10 +222,12 @@ public sealed class ModelInstaller(HttpClient http, Func<string, long?>? freeSpa
     }
 
     /// <summary>
-    /// Unpacks a .tar.bz2 into <paramref name="destination"/>, dropping the archive's top folder. Entries that
-    /// would land outside the destination are refused.
+    /// Unpacks a .tar.bz2 into <paramref name="destination"/>, dropping the archive's top folder and skipping files
+    /// <paramref name="wanted"/> turns down (e.g. full-precision copies of an int8 model). Entries that would land
+    /// outside the destination are refused.
     /// </summary>
-    internal static void Unpack(string archive, string destination, Action<long>? compressedRead, CancellationToken cancellationToken)
+    internal static void Unpack(string archive, string destination, Func<string, bool> wanted, Action<long>? compressedRead,
+        CancellationToken cancellationToken)
     {
         string root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
         try
@@ -240,7 +243,7 @@ public sealed class ModelInstaller(HttpClient http, Func<string, long?>? freeSpa
                 string name = entry.Name.Replace('\\', '/');
                 int slash = name.IndexOf('/', StringComparison.Ordinal);
                 string relative = slash >= 0 ? name[(slash + 1)..] : name;
-                if (relative.Length == 0)
+                if (relative.Length == 0 || !wanted(relative))
                     continue;
                 string target = Path.GetFullPath(Path.Combine(root, relative));
                 if (!target.StartsWith(root, StringComparison.Ordinal))

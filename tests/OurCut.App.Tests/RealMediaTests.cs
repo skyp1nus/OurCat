@@ -9,6 +9,8 @@ using OurCut.Media;
 using OurCut.Media.Caching;
 using OurCut.Media.Probing;
 using OurCut.Media.Tools;
+using OurCut.Transcription;
+using OurCut.Transcription.Models;
 
 namespace OurCut.App.Tests;
 
@@ -51,10 +53,13 @@ public sealed class RealMediaTests : IDisposable
         return path;
     }
 
-    private async Task<(EditorViewModel Editor, MainWindow Window)> OpenAsync(string video)
+    private async Task<(EditorViewModel Editor, MainWindow Window)> OpenAsync(string video, Action<EditorViewModel>? prepare = null)
     {
         var editor = App.CreateEditor(null, new FfmpegMediaOpener(new MediaCache(Path.Combine(_dir, "cache"))),
             new RecentFilesStore(Path.Combine(_dir, "recent.json")));
+        // No transcription unless a test asks for it (the default models folder may have real models).
+        editor.Settings.ModelsFolder = Directory.CreateDirectory(Path.Combine(_dir, "no-models")).FullName;
+        prepare?.Invoke(editor);
         var window = new MainWindow { DataContext = editor, Width = 1440, Height = 900 };
         window.Show();
         await editor.OpenMediaAsync(video);
@@ -66,9 +71,9 @@ public sealed class RealMediaTests : IDisposable
         return (editor, window);
     }
 
-    private static async Task PumpUntil(Func<bool> done)
+    private static async Task PumpUntil(Func<bool> done, int tries = 200)
     {
-        for (int i = 0; i < 200 && !done(); i++)
+        for (int i = 0; i < tries && !done(); i++)
         {
             await Task.Delay(25, Ct);
             Dispatcher.UIThread.RunJobs();
@@ -161,6 +166,96 @@ public sealed class RealMediaTests : IDisposable
         Dispatcher.UIThread.RunJobs();
         using var frame = window.CaptureRenderedFrame();
         frame!.Save(Path.Combine(Screenshots.Directory, "silences-scenes.png"), new PngBitmapEncoderOptions());
+        window.Close();
+    }
+
+    /// <summary>Says "word1", "word2"… one per piece, and counts the pieces.</summary>
+    private sealed class FakeRecognizer : ISpeechRecognizer
+    {
+        public static int Pieces;
+
+        public IReadOnlyList<Word> Recognize(float[] samples, double offset)
+        {
+            int n = Interlocked.Increment(ref Pieces);
+            return [new Word($"word{n}", offset + 0.5, offset + 1)];
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>A models folder where the model counts as installed (its files exist, empty).</summary>
+    private string FakeModels(TranscriptionModel model)
+    {
+        string models = Path.Combine(_dir, "models");
+        string dir = Directory.CreateDirectory(Path.Combine(models, model.Id)).FullName;
+        foreach (string f in model.Files)
+            File.WriteAllText(Path.Combine(dir, f), "");
+        return models;
+    }
+
+    [AvaloniaFact]
+    public async Task A_video_is_transcribed_after_the_analysis_and_the_transcript_is_cached()
+    {
+        string video = await SampleAsync();
+        string models = FakeModels(ModelCatalog.Parakeet);
+        FakeRecognizer.Pieces = 0;
+        void Prepare(EditorViewModel e)
+        {
+            e.Settings.ModelsFolder = models;
+            e.RecognizerFactory = _ => new FakeRecognizer();
+        }
+
+        var (editor, window) = await OpenAsync(video, Prepare);
+        await PumpUntil(() => editor.Media!.TranscriptState == TranscriptState.Done);
+
+        var transcript = editor.Media!.Transcript!;
+        Assert.Equal("parakeet-tdt-0.6b-v3", transcript.Model);
+        Assert.Equal(["word1"], transcript.Words.Select(w => w.Text));
+        Assert.Equal(1, FakeRecognizer.Pieces);
+        window.Close();
+
+        // Opened again: read from the cache, not recognized again.
+        var (again, w2) = await OpenAsync(video, Prepare);
+        await PumpUntil(() => again.Media!.TranscriptState == TranscriptState.Done);
+        Assert.Equal(["word1"], again.Media!.Transcript!.Words.Select(w => w.Text));
+        Assert.Equal(1, FakeRecognizer.Pieces);
+        w2.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Without_a_model_there_is_no_transcription()
+    {
+        string video = await SampleAsync();
+        var (editor, window) = await OpenAsync(video);
+        Assert.Contains("No transcription model", editor.StartTranscription(), StringComparison.Ordinal);
+        Assert.Equal(TranscriptState.None, editor.Media!.TranscriptState);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Parakeet_transcribes_a_real_video()
+    {
+        string? models = Environment.GetEnvironmentVariable("OURCUT_MODELS_DIR");
+        Assert.SkipUnless(models is { Length: > 0 } && new ModelStore(models).IsInstalled(ModelCatalog.Parakeet),
+            "Parakeet is not installed in OURCUT_MODELS_DIR.");
+        await SampleAsync();
+        string speech = Path.Combine(new ModelStore(models!).DirectoryOf(ModelCatalog.Parakeet), "test_wavs", "en.wav");
+        string video = Path.Combine(_dir, "speech.mp4");
+        await Task.Run(() => ToolProcess.RunAsync("ffmpeg",
+        [
+            "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-i", speech, "-af", "adelay=2000,apad=pad_dur=2",
+            "-shortest", "-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac", "-y", video,
+        ], null, Ct), Ct);
+
+        var (editor, window) = await OpenAsync(video, e => e.Settings.ModelsFolder = models!);
+        await PumpUntil(() => editor.Media!.TranscriptState is TranscriptState.Done or TranscriptState.Failed, 1500);
+
+        var transcript = editor.Media!.Transcript!;
+        Assert.Contains("ask not what your country can do for you", transcript.Text, StringComparison.OrdinalIgnoreCase);
+        // The speech starts 2 s in.
+        Assert.Equal(2, transcript.Words[0].Start, 0.4);
         window.Close();
     }
 

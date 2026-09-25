@@ -149,6 +149,46 @@ public sealed partial class SettingsViewModel : ViewModelBase
 
     private ModelStore InstalledModels => new(ModelsFolder);
 
+    /// <summary>
+    /// The model transcription uses: the chosen one, or with "Best available" the first installed one of the chosen
+    /// engine (the table is ordered best first); null when none is installed (and always in demo mode).
+    /// </summary>
+    public TranscriptionModel? ActiveModel
+    {
+        get
+        {
+            if (_editor.IsDemo)
+                return null;
+            var installed = Models.Where(m => m.IsInstalled && (Engine == "Auto" || m.Engine == Engine)).ToList();
+            return (Model?.Value is null or "best" ? installed.FirstOrDefault() : installed.FirstOrDefault(m => m.Id == Model.Value))?.Model;
+        }
+    }
+
+    /// <summary>Where a model is installed.</summary>
+    public string DirectoryOf(TranscriptionModel model) => InstalledModels.DirectoryOf(model);
+
+    /// <summary>The chosen language as a two-letter code, or null for detection.</summary>
+    public string? LanguageCode => Language switch
+    {
+        "English" => "en",
+        "German" => "de",
+        "Spanish" => "es",
+        "French" => "fr",
+        "Japanese" => "ja",
+        "Portuguese" => "pt",
+        "Ukrainian" => "uk",
+        _ => null,
+    };
+
+    /// <summary>The model or language transcription should use changed, or a model finished installing.</summary>
+    public event EventHandler? TranscriptionChanged;
+
+    private void RaiseTranscriptionChanged()
+    {
+        if (!_loading)
+            TranscriptionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public string DeviceNote => _editor.IsDemo
         ? (Device == "CPU" ? "16 threads · ~4× slower" : "NVIDIA RTX 4070 · CUDA 12.4")
         : Device switch
@@ -331,6 +371,7 @@ public sealed partial class SettingsViewModel : ViewModelBase
             model.State = ModelState.Installed;
             model.Progress = 1;
             RefreshModelOptions(Model?.Value);
+            RaiseTranscriptionChanged();
         }
         catch (OperationCanceledException)
         {
@@ -460,9 +501,17 @@ public sealed partial class SettingsViewModel : ViewModelBase
         Save();
     }
 
-    partial void OnLanguageChanged(string value) => Save();
+    partial void OnLanguageChanged(string value)
+    {
+        Save();
+        RaiseTranscriptionChanged();
+    }
 
-    partial void OnModelChanged(ModelOption? value) => Save();
+    partial void OnModelChanged(ModelOption? value)
+    {
+        Save();
+        RaiseTranscriptionChanged();
+    }
 
     partial void OnModelsFolderChanged(string value)
     {
