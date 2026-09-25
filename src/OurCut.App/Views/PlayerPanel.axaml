@@ -36,25 +36,28 @@
             <!-- Recently opened files (not in the design, kept from Phase 1). -->
             <StackPanel Width="400" Spacing="2" IsVisible="{Binding HasRecentFiles}">
               <TextBlock Text="Recent" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="10,0,10,4" />
-              <ItemsControl ItemsSource="{Binding RecentFiles}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:RecentFileViewModel">
-                    <Button Classes="recent" Height="28" Padding="10,0" CornerRadius="6" HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Stretch" FontWeight="Normal"
-                            Command="{Binding $parent[UserControl].((vm:EditorViewModel)DataContext).OpenRecentCommand}"
-                            CommandParameter="{Binding}" ToolTip.Tip="{Binding Path}">
-                      <Grid ColumnDefinitions="*,Auto,Auto">
-                        <TextBlock Classes="mono" Text="{Binding Name}" FontSize="11.5" Foreground="{StaticResource Text2Brush}"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Grid.Column="1" Classes="mono" Text="{Binding DurationText}" FontSize="11"
-                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0,0,0" />
-                        <TextBlock Grid.Column="2" Text="{Binding WhenText}" FontSize="11" Width="70" TextAlignment="Right"
-                                   Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0,0,0" />
-                      </Grid>
-                    </Button>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
+              <!-- Up to 20 files (Settings → General); eight rows show, the rest scroll. -->
+              <ScrollViewer MaxHeight="224" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding RecentFiles}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:RecentFileViewModel">
+                      <Button Classes="recent" Height="28" Padding="10,0" CornerRadius="6" HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch" FontWeight="Normal"
+                              Command="{Binding $parent[UserControl].((vm:EditorViewModel)DataContext).OpenRecentCommand}"
+                              CommandParameter="{Binding}" ToolTip.Tip="{Binding Path}">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                          <TextBlock Classes="mono" Text="{Binding Name}" FontSize="11.5" Foreground="{StaticResource Text2Brush}"
+                                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                          <TextBlock Grid.Column="1" Classes="mono" Text="{Binding DurationText}" FontSize="11"
+                                     Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0,0,0" />
+                          <TextBlock Grid.Column="2" Text="{Binding WhenText}" FontSize="11" Width="70" TextAlignment="Right"
+                                     Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0,0,0" />
+                        </Grid>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
             </StackPanel>
           </StackPanel>
         </Panel>

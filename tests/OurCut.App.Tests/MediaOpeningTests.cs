@@ -151,14 +151,21 @@ public sealed class RecentFilesTests : IDisposable
     }
 
     [Fact]
-    public void Keeps_at_most_eight_files()
+    public void Lists_up_to_the_limit_and_keeps_twenty()
     {
         var store = new RecentFilesStore(Path.Combine(_dir, "recent.json"));
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 25; i++)
             store.Add(NewFile($"{i}.mp4"), i);
-        var list = store.Load();
-        Assert.Equal(RecentFilesStore.Capacity, list.Count);
-        Assert.Equal("11.mp4", Path.GetFileName(list[0].Path));
+
+        Assert.Equal(10, store.Load().Count);
+        Assert.Equal("24.mp4", Path.GetFileName(store.Load()[0].Path));
+        store.Limit = 5;
+        Assert.Equal(5, store.Load().Count);
+        // A smaller limit hides files without forgetting them.
+        store.Add(NewFile("25.mp4"), 25);
+        store.Limit = 20;
+        Assert.Equal(RecentFilesStore.Capacity, store.Load().Count);
+        Assert.Equal("6.mp4", Path.GetFileName(store.Load()[^1].Path));
     }
 
     [Fact]
