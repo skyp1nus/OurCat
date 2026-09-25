@@ -13,6 +13,8 @@ using OurCut.Core.Serialization;
 using OurCut.Core.Time;
 using OurCut.Media.Playback;
 using OurCut.Media.Tools;
+using OurCut.Transcription;
+using OurCut.Transcription.Models;
 
 namespace OurCut.App.ViewModels;
 
@@ -46,6 +48,7 @@ public sealed partial class EditorViewModel : ViewModelBase
         Claude = new ClaudePanelViewModel();
         Export = new ExportViewModel(this);
         Settings = new SettingsViewModel(this);
+        Settings.TranscriptionChanged += (_, _) => StartTranscription();
         Session.Changed += OnSessionChanged;
         PropertyChanged += (_, e) =>
         {
@@ -470,6 +473,27 @@ public sealed partial class EditorViewModel : ViewModelBase
             _ = LoadPlayerAsync(source.Path);
         else
             UnloadPlayer();
+        StartTranscription();
+    }
+
+    /// <summary>Makes the recognizer (tests use a fake); sherpa-onnx if null.</summary>
+    public Func<TranscriptionSetup, ISpeechRecognizer>? RecognizerFactory { get; set; }
+
+    /// <summary>
+    /// Transcribes the open file with the model chosen in Settings → Transcription (in the background, after the
+    /// rest of the analysis), unless that transcript is done or under way. Returns why it cannot, or null.
+    /// </summary>
+    public string? StartTranscription()
+    {
+        if (IsDemo || !HasFile || Media is not { } media)
+            return "No video is open.";
+        if (Settings.ActiveModel is not { } model)
+            return "No transcription model is installed. The user can download one in Settings → Transcription (parakeet-tdt-0.6b-v3 is recommended).";
+        var setup = new TranscriptionSetup(model, Settings.DirectoryOf(model), Settings.LanguageCode ?? ModelCatalog.OnlyLanguage(model));
+        if (RecognizerFactory is { } factory)
+            setup = setup with { CreateRecognizer = () => factory(setup) };
+        media.StartTranscription(setup);
+        return null;
     }
 
     /// <summary>Opens the file in the player; until it is ready (or if it fails) playback is simulated.</summary>

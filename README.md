@@ -36,7 +36,10 @@ editor as they happen, each one undoable.
   markers on the ruler. Scene detection decodes the video once in the background and is cached. Claude can
   query both at any sensitivity and cut out the pauses in one undoable step.
 
-Not yet: transcription and smart cut. The UI already has places for them.
+- **Transcription** (in progress): Parakeet or Whisper, locally. Download a model in Settings → Transcription and
+  every video you open is transcribed in the background; Claude's transcript tools come next.
+
+Not yet: smart cut. The UI already has a place for it.
 
 ## Connecting Claude
 

@@ -184,14 +184,28 @@ Results are JSON; times are seconds, rounded to milliseconds, with `MM:SS.mmm` r
 - **Smart cut**: `CutMode.SmartCut` exists in the export settings; the planner rejects it for now. It becomes
   a third kind of plan (re-encode the GOP around each cut, copy the rest, concat). The dialog lists it as not
   yet available.
-- **Transcription**: a source of labels and ranges for `AddClipCommand` / `RenameClipCommand`; the engines come
-  next (see Transcription models).
+- **GPU transcription**: sherpa-onnx runs on the CPU; the Device setting has no effect yet.
 
-## Transcription models
+## Transcription
 
-`OurCut.Transcription` (no UI references) knows the models Settings → Transcription lists (`ModelCatalog`):
-Parakeet TDT 0.6B v3 (int8 ONNX for sherpa-onnx, 25 European languages including Ukrainian; a .tar.bz2 from the
-sherpa-onnx GitHub releases) and four Whisper ggml models for whisper.cpp (single files from Hugging Face).
+`OurCut.Transcription` (no UI references) turns speech into words with times, locally, with sherpa-onnx (ONNX
+Runtime, CPU). Settings → Transcription lists the models (`ModelCatalog`), all int8 builds from the sherpa-onnx
+GitHub releases (.tar.bz2): Parakeet TDT 0.6B v3 (25 European languages including Ukrainian and English; the default)
+and Whisper large-v3-turbo, small and base.en (99 languages; base.en English only).
+
+- **Audio**: ffmpeg mixes every audio track to 16 kHz mono float (`SpeechAudio`), timed from the file start like
+  keyframes, and pipes it out.
+- **Pieces** (`TranscriptionPipeline`): the stream is cut into pieces of at most 28 s, each ending at the quietest
+  100 ms after 18 s, so words are not cut in half and memory stays small. Each piece is recognized in turn.
+- **Words** (`WordBuilder`): the models give subword tokens (a leading space starts a word) with start times;
+  punctuation joins the word before it; a word followed by a pause ends after about as long as it takes to say.
+  The published Whisper models give no times, so their words get estimated ones: the speech in the piece (stretches
+  louder than the background) is shared out in proportion to word length, and the transcript says its times are
+  approximate.
+- **In the editor** (`MediaPreview`): transcription starts when a file is opened and a model is installed, after
+  keyframes, waveform and thumbnails (it may overlap scene detection), on half the cores. The status bar shows
+  "transcribing 34%", the transcript fills in piece by piece and is cached per model and language
+  (`transcript-<model>-<language>.json`). Installing a model or changing the model or language starts it.
 
 - `ModelInstaller` downloads into `<models folder>/<id>.partial`, continuing an interrupted download with an HTTP
   range request, unpacks archives there (SharpZipLib's bzip2 + `System.Formats.Tar`, without the archive's top

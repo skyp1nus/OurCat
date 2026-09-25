@@ -10,6 +10,7 @@ using OurCut.Media.Caching;
 using OurCut.Media.Previews;
 using OurCut.Media.Probing;
 using OurCut.Media.Tools;
+using OurCut.Transcription;
 
 namespace OurCut.App.Services;
 
@@ -41,6 +42,13 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
     private volatile bool _detectingScenes;
     private volatile string? _error;
     private SceneScores? _scenes;
+    private readonly TaskCompletionSource _mainAnalysisDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private CancellationTokenSource? _transcribeCts;
+    private string? _transcriptKey;
+    private Transcript? _transcript;
+    private volatile TranscriptState _transcriptState;
+    private double _transcriptProgress;
+    private volatile string? _transcriptError;
     private (int Filled, bool Complete, SilenceAnalysis Result)? _silences;
     private (int Filled, SceneAnalysis Result)? _sceneChanges;
     private int _changePending;
@@ -106,10 +114,113 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
         }
     }
 
-    public string? Activity =>
-        _analysing ? $"analysing {Math.Floor(Progress * 100):0}%"
-        : _detectingScenes ? $"detecting scenes {Math.Floor((Volatile.Read(ref _scenes)?.Progress ?? 0) * 100):0}%"
-        : null;
+    public string? Activity
+    {
+        get
+        {
+            if (_analysing)
+                return $"analysing {Math.Floor(Progress * 100):0}%";
+            var parts = new List<string>(2);
+            if (_transcriptState == TranscriptState.Running)
+                parts.Add($"transcribing {Math.Floor(TranscriptProgress * 100):0}%");
+            if (_detectingScenes)
+                parts.Add($"detecting scenes {Math.Floor((Volatile.Read(ref _scenes)?.Progress ?? 0) * 100):0}%");
+            return parts.Count == 0 ? null : string.Join(" · ", parts);
+        }
+    }
+
+    // ---- Transcription -------------------------------------------------------------------
+
+    public Transcript? Transcript => Volatile.Read(ref _transcript);
+    public TranscriptState TranscriptState => _transcriptState;
+    public double TranscriptProgress => Volatile.Read(ref _transcriptProgress);
+    public string? TranscriptError => _transcriptError;
+
+    /// <summary>
+    /// Transcribes the file with <paramref name="setup"/>'s model, or reads that transcript from the cache. It starts
+    /// once keyframes, waveform and thumbnails are done (scene detection may still run) and fills in piece by piece.
+    /// Asking again with the same model and language changes nothing; another model or language starts over.
+    /// </summary>
+    public void StartTranscription(TranscriptionSetup setup)
+    {
+        if (_disposed || (setup.Key == _transcriptKey && _transcriptState is not (TranscriptState.None or TranscriptState.Failed)))
+            return;
+        _transcribeCts?.Cancel();
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _transcribeCts = cts;
+        _transcriptKey = setup.Key;
+        Volatile.Write(ref _transcript, null);
+        Volatile.Write(ref _transcriptProgress, 0);
+        _transcriptError = null;
+        _transcriptState = TranscriptState.Waiting;
+        NotifyChanged();
+        _ = Task.Run(() => TranscribeAsync(setup, cts), CancellationToken.None);
+    }
+
+    private async Task TranscribeAsync(TranscriptionSetup setup, CancellationTokenSource cts)
+    {
+        var ct = cts.Token;
+        string language = setup.Language ?? "auto";
+        string cacheName = Transcript.CacheName(setup.Model.Id, setup.Language);
+        bool Current() => ReferenceEquals(_transcribeCts, cts);
+        try
+        {
+            if (_cache?.LoadText(Info.Path, cacheName) is { } json && Transcript.FromJson(json) is { } cached)
+            {
+                Finish(cached);
+                return;
+            }
+            if (Info.Audio.Length == 0)
+            {
+                Finish(new Transcript(setup.Model.Id, language, []));
+                return;
+            }
+            await _mainAnalysisDone.Task.WaitAsync(ct).ConfigureAwait(false);
+            _transcriptState = TranscriptState.Running;
+            NotifyChanged();
+            using var recognizer = setup.Create();
+            var words = new List<Word>();
+            await ToolProcess.RunAsync("ffmpeg", SpeechAudio.Arguments(Info), (stdout, token) =>
+                TranscriptionPipeline.RunAsync(stdout, Info.Duration, recognizer, (found, progress) =>
+                {
+                    words.AddRange(found);
+                    if (!Current())
+                        return;
+                    Volatile.Write(ref _transcript, new Transcript(setup.Model.Id, language, [.. words], recognizer.HasApproximateTimes));
+                    Volatile.Write(ref _transcriptProgress, progress);
+                    NotifyChanged();
+                }, token), ct).ConfigureAwait(false);
+            var transcript = new Transcript(setup.Model.Id, language, [.. words], recognizer.HasApproximateTimes);
+            _cache?.SaveText(Info.Path, cacheName, transcript.ToJson());
+            Finish(transcript);
+        }
+        catch (OperationCanceledException)
+        {
+            if (Current())
+                _transcriptState = TranscriptState.None;
+        }
+        catch (Exception e) when (e is MediaToolException or IOException or UnauthorizedAccessException or InvalidOperationException
+                                      or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException
+                                      or System.Runtime.InteropServices.ExternalException)
+        {
+            if (Current())
+            {
+                _transcriptError = e.Message;
+                _transcriptState = TranscriptState.Failed;
+                NotifyChanged();
+            }
+        }
+
+        void Finish(Transcript transcript)
+        {
+            if (!Current())
+                return;
+            Volatile.Write(ref _transcript, transcript);
+            Volatile.Write(ref _transcriptProgress, 1);
+            _transcriptState = TranscriptState.Done;
+            NotifyChanged();
+        }
+    }
 
     /// <summary>Silences as the timeline shows them: every track quiet for a second or more, at the automatic level.</summary>
     public IReadOnlyList<TimeRange> Silences => SilenceAnalysis.Ranges;
@@ -190,6 +301,7 @@ public sealed class MediaPreview : IMediaPreview, IDisposable
             {
                 _keyframesReady.TrySetResult(Keyframes);
                 _analysing = false;
+                _mainAnalysisDone.TrySetResult();
                 NotifyChanged();
             }
             await Guard(() => DetectScenesAsync(ct)).ConfigureAwait(false);

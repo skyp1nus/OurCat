@@ -7,7 +7,7 @@ public enum TranscriptionEngine
     /// <summary>NVIDIA Parakeet TDT through sherpa-onnx (ONNX Runtime).</summary>
     Parakeet,
 
-    /// <summary>OpenAI Whisper through whisper.cpp.</summary>
+    /// <summary>OpenAI Whisper through sherpa-onnx (int8 ONNX encoder and decoder).</summary>
     Whisper,
 }
 
@@ -17,7 +17,10 @@ public enum ModelPackage
     /// <summary>One file, downloaded as is.</summary>
     SingleFile,
 
-    /// <summary>A .tar.bz2 archive with one top folder (sherpa-onnx releases), unpacked without that folder.</summary>
+    /// <summary>
+    /// A .tar.bz2 archive with one top folder (sherpa-onnx releases), unpacked without that folder; only the model's
+    /// files (and its test_wavs samples) are kept.
+    /// </summary>
     TarBz2,
 }
 
@@ -44,27 +47,34 @@ public sealed record TranscriptionModel(
             : Math.Max(1, Math.Round(bytes / 1e6)).ToString("0", CultureInfo.InvariantCulture) + " MB";
 }
 
-/// <summary>The models listed in Settings → Transcription, best first.</summary>
+/// <summary>
+/// The models listed in Settings → Transcription, best first. All run on sherpa-onnx and come from its GitHub
+/// releases (int8 builds: several times smaller and faster on the CPU than the full-precision ones).
+/// </summary>
 public static class ModelCatalog
 {
-    private const string WhisperBase = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
+    private const string Releases = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/";
 
     public static TranscriptionModel Parakeet { get; } = new(
         "parakeet-tdt-0.6b-v3", TranscriptionEngine.Parakeet, "25 European languages", 487_170_055,
-        new Uri("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2"),
+        new Uri(Releases + "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2"),
         ModelPackage.TarBz2, ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"]);
 
     public static IReadOnlyList<TranscriptionModel> All { get; } =
     [
         Parakeet,
-        Whisper("whisper-large-v3-turbo", "ggml-large-v3-turbo.bin", 1_624_555_275, "99 languages"),
-        Whisper("whisper-medium", "ggml-medium.bin", 1_533_763_059, "99 languages"),
-        Whisper("whisper-small", "ggml-small.bin", 487_601_967, "99 languages"),
-        Whisper("whisper-base.en", "ggml-base.en.bin", 147_964_211, "English"),
+        Whisper("whisper-large-v3-turbo", "turbo", 563_790_207, "99 languages"),
+        Whisper("whisper-small", "small", 639_387_718, "99 languages"),
+        Whisper("whisper-base.en", "base.en", 208_576_005, "English"),
     ];
 
     public static TranscriptionModel? Find(string id) => All.FirstOrDefault(m => m.Id == id);
 
-    private static TranscriptionModel Whisper(string id, string file, long size, string languages) =>
-        new(id, TranscriptionEngine.Whisper, languages, size, new Uri(WhisperBase + file), ModelPackage.SingleFile, [file]);
+    /// <param name="name">The sherpa-onnx name: archive sherpa-onnx-whisper-&lt;name&gt;, files &lt;name&gt;-encoder.int8.onnx etc.</param>
+    private static TranscriptionModel Whisper(string id, string name, long size, string languages) =>
+        new(id, TranscriptionEngine.Whisper, languages, size, new Uri($"{Releases}sherpa-onnx-whisper-{name}.tar.bz2"), ModelPackage.TarBz2,
+            [$"{name}-encoder.int8.onnx", $"{name}-decoder.int8.onnx", $"{name}-tokens.txt"]);
+
+    /// <summary>The language a model is limited to ("en" for English-only models), or null.</summary>
+    public static string? OnlyLanguage(TranscriptionModel model) => model.Id.EndsWith(".en", StringComparison.Ordinal) ? "en" : null;
 }

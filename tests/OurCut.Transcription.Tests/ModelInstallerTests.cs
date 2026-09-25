@@ -154,7 +154,7 @@ public sealed class ModelInstallerTests : IDisposable
     public async Task An_archive_is_unpacked_without_its_top_folder()
     {
         byte[] archive = TarBz2(("model-v3/", null), ("model-v3/encoder.onnx", "enc"), ("model-v3/tokens.txt", "a 0\nb 1"),
-            ("model-v3/test_wavs/en.wav", "RIFF"));
+            ("model-v3/test_wavs/en.wav", "RIFF"), ("model-v3/encoder.fp32.onnx", "big"));
         var model = new TranscriptionModel("parakeet-test", TranscriptionEngine.Parakeet, "English", archive.Length,
             new Uri("https://github.example/model.tar.bz2"), ModelPackage.TarBz2, ["encoder.onnx", "tokens.txt"]);
         var store = new ModelStore(_dir);
@@ -166,6 +166,7 @@ public sealed class ModelInstallerTests : IDisposable
         string dir = store.DirectoryOf(model);
         Assert.Equal("a 0\nb 1", await File.ReadAllTextAsync(Path.Combine(dir, "tokens.txt"), Ct));
         Assert.True(File.Exists(Path.Combine(dir, "test_wavs", "en.wav")));
+        Assert.False(File.Exists(Path.Combine(dir, "encoder.fp32.onnx")));
         Assert.False(File.Exists(Path.Combine(dir, "download.tar.bz2")));
         Assert.Contains(reports.All, r => r.Phase == InstallPhase.Unpacking && r.Fraction is > 0.9 and < 1);
     }
@@ -218,12 +219,13 @@ public class ModelCatalogTests
     [Fact]
     public void The_catalog_lists_parakeet_first_and_whisper_as_single_files()
     {
-        Assert.Equal(["parakeet-tdt-0.6b-v3", "whisper-large-v3-turbo", "whisper-medium", "whisper-small", "whisper-base.en"],
-            ModelCatalog.All.Select(m => m.Id));
+        Assert.Equal(["parakeet-tdt-0.6b-v3", "whisper-large-v3-turbo", "whisper-small", "whisper-base.en"], ModelCatalog.All.Select(m => m.Id));
         Assert.All(ModelCatalog.All, m => Assert.Equal("https", m.Url.Scheme));
-        Assert.Equal(ModelPackage.TarBz2, ModelCatalog.Parakeet.Package);
-        Assert.All(ModelCatalog.All.Where(m => m.Engine == TranscriptionEngine.Whisper), m => Assert.Equal(ModelPackage.SingleFile, m.Package));
-        Assert.Equal(["487 MB", "1.6 GB", "1.5 GB", "488 MB", "148 MB"], ModelCatalog.All.Select(m => m.SizeText));
+        Assert.All(ModelCatalog.All, m => Assert.Equal(ModelPackage.TarBz2, m.Package));
+        Assert.Equal(["turbo-encoder.int8.onnx", "turbo-decoder.int8.onnx", "turbo-tokens.txt"], ModelCatalog.All[1].Files);
+        Assert.Equal(["487 MB", "564 MB", "639 MB", "209 MB"], ModelCatalog.All.Select(m => m.SizeText));
+        Assert.Equal("en", ModelCatalog.OnlyLanguage(ModelCatalog.All[3]));
+        Assert.Null(ModelCatalog.OnlyLanguage(ModelCatalog.All[1]));
         Assert.Same(ModelCatalog.Parakeet, ModelCatalog.Find("parakeet-tdt-0.6b-v3"));
     }
 
@@ -257,21 +259,24 @@ public class ModelCatalogTests
 /// </summary>
 public class RealDownloadTests
 {
-    [Fact]
-    public async Task Parakeet_downloads_and_unpacks_from_github()
+    [Theory]
+    [InlineData("parakeet-tdt-0.6b-v3")]
+    [InlineData("whisper-base.en")]
+    public async Task A_model_downloads_and_unpacks_from_github(string id)
     {
         Assert.SkipUnless(Environment.GetEnvironmentVariable("OURCUT_NETWORK_TESTS") == "1", "Set OURCUT_NETWORK_TESTS=1 to download models.");
         string folder = Environment.GetEnvironmentVariable("OURCUT_MODELS_DIR") is { Length: > 0 } dir
             ? dir
             : Directory.CreateTempSubdirectory("ourcut-real-models").FullName;
         var store = new ModelStore(folder);
-        var model = ModelCatalog.Parakeet;
+        var model = ModelCatalog.Find(id)!;
         if (!store.IsInstalled(model))
         {
             using var http = ModelInstaller.CreateHttpClient();
             await new ModelInstaller(http).InstallAsync(model, store, cancellationToken: TestContext.Current.CancellationToken);
         }
         Assert.True(store.IsInstalled(model));
-        Assert.InRange(store.SizeOnDisk(model), 600_000_000, 800_000_000);
+        // Only the int8 files are kept: well under the full-precision size.
+        Assert.InRange(store.SizeOnDisk(model), 100_000_000, 800_000_000);
     }
 }

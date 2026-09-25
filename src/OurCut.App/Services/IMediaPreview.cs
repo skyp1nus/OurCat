@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Media;
 using OurCut.Media.Analysis;
+using OurCut.Transcription;
 
 namespace OurCut.App.Services;
 
@@ -30,6 +31,22 @@ public interface IMediaPreview
 
     /// <summary>Scene change times, sorted. Grows while scene detection runs.</summary>
     IReadOnlyList<double> SceneChanges => [];
+
+    /// <summary>What was said, as far as it has been transcribed; null before transcription starts.</summary>
+    Transcript? Transcript => null;
+
+    TranscriptState TranscriptState => TranscriptState.None;
+
+    /// <summary>Part of the audio transcribed, 0..1.</summary>
+    double TranscriptProgress => 0;
+
+    /// <summary>Why transcription failed, if it did.</summary>
+    string? TranscriptError => null;
+
+    /// <summary>Transcribes the file (or reads the transcript from the cache) unless that is done or under way.</summary>
+    void StartTranscription(TranscriptionSetup setup)
+    {
+    }
 
     /// <summary>Silence detection has seen all of the audio (or given up).</summary>
     bool SilencesComplete => true;

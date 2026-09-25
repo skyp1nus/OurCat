@@ -8,7 +8,7 @@ using SkiaSharp;
 namespace OurCut.Media.Caching;
 
 /// <summary>
-/// On-disk cache of per-file analysis results (keyframes, waveform, thumbnails, scene scores), keyed by path, size
+/// On-disk cache of per-file analysis results (keyframes, waveform, thumbnails, scene scores, transcripts), keyed by path, size
 /// and modification time so a changed file is analysed again. Entries are best effort: any read
 /// error is treated as a miss.
 /// </summary>
@@ -104,6 +104,23 @@ public sealed class MediaCache
             }
         }
         WriteAtomic(Path.Combine(dir, "waveform.bin"), ms.ToArray());
+    });
+
+    // ---- Text (e.g. transcripts) ------------------------------------------------------------
+
+    /// <summary>A text file cached for a media file (e.g. a transcript as JSON), or null.</summary>
+    /// <param name="name">File name inside the media file's cache folder.</param>
+    public string? LoadText(string mediaPath, string name) => Try(() =>
+    {
+        string? dir = DirFor(mediaPath, create: false);
+        string file = dir is null ? "" : Path.Combine(dir, name);
+        return File.Exists(file) ? File.ReadAllText(file, Encoding.UTF8) : null;
+    });
+
+    public void SaveText(string mediaPath, string name, string text) => TryDo(() =>
+    {
+        if (DirFor(mediaPath, create: true) is { } dir)
+            WriteAtomic(Path.Combine(dir, name), Encoding.UTF8.GetBytes(text));
     });
 
     // ---- Scene scores --------------------------------------------------------------------

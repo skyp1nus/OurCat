@@ -1,3 +1,4 @@
+using System.Formats.Tar;
 using System.Net;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
@@ -22,7 +23,8 @@ public sealed class SettingsViewModelTests : IDisposable
         settings.Store = store;
         string models = Directory.CreateDirectory(Path.Combine(_dir, "models")).FullName;
         Directory.CreateDirectory(Path.Combine(models, "whisper-small"));
-        File.WriteAllText(Path.Combine(models, "whisper-small", "ggml-small.bin"), "");
+        foreach (string file in ModelCatalog.Find("whisper-small")!.Files)
+            File.WriteAllText(Path.Combine(models, "whisper-small", file), "");
 
         settings.ModelsFolder = models;
         settings.EngineOptions.Single(o => o.Label == "Whisper").PickCommand.Execute(null);
@@ -62,6 +64,21 @@ public sealed class SettingsViewModelTests : IDisposable
         }));
     }
 
+    /// <summary>A .tar.bz2 like the sherpa-onnx releases: one top folder with the model's files.</summary>
+    private static byte[] Archive(string folder, IEnumerable<string> files)
+    {
+        using var tar = new MemoryStream();
+        using (var writer = new TarWriter(tar, leaveOpen: true))
+        {
+            foreach (string file in files)
+                writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, folder + "/" + file) { DataStream = new MemoryStream([1, 2, 3]) });
+        }
+        tar.Position = 0;
+        using var output = new MemoryStream();
+        ICSharpCode.SharpZipLib.BZip2.BZip2.Compress(tar, output, isStreamOwner: false, level: 1);
+        return output.ToArray();
+    }
+
     private SettingsViewModel WithInstaller(FakeServer server, out EditorViewModel editor)
     {
         editor = App.CreateEditor(null);
@@ -84,7 +101,7 @@ public sealed class SettingsViewModelTests : IDisposable
     [AvaloniaFact]
     public async Task Downloading_a_model_installs_it_and_offers_it()
     {
-        var settings = WithInstaller(FakeServer.Serving(new byte[64_000]), out _);
+        var settings = WithInstaller(FakeServer.Serving(Archive("sherpa-onnx-whisper-small", ModelCatalog.Find("whisper-small")!.Files)), out _);
         var small = settings.Models.Single(m => m.Id == "whisper-small");
         Assert.True(small.CanManage);
 
@@ -92,7 +109,7 @@ public sealed class SettingsViewModelTests : IDisposable
         Assert.True(small.IsDownloading);
         await PumpUntil(() => small.IsInstalled);
 
-        Assert.Equal(64_000, new FileInfo(Path.Combine(settings.ModelsFolder, "whisper-small", "ggml-small.bin")).Length);
+        Assert.True(File.Exists(Path.Combine(settings.ModelsFolder, "whisper-small", "small-encoder.int8.onnx")));
         Assert.Equal("Best available — whisper-small", settings.ModelOptions[0].Label);
 
         small.DeleteCommand.Execute(null);
@@ -147,11 +164,11 @@ public sealed class SettingsViewModelTests : IDisposable
             settings.TickDownloads();
         Assert.True(small.IsInstalled);
 
-        var medium = settings.Models.Single(m => m.Id == "whisper-medium");
-        medium.DownloadCommand.Execute(null);
-        Assert.True(medium.IsDownloading);
-        medium.CancelDownloadCommand.Execute(null);
-        Assert.True(medium.IsNotInstalled);
+        var baseEn = settings.Models.Single(m => m.Id == "whisper-base.en");
+        baseEn.DownloadCommand.Execute(null);
+        Assert.True(baseEn.IsDownloading);
+        baseEn.CancelDownloadCommand.Execute(null);
+        Assert.True(baseEn.IsNotInstalled);
 
         settings.Models[0].DeleteCommand.Execute(null);
         Assert.Equal("Best available — whisper-large-v3-turbo", settings.ModelOptions[0].Label);
