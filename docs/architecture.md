@@ -36,7 +36,7 @@ The session is not thread-safe. The MCP server runs every tool call on the UI th
 | `RenameClipCommand` | `set_label` | Renames a clip |
 | `BatchCommand` | any | Several commands as one undo step |
 | `RevertEditCommand` | `revert_action` | Reverts one earlier edit and keeps the edits made after it |
-| `CutRangesCommand` | `cut_silences` | Cuts source ranges (pauses) out of the clips they touch, splitting them |
+| `CutRangesCommand` | `cut_silences`, `cut_ranges`, `cut_filler_words` | Cuts source ranges out of the clips they touch, splitting them |
 
 `EditorSession` wraps these with UI-friendly helpers (`Trim` clamps and snaps to keyframes, `KeepRange`
 inserts by source position, `Split` returns the new clip).
@@ -169,6 +169,9 @@ Claude ──stdio──> OurCut.exe mcp (McpBridge) ──named pipe──> Our
 | `find_silences` | Pauses at a minimum length and level (automatic by default), on all or some audio tracks |
 | `find_scene_changes` | Scene changes at a sensitivity; what is found so far while detection runs |
 | `cut_silences` | Cuts the pauses out of the included (or given) clips as one undo step, keeping some padding |
+| `get_transcript` | What is said, as timed sentences (and words on request), in parts of about 20,000 characters; starts transcription if needed |
+| `search_transcript`, `find_filler_words` | Where a word or phrase (case and punctuation ignored), or the ums and uhs, are said |
+| `cut_ranges`, `cut_filler_words` | Cut any source ranges (e.g. from the transcript), or the filler words, out of the clips as one undo step |
 | `list_videos` | Video files in a folder, newest first |
 | `add_segment`, `remove_segment`, `trim_segment`, `split_segment`, `set_included`, `move_segment`, `set_label` | One edit each (the commands above) |
 | `edit_timeline` | Several edits as one undo step, all or nothing |
@@ -202,6 +205,8 @@ and Whisper large-v3-turbo, small and base.en (99 languages; base.en English onl
   The published Whisper models give no times, so their words get estimated ones: the speech in the piece (stretches
   louder than the background) is shared out in proportion to word length, and the transcript says its times are
   approximate.
+- **Data**: `Word`, `Phrase` and `Transcript` live in Core (`OurCut.Core.Transcripts`), so the MCP tools use them
+  without the engine. Phrases end at . ! ? … or pauses of 0.8 s.
 - **In the editor** (`MediaPreview`): transcription starts when a file is opened and a model is installed, after
   keyframes, waveform and thumbnails (it may overlap scene detection), on half the cores. The status bar shows
   "transcribing 34%", the transcript fills in piece by piece and is cached per model and language

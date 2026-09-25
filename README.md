@@ -36,8 +36,9 @@ editor as they happen, each one undoable.
   markers on the ruler. Scene detection decodes the video once in the background and is cached. Claude can
   query both at any sensitivity and cut out the pauses in one undoable step.
 
-- **Transcription** (in progress): Parakeet or Whisper, locally. Download a model in Settings → Transcription and
-  every video you open is transcribed in the background; Claude's transcript tools come next.
+- **Transcription** (done): Parakeet or Whisper, locally. Download a model in Settings → Transcription and every
+  video you open is transcribed in the background. Claude reads the transcript, searches it, finds filler words and
+  cuts by it (a sentence, an aside, every "um") in one undoable step.
 
 Not yet: smart cut. The UI already has a place for it.
 
@@ -59,11 +60,11 @@ with Copy buttons:
   }
   ```
 
-Then ask Claude something like "open my latest recording in OurCut, cut out the pauses longer than a second
-and split it into chapters at the scene changes". Claude does not see or hear the video itself: it works from
-the silences, scene changes and keyframes OurCut finds (transcription comes later). The badge in the title bar shows the connection (MCP · waiting for Claude / Claude connected /
-Claude editing), and every edit Claude makes appears in the Claude panel with its own Undo. Only your own user
-account can connect to the editor.
+Then ask Claude something like "open my latest recording in OurCut, cut out the pauses and the ums, split it
+into chapters where I change topic, and export it". Claude does not see the video itself: it works from the
+transcript, silences, scene changes and keyframes OurCut finds. The badge in the title bar shows the connection
+(MCP · waiting for Claude / Claude connected / Claude editing), and every edit Claude makes appears in the Claude
+panel with its own Undo. Only your own user account can connect to the editor.
 
 ## Keyboard shortcuts
 

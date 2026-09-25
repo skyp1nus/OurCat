@@ -1,3 +1,4 @@
+using OurCut.Core.Transcripts;
 using OurCut.Transcription.Models;
 using SherpaOnnx;
 

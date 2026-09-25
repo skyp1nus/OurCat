@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OurCut.Core.Transcripts;
 using OurCut.Transcription.Models;
 
 namespace OurCut.Transcription.Tests;
