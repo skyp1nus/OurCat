@@ -46,7 +46,7 @@ public sealed partial class EditorViewModel : ViewModelBase
     public EditorViewModel()
     {
         Export = new ExportViewModel(this);
-        Claude = new ClaudePanelViewModel(new ClaudeExportViewModel(this));
+        Claude = new ClaudePanelViewModel(new ClaudeExportViewModel(this), new ClaudeFileRequestViewModel(this));
         Settings = new SettingsViewModel(this);
         TranscriptPanel = CreateTranscriptPanel();
         // With "transcribe when opened" off, only a transcript someone asked for (or the tab's Download) is started.
@@ -825,15 +825,26 @@ public sealed partial class EditorViewModel : ViewModelBase
     }
 
     /// <summary>Saves for Claude (MCP): to <paramref name="path"/>, or where the project was saved before.</summary>
-    public Task<string?> SaveForClaudeAsync(string? path)
+    public Task<string?> SaveForClaudeAsync(string? path) =>
+        SavePathForClaude(path, out string? error) is { } full ? SaveToAsync(full, auto: false) : Task.FromResult(error);
+
+    /// <summary>
+    /// Where Claude's save goes: the full <paramref name="path"/>, or where the project was saved before. Null, with
+    /// <paramref name="error"/> saying why, when it cannot save.
+    /// </summary>
+    public string? SavePathForClaude(string? path, out string? error)
     {
+        error = null;
         if (!HasFile)
-            return Task.FromResult<string?>("No video is open.");
+        {
+            error = "No video is open.";
+            return null;
+        }
         if (path is null)
         {
-            return ProjectPath is { } saved
-                ? SaveToAsync(saved, auto: false)
-                : Task.FromResult<string?>("The project has not been saved yet; give a path ending in " + ProjectFile.Extension + ".");
+            if (ProjectPath is null)
+                error = "The project has not been saved yet; give a path ending in " + ProjectFile.Extension + ".";
+            return ProjectPath;
         }
         string full;
         try
@@ -842,11 +853,15 @@ public sealed partial class EditorViewModel : ViewModelBase
         }
         catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            return Task.FromResult<string?>($"“{path}” is not a valid path.");
+            error = $"“{path}” is not a valid path.";
+            return null;
         }
         if (!full.EndsWith(ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
-            return Task.FromResult<string?>("Project files end in " + ProjectFile.Extension + ".");
-        return SaveToAsync(full, auto: false);
+        {
+            error = "Project files end in " + ProjectFile.Extension + ".";
+            return null;
+        }
+        return full;
     }
 
     /// <summary>How long after the last edit a saved project is written again.</summary>

@@ -52,6 +52,9 @@ public interface IEditorContext
     /// <summary>What is said in the video, as far as it has been transcribed, and how far that is.</summary>
     TranscriptStatus TranscriptStatus { get; }
 
+    /// <summary>The user's filler words (Settings → Transcription), every language: what find/cut_filler_words look for.</summary>
+    IReadOnlyList<string> FillerWords => Core.Transcripts.FillerWords.All(Core.Transcripts.FillerWords.Defaults);
+
     /// <summary>Starts transcribing if it has not started. Returns why it cannot (e.g. no model installed), or null.</summary>
     string? StartTranscription();
 
@@ -76,11 +79,17 @@ public interface IEditorContext
 
     void SetPlaying(bool playing);
 
-    /// <summary>Opens a video or an .ourcut.json project. Returns why it failed, or null.</summary>
-    Task<string?> OpenAsync(string path);
+    /// <summary>
+    /// Opens a video or an .ourcut.json project. May first wait for the user to allow it. Returns why it failed or
+    /// why the user declined, or null.
+    /// </summary>
+    Task<string?> OpenAsync(string path, CancellationToken cancellationToken);
 
-    /// <summary>Saves the project (to <paramref name="path"/> if given). Returns why it failed, or null.</summary>
-    Task<string?> SaveAsync(string? path);
+    /// <summary>
+    /// Saves the project (to <paramref name="path"/> if given). May first wait for the user to allow it. Returns why
+    /// it failed or why the user declined, or null.
+    /// </summary>
+    Task<string?> SaveAsync(string? path, CancellationToken cancellationToken);
 }
 
 /// <summary>Silences found in the source's audio.</summary>

@@ -137,9 +137,9 @@
       </StackPanel>
     </Grid>
 
-    <!-- Claude's export request, over the preview. -->
+    <!-- Claude's request to export, open or save, over the preview. -->
     <v:ClaudeRequestBanner Grid.RowSpan="2" VerticalAlignment="Top" Margin="20,12,20,0" MaxWidth="680"
-                           DataContext="{Binding Claude.Export}" />
+                           DataContext="{Binding Claude.Request}" />
   </Grid>
 
   <UserControl.Styles>

@@ -327,8 +327,15 @@ public sealed class RealMediaTests : IDisposable
         string outDir = Path.Combine(_dir, "by-claude");
         var tools = new OurCut.Mcp.EditorTools(new EditorMcpHost(editor));
 
-        var first = await tools.Export(container: "mkv", folder: outDir);
+        // Export: Ask (the default) shows the request; "Always allow" lets this and later exports run.
+        var asked = tools.Export(container: "mkv", folder: outDir);
+        await PumpUntil(() => editor.Claude.Export.IsAsking);
+        Assert.False(asked.IsCompleted);
+        Assert.StartsWith("Claude wants to export 2 clips", editor.Claude.Export.RequestTitle, StringComparison.Ordinal);
+        editor.Claude.Export.AlwaysAllowCommand.Execute(null);
+        var first = await asked;
 
+        Assert.Equal(McpPermission.Allow, editor.Settings.ExportPermission);
         Assert.Equal("done", first.Status);
         Assert.Equal([Path.Combine(outDir, "sample-cut.mkv")], first.Files);
         Assert.Equal("Lossless copy · MKV · merged", first.Settings);
@@ -376,6 +383,7 @@ public sealed class RealMediaTests : IDisposable
         var (editor, window) = await OpenAsync(video);
         MarkTwoClips(editor);
         string outDir = Directory.CreateDirectory(Path.Combine(_dir, "cancelled")).FullName;
+        editor.Settings.ExportPermission = McpPermission.Allow;
         var host = new EditorMcpHost(editor);
 
         Assert.Null(await host.StartExportAsync(new OurCut.Mcp.ExportRequest(Mode: "reencode", Folder: outDir), Ct));

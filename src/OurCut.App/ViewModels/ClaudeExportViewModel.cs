@@ -48,7 +48,7 @@ public sealed record ClaudeExportTarget(string Path, string Name, string Folder,
 /// Claude's export as the editor shows it: the request over the preview and the card at the top of
 /// the Claude panel. It follows <see cref="ExportViewModel"/> whenever an export started by Claude runs.
 /// </summary>
-public sealed partial class ClaudeExportViewModel : ViewModelBase
+public sealed partial class ClaudeExportViewModel : ViewModelBase, IClaudeRequest
 {
     private readonly EditorViewModel _editor;
     private TaskCompletionSource<ClaudeExportAnswer>? _answer;

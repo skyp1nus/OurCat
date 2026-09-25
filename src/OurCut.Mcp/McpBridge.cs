@@ -13,6 +13,9 @@ namespace OurCut.Mcp;
 /// </summary>
 public sealed class McpBridge : IAsyncDisposable
 {
+    /// <summary>The bridge's own client name, used when Claude did not say who it is.</summary>
+    internal const string BridgeName = "ourcut-bridge";
+
     private readonly Func<bool> _launchEditor;
     private readonly string _pipeName;
     private readonly TimeSpan _startTimeout;
@@ -49,11 +52,12 @@ public sealed class McpBridge : IAsyncDisposable
         await server.RunAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    internal async ValueTask<CallToolResult> CallAsync(CallToolRequestParams request, CancellationToken cancellationToken)
+    /// <param name="caller">Who called the tool (Claude Desktop, Claude Code): the editor shows it as connected.</param>
+    internal async ValueTask<CallToolResult> CallAsync(CallToolRequestParams request, Implementation? caller, CancellationToken cancellationToken)
     {
         for (int attempt = 0; ; attempt++)
         {
-            var client = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+            var client = await ConnectAsync(caller, cancellationToken).ConfigureAwait(false);
             try
             {
                 return await client.CallToolAsync(request, cancellationToken).ConfigureAwait(false);
@@ -66,7 +70,7 @@ public sealed class McpBridge : IAsyncDisposable
         }
     }
 
-    private async Task<McpClient> ConnectAsync(CancellationToken cancellationToken)
+    private async Task<McpClient> ConnectAsync(Implementation? caller, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -82,8 +86,11 @@ public sealed class McpBridge : IAsyncDisposable
                     ?? throw new McpException("OurCut did not start in time. Open it and try again.");
             }
             _pipe = pipe;
-            _client = await McpClient.CreateAsync(new StreamClientTransport(pipe, pipe),
-                new McpClientOptions { ClientInfo = new Implementation { Name = "ourcut-bridge", Version = McpEndpoint.Version } },
+            // The editor is told who is really connected, not the bridge.
+            var info = caller is null
+                ? new Implementation { Name = BridgeName, Version = McpEndpoint.Version }
+                : new Implementation { Name = caller.Name, Title = caller.Title, Version = caller.Version };
+            _client = await McpClient.CreateAsync(new StreamClientTransport(pipe, pipe), new McpClientOptions { ClientInfo = info },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             return _client;
         }
@@ -148,7 +155,7 @@ public sealed class McpBridge : IAsyncDisposable
 
         public override ValueTask<CallToolResult> InvokeAsync(RequestContext<CallToolRequestParams> request,
             CancellationToken cancellationToken = default) =>
-            bridge.CallAsync(request.Params ?? new CallToolRequestParams { Name = tool.Name }, cancellationToken);
+            bridge.CallAsync(request.Params ?? new CallToolRequestParams { Name = tool.Name }, request.Server.ClientInfo, cancellationToken);
     }
 
     /// <summary>Only used to build the tool definitions; never called.</summary>

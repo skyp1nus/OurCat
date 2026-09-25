@@ -3,8 +3,8 @@
              xmlns:vm="using:OurCut.App.ViewModels"
              xmlns:c="using:OurCut.App.Controls"
              x:Class="OurCut.App.Views.ClaudeRequestBanner"
-             x:DataType="vm:ClaudeExportViewModel">
-  <!-- Claude asks before it exports; the host puts this over the preview. -->
+             x:DataType="vm:IClaudeRequest">
+  <!-- Claude asks before it exports, opens a file or saves; the host puts this over the preview. -->
   <Border Name="Box" IsVisible="{Binding IsAsking}" Padding="16,12,12,12" CornerRadius="12" Background="{StaticResource PanelBrush}"
           BoxShadow="inset 0 1 0 0 #17FFFFFF, 0 0 0 1 #1FFFFFFF, 0 16 36 0 #73000000">
     <Grid ColumnDefinitions="8,12,*,12,Auto">
