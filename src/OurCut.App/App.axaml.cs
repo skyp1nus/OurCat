@@ -8,6 +8,7 @@ using OurCut.App.ViewModels;
 using OurCut.App.Views;
 using OurCut.Media;
 using OurCut.Media.Caching;
+using OurCut.Transcription.Models;
 
 namespace OurCut.App;
 
@@ -30,6 +31,7 @@ public partial class App : Application
                 var settings = new AppSettingsStore(AppSettingsStore.DefaultFile);
                 editor.Settings.Load(settings.Load());
                 editor.Settings.Store = settings;
+                editor.Settings.Installer = new ModelInstaller(ModelInstaller.CreateHttpClient());
                 // Claude connects through "OurCut mcp" (Settings → MCP server).
                 mcp = new EditorMcpServer(editor);
                 mcp.Start();

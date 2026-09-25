@@ -135,7 +135,8 @@ src/OurCut.Core     Project model, timeline and edit commands with undo/redo. No
 src/OurCut.Mcp      MCP server (the editor tools) and the stdio bridge Claude starts. No UI references.
 src/OurCut.Media    libmpv playback; ffprobe/ffmpeg: probing, keyframes, export (FFMpegCore), thumbnails,
                     waveforms, cache (SkiaSharp)
-tests/              xUnit tests for Core, Media, Mcp and headless UI tests for App
+src/OurCut.Transcription  Speech-to-text models (download, install) and engines. No UI references.
+tests/              xUnit tests for Core, Media, Mcp, Transcription and headless UI tests for App
 scripts/            fetch-deps.ps1 and the pinned dependency manifest
 design/             The Claude Design export the UI is built from
 ```
