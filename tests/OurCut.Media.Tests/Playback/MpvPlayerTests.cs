@@ -69,8 +69,9 @@ public sealed class MpvPlayerTests(SampleMediaFixture media) : IClassFixture<Sam
     {
         var player = await LoadAsync();
         player.Seek(4.5);
-        Assert.True(player.IsSeeking);
-        Assert.Equal(4.5, player.Position, 6);
+        // While the seek is in flight the position is its target; on a small file mpv may already have landed there
+        // (SeekStateTests cover IsSeeking itself).
+        Assert.Equal(4.5, player.Position, 3);
         await WaitUntil(() => !player.IsSeeking);
         Assert.Equal(4.5, player.Position, 3);
 
