@@ -197,7 +197,7 @@ public sealed class TranscriptPanelTests : IDisposable
         ((DesignSample)editor.Media!).SetTranscript(TranscriptState.Done);
         var panel = Panel(editor);
         Assert.Empty(editor.Clips);
-        Assert.All(panel.Words, w => Assert.True(w.IsOut));
+        Assert.All(panel.Words, w => Assert.False(w.IsOut));
 
         panel.Select(271, 280);
         panel.CutSelectionCommand.Execute(null);
@@ -211,6 +211,37 @@ public sealed class TranscriptPanelTests : IDisposable
 
         editor.Undo();
         Assert.Empty(editor.Clips);
+        Assert.All(panel.Words, w => Assert.False(w.IsOut));
+    }
+
+    [AvaloniaFact]
+    public async Task Words_are_struck_only_once_something_is_marked()
+    {
+        var editor = await OpenSampleAsync();
+        ((DesignSample)editor.Media!).SetTranscript(TranscriptState.Done);
+        var panel = Panel(editor);
+        Assert.Empty(editor.Clips);
+        Assert.All(panel.Words, w => Assert.False(w.IsOut));
+
+        panel.Select(271, 280);
+        panel.KeepSelectionCommand.Execute(null);
+
+        Assert.Single(editor.Clips);
+        Assert.False(panel.Words[275].IsOut);
+        Assert.True(panel.Words[100].IsOut);
+        Assert.True(panel.Words[400].IsOut);
+
+        editor.RemoveClip(editor.Clips[0]);
+        Assert.Empty(editor.Clips);
+        Assert.All(panel.Words, w => Assert.False(w.IsOut));
+
+        editor.Undo();
+        Assert.Single(editor.Clips);
+        Assert.True(panel.Words[100].IsOut);
+
+        editor.Redo();
+        Assert.Empty(editor.Clips);
+        Assert.All(panel.Words, w => Assert.False(w.IsOut));
     }
 
     [AvaloniaFact]
