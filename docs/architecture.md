@@ -231,6 +231,8 @@ bind to view models and never change the project themselves.
   `TranscriptPanelViewModel` follows the open file's transcript as it arrives, lays it out in paragraphs
   (`TranscriptLayout`, Core), searches it (`TranscriptSearch`, Core: case and punctuation ignored, phrases across
   words) and marks the filler words of `SettingsViewModel.FillerWords` (defaults: `Core.Transcripts.FillerWords`).
+  Words outside every included clip are struck through (`TranscriptWordViewModel.IsOut`, also used by the lane);
+  with no clips at all nothing is marked yet, so no word is struck.
   Clicking a word seeks. A selection can be played (`PlayRange` pauses at its end), kept as a clip (`KeepWords`) or
   cut out (`CutWords`, a `CutRangesCommand`), each one undo step through `EditorSession`. Without a model the tab
   offers Parakeet's download (Retry after a failed one, and why it does not fit when there is no space) and transcribes

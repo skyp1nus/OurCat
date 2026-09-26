@@ -391,9 +391,13 @@ public sealed partial class TranscriptPanelViewModel : ViewModelBase
 
     // ---- Output ---------------------------------------------------------------------------
 
-    /// <summary>Words whose middle is outside every included clip are shown struck through.</summary>
+    /// <summary>
+    /// Words whose middle is outside every included clip are shown struck through. With no clips at all nothing is
+    /// marked yet, so no word is struck.
+    /// </summary>
     private void UpdateOut(bool redraw = true)
     {
+        bool anyClips = _editor.Session.Project.Clips.Count > 0;
         var ranges = new List<(double Start, double End)>();
         foreach (var clip in _editor.Session.Project.IncludedClips.OrderBy(c => c.Start))
         {
@@ -419,7 +423,7 @@ public sealed partial class TranscriptPanelViewModel : ViewModelBase
                     hi = m - 1;
                 }
             }
-            word.IsOut = found < 0 || mid > ranges[found].End;
+            word.IsOut = anyClips && (found < 0 || mid > ranges[found].End);
         }
         if (redraw)
             _editor.RaiseTimelineChanged();
