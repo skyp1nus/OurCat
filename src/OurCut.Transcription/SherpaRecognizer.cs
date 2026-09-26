@@ -5,9 +5,10 @@ using SherpaOnnx;
 namespace OurCut.Transcription;
 
 /// <summary>
-/// Speech recognition with sherpa-onnx (ONNX Runtime on the CPU): Parakeet TDT through its transducer, Whisper
-/// through its encoder/decoder with token timestamps. Both give subword tokens with start times, turned into words
-/// by <see cref="WordBuilder"/>.
+/// Speech recognition with sherpa-onnx (ONNX Runtime; the CPU unless a GPU build of it is installed): Parakeet TDT
+/// through its transducer, Whisper through its encoder/decoder with token timestamps. Both give subword tokens with
+/// start times, turned into words by <see cref="WordBuilder"/>. Several pieces can be recognized at once, from
+/// different threads, with the one model in memory.
 /// </summary>
 public sealed class SherpaRecognizer : ISpeechRecognizer
 {
@@ -15,15 +16,16 @@ public sealed class SherpaRecognizer : ISpeechRecognizer
 
     /// <param name="directory">The installed model's folder.</param>
     /// <param name="language">Two-letter code for Whisper ("en", "uk"), or null to detect it. Parakeet always detects.</param>
-    /// <param name="threads">CPU threads; half the cores by default, so the editor stays responsive.</param>
-    public SherpaRecognizer(TranscriptionModel model, string directory, string? language = null, int? threads = null)
+    /// <param name="plan">Provider, pieces at once and threads for each; all the cores of the CPU by default.</param>
+    public SherpaRecognizer(TranscriptionModel model, string directory, string? language = null, RecognizerPlan? plan = null)
     {
+        Plan = plan ?? RecognizerPlan.Cpu(Environment.ProcessorCount);
         var config = new OfflineRecognizerConfig();
         config.FeatConfig.SampleRate = TranscriptionPipeline.SampleRate;
         config.FeatConfig.FeatureDim = 80;
         config.DecodingMethod = "greedy_search";
-        config.ModelConfig.NumThreads = threads ?? Math.Max(1, Environment.ProcessorCount / 2);
-        config.ModelConfig.Provider = "cpu";
+        config.ModelConfig.NumThreads = Plan.Threads;
+        config.ModelConfig.Provider = Plan.Provider;
         config.ModelConfig.Tokens = Path.Combine(directory, model.Files.Single(f => f.EndsWith("tokens.txt", StringComparison.Ordinal)));
         string File(string part) => Path.Combine(directory, model.Files.Single(f => f.Contains(part, StringComparison.Ordinal)));
         switch (model.Engine)
@@ -44,8 +46,25 @@ public sealed class SherpaRecognizer : ISpeechRecognizer
                 config.ModelConfig.Whisper.EnableTokenTimestamps = 0;
                 break;
         }
-        _recognizer = new OfflineRecognizer(config);
+        // With one thread a piece runs on the pipeline's low-priority thread; with more, ONNX Runtime starts its own.
+        _recognizer = Plan.Threads > 1 ? LowPriority.LowerThreadsStartedBy(() => new OfflineRecognizer(config)) : new OfflineRecognizer(config);
     }
+
+    /// <summary>
+    /// Makes the recognizer for Settings → Transcription → Device: Auto uses the GPU when its runtime is installed
+    /// and falls back to the CPU if it does not start; GPU reports why it cannot.
+    /// </summary>
+    public static SherpaRecognizer Create(TranscriptionModel model, string directory, string? language, TranscriptionDevice device) =>
+        RecognizerPlan.Create(device, Environment.ProcessorCount, RecognizerPlan.InstalledGpuProvider,
+            plan => new SherpaRecognizer(model, directory, language, plan));
+
+    public RecognizerPlan Plan { get; }
+
+    /// <summary>
+    /// Decoding keeps its state in the stream; the model's ONNX Runtime sessions may run from several threads at once.
+    /// (Whisper rewrites its decoder settings on every call, always with the same values.)
+    /// </summary>
+    public int Parallelism => Plan.Parallelism;
 
     public IReadOnlyList<Word> Recognize(float[] samples, double offset)
     {

@@ -301,19 +301,28 @@ Places where the UI and the setting exist but the behaviour does not are marked 
 - **Smart cut**: `CutMode.SmartCut` exists in the export settings; the planner rejects it for now. It becomes
   a third kind of plan (re-encode the GOP around each cut, copy the rest, concat). The dialog lists it as not
   yet available.
-- **GPU transcription**: sherpa-onnx runs on the CPU; the Device setting has no effect yet.
+- **GPU transcription**: OurCut ships the CPU-only sherpa-onnx runtime. The Device setting is wired through
+  (`RecognizerPlan`): with a GPU build of sherpa-onnx 1.13.8 beside the app (`onnxruntime_providers_cuda` or
+  `DirectML.dll`), Auto and GPU use it. sherpa-onnx publishes CUDA builds (NVIDIA; they need CUDA 12 or 13 and
+  cuDNN 9 installed) but no DirectML build.
 
 ## Transcription
 
 `OurCut.Transcription` (no UI references) turns speech into words with times, locally, with sherpa-onnx (ONNX
-Runtime, CPU). Settings → Transcription lists the models (`ModelCatalog`), all int8 builds from the sherpa-onnx
+Runtime, CPU; see GPU transcription above). Settings → Transcription lists the models (`ModelCatalog`), all int8 builds from the sherpa-onnx
 GitHub releases (.tar.bz2): Parakeet TDT 0.6B v3 (25 European languages including Ukrainian and English; the default)
 and Whisper large-v3-turbo, small and base.en (99 languages; base.en English only).
 
 - **Audio**: ffmpeg mixes every audio track to 16 kHz mono float (`SpeechAudio`), timed from the file start like
   keyframes, and pipes it out.
 - **Pieces** (`TranscriptionPipeline`): the stream is cut into pieces of at most 28 s, each ending at the quietest
-  100 ms after 18 s, so words are not cut in half and memory stays small. Each piece is recognized in turn.
+  100 ms after 18 s, so words are not cut in half and memory stays small. Up to four pieces are recognized at once
+  on threads below normal priority (`nice` 10 on Linux), sharing one model, and their words are handed on in order.
+- **Device** (`RecognizerPlan`, from Settings → Transcription → Device): on the CPU, every core: up to four pieces at
+  once (each holds 100–200 MB), the cores shared among them (16 cores: 4 pieces × 4 threads; ONNX Runtime's own
+  threads are lowered too). Auto uses a GPU runtime when one is installed and falls back to the CPU if it does not
+  start; GPU fails with a clear message without one; CPU stays on the CPU. The setting's note says which it is
+  ("CPU · 16 threads").
 - **Words** (`WordBuilder`): the models give subword tokens (a leading space starts a word) with start times;
   punctuation joins the word before it; a word followed by a pause ends after about as long as it takes to say.
   The published Whisper models give no times, so their words get estimated ones: the speech in the piece (stretches
@@ -327,7 +336,7 @@ and Whisper large-v3-turbo, small and base.en (99 languages; base.en English onl
   The timeline's Transcript chip is the same setting: turned on, the open video is transcribed too; turned off, a
   transcription under way stops (`MediaPreview.StopTranscription`).
   A transcript cached earlier with the chosen model is shown when the file opens either way. It runs after
-  keyframes, waveform and thumbnails (it may overlap scene detection), on half the cores. The status bar shows "transcribing 34%", the transcript fills in piece by piece
+  keyframes, waveform and thumbnails (it may overlap scene detection), on every core below normal priority. The status bar shows "transcribing 34%", the transcript fills in piece by piece
   and is cached per model and language (`transcript-<model>-<language>.json`). Installing a model or changing the
   model or language starts it (with "Transcribe when a video is opened" off, only a transcript already asked for).
 

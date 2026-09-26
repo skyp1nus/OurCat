@@ -127,11 +127,178 @@ public class TranscriptionPipelineTests
         Assert.Equal(1, progress[^1], 3);
     }
 
+    /// <summary>Takes pieces from several threads at once, the later ones faster, and says one word per piece.</summary>
+    private sealed class ParallelRecognizer(int parallelism) : ISpeechRecognizer
+    {
+        private int _running;
+
+        public int Parallelism => parallelism;
+        public int MostAtOnce { get; private set; }
+        public bool LowPriority { get; private set; } = true;
+        public int Running => Volatile.Read(ref _running);
+
+        /// <summary>Held until set; stands for a slow model.</summary>
+        public ManualResetEventSlim Go { get; } = new(true);
+
+        public IReadOnlyList<Word> Recognize(float[] samples, double offset)
+        {
+            int now = Interlocked.Increment(ref _running);
+            lock (this)
+            {
+                MostAtOnce = Math.Max(MostAtOnce, now);
+                if (OperatingSystem.IsWindows() && Thread.CurrentThread.Priority != ThreadPriority.BelowNormal)
+                    LowPriority = false;
+            }
+            Go.Wait();
+            // Early pieces take longest, so they finish out of order.
+            Thread.Sleep(Math.Max(0, 60 - (int)offset));
+            Interlocked.Decrement(ref _running);
+            return [new Word($"at{offset:0}", offset, offset + 0.5)];
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    [Fact]
+    public async Task Pieces_are_recognized_several_at_once_and_the_words_come_out_in_order()
+    {
+        var recognizer = new ParallelRecognizer(3);
+        var progress = new List<double>();
+        var pieces = new List<string>();
+
+        var words = await TranscriptionPipeline.RunAsync(Audio(), 70, recognizer, (found, p) =>
+        {
+            pieces.AddRange(found.Select(w => w.Text));
+            progress.Add(p);
+        }, TestContext.Current.CancellationToken);
+
+        Assert.InRange(recognizer.MostAtOnce, 2, 3);
+        Assert.True(recognizer.LowPriority);
+        Assert.Equal(["at0", "at21", "at44"], words.Select(w => w.Text));
+        Assert.Equal(["at0", "at21", "at44"], pieces);
+        Assert.Equal(progress.Order(), progress);
+        Assert.Equal(1, progress[^1], 3);
+    }
+
+    [Fact]
+    public async Task Stopping_waits_for_the_pieces_under_way()
+    {
+        var recognizer = new ParallelRecognizer(3);
+        recognizer.Go.Reset();
+        using var cts = new CancellationTokenSource();
+        var audio = Audio();
+        // Stopped once the audio has been read, while the pieces are held.
+        var run = TranscriptionPipeline.RunAsync(new StopAtEnd(audio, cts), 70, recognizer, cancellationToken: cts.Token);
+        while (recognizer.Running == 0)
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        Assert.False(run.IsCompleted);
+
+        recognizer.Go.Set();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+        // The recognizer can be disposed now: nothing is using it.
+        Assert.Equal(0, recognizer.Running);
+    }
+
+    /// <summary>Cancels when the audio runs out, before the last piece is started.</summary>
+    private sealed class StopAtEnd(Stream inner, CancellationTokenSource cts) : Stream
+    {
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            int read = await inner.ReadAsync(buffer, CancellationToken.None);
+            if (read == 0)
+                await cts.CancelAsync();
+            return read;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => inner.Length;
+        public override long Position { get => inner.Position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     [Fact]
     public void The_cut_goes_to_the_quietest_moment()
     {
         var samples = Enumerable.Range(0, 16000 * 3).Select(i => i is > 30000 and < 33000 ? 0f : 0.5f).ToArray();
         Assert.InRange(TranscriptionPipeline.QuietestCut(samples, 16000, 48000), 30000, 33000);
+    }
+}
+
+public class RecognizerPlanTests
+{
+    [Theory]
+    [InlineData(1, 1, 1)]
+    [InlineData(2, 2, 1)]
+    [InlineData(4, 4, 1)]
+    [InlineData(6, 4, 1)]
+    [InlineData(16, 4, 4)]
+    [InlineData(32, 4, 8)]
+    public void The_CPU_plan_uses_every_core(int cores, int parallelism, int threads)
+    {
+        var plan = RecognizerPlan.Cpu(cores);
+        Assert.Equal(("cpu", parallelism, threads), (plan.Provider, plan.Parallelism, plan.Threads));
+        Assert.False(plan.OnGpu);
+        Assert.Equal($"CPU · {parallelism * threads} threads", plan.Description);
+    }
+
+    [Fact]
+    public void The_device_setting_picks_the_provider()
+    {
+        Assert.Equal("cpu", RecognizerPlan.Choose(TranscriptionDevice.Auto, 8, null).Provider);
+        Assert.Equal("cpu", RecognizerPlan.Choose(TranscriptionDevice.Cpu, 8, "cuda").Provider);
+        Assert.Equal("cuda", RecognizerPlan.Choose(TranscriptionDevice.Auto, 8, "cuda").Provider);
+        Assert.Equal("directml", RecognizerPlan.Choose(TranscriptionDevice.Gpu, 8, "directml").Provider);
+        Assert.Equal("GPU (DirectML)", RecognizerPlan.Choose(TranscriptionDevice.Gpu, 8, "directml").Description);
+        var e = Assert.Throws<InvalidOperationException>(() => RecognizerPlan.Choose(TranscriptionDevice.Gpu, 8, null));
+        Assert.Contains("Choose Auto or CPU", e.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Auto_falls_back_to_the_CPU_when_the_GPU_does_not_start()
+    {
+        var tried = new List<string>();
+        RecognizerPlan Make(RecognizerPlan plan)
+        {
+            tried.Add(plan.Provider);
+            return plan.OnGpu ? throw new DllNotFoundException("cudnn64_9.dll") : plan;
+        }
+
+        Assert.Equal(RecognizerPlan.Cpu(8), RecognizerPlan.Create(TranscriptionDevice.Auto, 8, "cuda", Make));
+        Assert.Equal(["cuda", "cpu"], tried);
+
+        tried.Clear();
+        Assert.Throws<DllNotFoundException>(() => RecognizerPlan.Create(TranscriptionDevice.Gpu, 8, "cuda", Make));
+        Assert.Equal(["cuda"], tried);
+
+        tried.Clear();
+        RecognizerPlan.Create(TranscriptionDevice.Cpu, 8, "cuda", Make);
+        Assert.Equal(["cpu"], tried);
+    }
+
+    [Fact]
+    public void A_GPU_runtime_is_found_beside_the_app()
+    {
+        string dir = Directory.CreateTempSubdirectory("ourcut-gpu").FullName;
+        try
+        {
+            Assert.Null(RecognizerPlan.FindGpuProvider(dir));
+            string native = Directory.CreateDirectory(Path.Combine(dir, "runtimes", System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier, "native")).FullName;
+            File.WriteAllText(Path.Combine(native, OperatingSystem.IsWindows() ? "onnxruntime_providers_cuda.dll" : "libonnxruntime_providers_cuda.so"), "");
+            Assert.Equal(OperatingSystem.IsWindows() || OperatingSystem.IsLinux() ? "cuda" : null, RecognizerPlan.FindGpuProvider(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }
 
