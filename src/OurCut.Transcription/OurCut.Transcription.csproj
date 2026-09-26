@@ -2,6 +2,8 @@
   <!-- Local speech-to-text: model downloads and the engines. No UI dependencies. -->
   <PropertyGroup>
     <RootNamespace>OurCut.Transcription</RootNamespace>
+    <!-- LowPriority calls setpriority on Linux. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OurCut.Core\OurCut.Core.csproj" />

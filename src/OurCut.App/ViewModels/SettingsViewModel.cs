@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OurCut.App.Services;
+using OurCut.Transcription;
 using OurCut.Transcription.Models;
 using Fillers = OurCut.Core.Transcripts.FillerWords;
 
@@ -213,13 +214,26 @@ public sealed partial class SettingsViewModel : ViewModelBase
             TranscriptionChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>The chosen device, for the recognizer.</summary>
+    public TranscriptionDevice DeviceChoice => Device switch
+    {
+        "GPU" => TranscriptionDevice.Gpu,
+        "CPU" => TranscriptionDevice.Cpu,
+        _ => TranscriptionDevice.Auto,
+    };
+
+    /// <summary>The GPU runtime beside the app ("cuda", "directml"), or null; tests set it.</summary>
+    public string? GpuProvider { get; set; } = RecognizerPlan.InstalledGpuProvider;
+
+    /// <summary>What transcription runs on with the chosen device: "CPU · 16 threads", "GPU (CUDA) · CPU if it fails".</summary>
     public string DeviceNote => _editor.IsDemo
         ? (Device == "CPU" ? "16 threads · ~4× slower" : "NVIDIA RTX 4070 · CUDA 12.4")
-        : Device switch
+        : (DeviceChoice, GpuProvider) switch
         {
-            "GPU" => "Needs a CUDA or DirectML capable GPU",
-            "CPU" => "Works everywhere, several times slower",
-            _ => "Uses the GPU when one is available",
+            (TranscriptionDevice.Gpu, null) => "No GPU runtime is installed · choose Auto or CPU",
+            (TranscriptionDevice.Auto, null) => RecognizerPlan.Cpu(Environment.ProcessorCount).Description + " · no GPU runtime is installed",
+            (TranscriptionDevice.Auto, _) => RecognizerPlan.Choose(DeviceChoice, Environment.ProcessorCount, GpuProvider).Description + " · CPU if it fails",
+            _ => RecognizerPlan.Choose(DeviceChoice, Environment.ProcessorCount, GpuProvider).Description,
         };
 
     /// <summary>The table header's "1.4 GB free on D:".</summary>

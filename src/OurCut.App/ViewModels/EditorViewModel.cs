@@ -607,7 +607,8 @@ public sealed partial class EditorViewModel : ViewModelBase
     {
         if (Settings.ActiveModel is not { } model)
             return null;
-        var setup = new TranscriptionSetup(model, Settings.DirectoryOf(model), Settings.LanguageCode ?? ModelCatalog.OnlyLanguage(model));
+        var setup = new TranscriptionSetup(model, Settings.DirectoryOf(model), Settings.LanguageCode ?? ModelCatalog.OnlyLanguage(model),
+            Device: Settings.DeviceChoice);
         return RecognizerFactory is { } factory ? setup with { CreateRecognizer = () => factory(setup) } : setup;
     }
 

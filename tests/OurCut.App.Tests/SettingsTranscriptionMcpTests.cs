@@ -216,6 +216,8 @@ public sealed class SettingsTranscriptionMcpTests : IDisposable
     {
         public int Transcriptions { get; private set; }
 
+        public TranscriptionSetup? LastSetup { get; private set; }
+
         private sealed class Preview(CountingOpener owner) : IMediaPreview
         {
             public double Duration => 10;
@@ -237,6 +239,7 @@ public sealed class SettingsTranscriptionMcpTests : IDisposable
             public void StartTranscription(TranscriptionSetup setup)
             {
                 owner.Transcriptions++;
+                owner.LastSetup = setup;
                 TranscriptState = TranscriptState.Waiting;
             }
 
@@ -281,6 +284,36 @@ public sealed class SettingsTranscriptionMcpTests : IDisposable
         Assert.Equal(3, opener.Transcriptions);
         await editor.OpenMediaAsync("/videos/other.mp4");
         Assert.Equal(4, opener.Transcriptions);
+    }
+
+    [AvaloniaFact]
+    public async Task The_chosen_device_reaches_the_recognizer_and_the_note_says_what_it_runs_on()
+    {
+        string models = EmptyFolder("models");
+        string parakeet = Directory.CreateDirectory(Path.Combine(models, ModelCatalog.Parakeet.Id)).FullName;
+        foreach (string file in ModelCatalog.Parakeet.Files)
+            File.WriteAllText(Path.Combine(parakeet, file), "");
+        var opener = new CountingOpener();
+        var editor = App.CreateEditor(null, opener);
+        var settings = editor.Settings;
+        settings.ModelsFolder = models;
+        await editor.OpenMediaAsync("/videos/talk.mp4");
+
+        settings.Device = "CPU";
+        Assert.Null(editor.StartTranscription());
+        Assert.Equal(TranscriptionDevice.Cpu, opener.LastSetup?.Device);
+
+        string threads = RecognizerPlan.Cpu(Environment.ProcessorCount).Description;
+        settings.GpuProvider = null;
+        Assert.Equal(threads, settings.DeviceNote);
+        settings.Device = "Auto";
+        Assert.Equal(threads + " · no GPU runtime is installed", settings.DeviceNote);
+        settings.Device = "GPU";
+        Assert.Equal("No GPU runtime is installed · choose Auto or CPU", settings.DeviceNote);
+        settings.GpuProvider = "cuda";
+        Assert.Equal("GPU (CUDA)", settings.DeviceNote);
+        settings.Device = "Auto";
+        Assert.Equal("GPU (CUDA) · CPU if it fails", settings.DeviceNote);
     }
 
     [AvaloniaFact]

@@ -17,11 +17,12 @@ public enum TranscriptState
 /// <param name="ModelDirectory">Where the model is installed.</param>
 /// <param name="Language">Two-letter language code, or null to detect it.</param>
 /// <param name="CreateRecognizer">Makes the recognizer (tests use a fake); sherpa-onnx if null.</param>
+/// <param name="Device">Settings → Transcription → Device.</param>
 public sealed record TranscriptionSetup(Models.TranscriptionModel Model, string ModelDirectory, string? Language,
-    Func<ISpeechRecognizer>? CreateRecognizer = null)
+    Func<ISpeechRecognizer>? CreateRecognizer = null, TranscriptionDevice Device = TranscriptionDevice.Auto)
 {
-    /// <summary>Same model and language: the same transcript.</summary>
+    /// <summary>Same model and language: the same transcript (whichever device made it).</summary>
     public string Key => $"{Model.Id}|{Language ?? "auto"}";
 
-    public ISpeechRecognizer Create() => CreateRecognizer?.Invoke() ?? new SherpaRecognizer(Model, ModelDirectory, Language);
+    public ISpeechRecognizer Create() => CreateRecognizer?.Invoke() ?? SherpaRecognizer.Create(Model, ModelDirectory, Language, Device);
 }
